@@ -1,4 +1,4 @@
-const DEFENSE_TERRAIN_BONUS = 1.1; // small home-turf advantage
+import type { Settings } from "./settings.js";
 
 export interface CombatResult {
   attackerPower: number;
@@ -10,10 +10,12 @@ export interface CombatResult {
 
 export function resolveCombat(
   troopsSent: number,
-  defenderTroops: number
+  defenderTroops: number,
+  settings: Settings
 ): CombatResult {
+  const bonus = settings.combat_defense_bonus;
   const attackerPower = troopsSent;
-  const defenderPower = defenderTroops * DEFENSE_TERRAIN_BONUS;
+  const defenderPower = defenderTroops * bonus;
 
   if (attackerPower > defenderPower) {
     return {
@@ -30,6 +32,6 @@ export function resolveCombat(
     defenderPower,
     attackerWins: false,
     survivingAttackerTroops: 0,
-    survivingDefenderTroops: Math.max(0, defenderPower - attackerPower) / DEFENSE_TERRAIN_BONUS,
+    survivingDefenderTroops: Math.max(0, defenderPower - attackerPower) / bonus,
   };
 }

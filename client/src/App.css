@@ -231,3 +231,83 @@ button:disabled {
   background: #2a2f36;
   color: #eee;
 }
+
+.admin-login {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.admin-login form {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-login input {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #2a2f36;
+  color: #eee;
+  min-width: 220px;
+}
+
+.admin-panel {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+}
+
+.admin-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 20px;
+}
+
+.admin-panel header a {
+  color: #9aa4af;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.admin-panel header a:hover {
+  color: #eee;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  background: #21262d;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.setting-row label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.setting-row input {
+  width: 110px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #2a2f36;
+  color: #eee;
+  text-align: right;
+  flex-shrink: 0;
+}

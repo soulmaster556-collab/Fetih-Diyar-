@@ -1,10 +1,10 @@
 import { pool } from "../db.js";
 import { productionForLevel } from "./resources.js";
+import type { Settings } from "./settings.js";
 
 const MAP_SIZE = 16;
-const NPC_CHANCE = 0.25;
 
-export async function ensureMapGenerated() {
+export async function ensureMapGenerated(settings: Settings) {
   const { rows } = await pool.query<{ count: string }>("SELECT COUNT(*)::int as count FROM tiles");
   if (Number(rows[0].count) > 0) return;
 
@@ -14,9 +14,9 @@ export async function ensureMapGenerated() {
     await client.query("BEGIN");
     for (let x = 0; x < MAP_SIZE; x++) {
       for (let y = 0; y < MAP_SIZE; y++) {
-        const isNpc = Math.random() < NPC_CHANCE;
+        const isNpc = Math.random() < settings.npc_spawn_chance;
         const level = isNpc ? 1 + Math.floor(Math.random() * 3) : 1;
-        const production = productionForLevel(level);
+        const production = productionForLevel(level, settings);
         await client.query(
           `INSERT INTO tiles (x, y, owner_id, tile_type, level, gold_per_hour, troops_per_hour,
                               stored_gold, stored_troops, last_collected_at)

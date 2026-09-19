@@ -54,6 +54,32 @@ export function upgradeTile(token: string, tileId: number) {
   }).then((r) => handle<Tile>(r));
 }
 
+export interface SettingDef {
+  key: string;
+  label: string;
+  description: string;
+  default: number;
+}
+
+export interface SettingsResponse {
+  defs: SettingDef[];
+  values: Record<string, number>;
+}
+
+export function fetchAdminSettings(adminKey: string) {
+  return fetch(`${BASE}/admin/settings`, {
+    headers: { "x-admin-key": adminKey },
+  }).then((r) => handle<SettingsResponse>(r));
+}
+
+export function updateAdminSettings(adminKey: string, values: Record<string, number>) {
+  return fetch(`${BASE}/admin/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-admin-key": adminKey },
+    body: JSON.stringify({ values }),
+  }).then((r) => handle<{ values: Record<string, number> }>(r));
+}
+
 export function attackTile(
   token: string,
   targetTileId: number,

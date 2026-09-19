@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { pool } from "../db.js";
 import { pickRandomEmptyTile } from "../game/mapgen.js";
 import { productionForLevel } from "../game/resources.js";
+import { loadSettings } from "../game/settings.js";
 import type { Player } from "../types.js";
 
 export const playersRouter = Router();
@@ -24,10 +25,11 @@ playersRouter.post("/register", async (req, res) => {
       return res.status(503).json({ error: "Haritada boş kare kalmadı." });
     }
 
+    const settings = await loadSettings();
     const id = randomUUID();
     const token = randomUUID();
     const now = Date.now();
-    const production = productionForLevel(1);
+    const production = productionForLevel(1, settings);
 
     const client = await pool.connect();
     try {
@@ -41,9 +43,9 @@ playersRouter.post("/register", async (req, res) => {
         `UPDATE tiles
          SET owner_id = $1, tile_type = 'PLAYER', level = 1,
              gold_per_hour = $2, troops_per_hour = $3,
-             stored_gold = 0, stored_troops = 20, last_collected_at = $4
-         WHERE id = $5`,
-        [id, production.gold_per_hour, production.troops_per_hour, now, startingTileId]
+             stored_gold = 0, stored_troops = $4, last_collected_at = $5
+         WHERE id = $6`,
+        [id, production.gold_per_hour, production.troops_per_hour, settings.starting_troops, now, startingTileId]
       );
       await client.query("COMMIT");
     } catch (err) {

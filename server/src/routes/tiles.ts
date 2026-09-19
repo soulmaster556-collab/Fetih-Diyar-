@@ -3,12 +3,14 @@ import { pool } from "../db.js";
 import { authenticate } from "./players.js";
 import { computeLiveResources, productionForLevel, upgradeCost } from "../game/resources.js";
 import { resolveCombat } from "../game/combat.js";
+import { loadSettings } from "../game/settings.js";
+import type { Settings } from "../game/settings.js";
 import type { Player, TileRow } from "../types.js";
 
 export const tilesRouter = Router();
 
-function serializeTile(tile: TileRow, now: number) {
-  const live = computeLiveResources(tile, now);
+function serializeTile(tile: TileRow, settings: Settings, now: number) {
+  const live = computeLiveResources(tile, settings, now);
   return {
     id: tile.id,
     x: tile.x,
@@ -27,8 +29,9 @@ function serializeTile(tile: TileRow, now: number) {
 tilesRouter.get("/", async (_req, res) => {
   try {
     const now = Date.now();
+    const settings = await loadSettings();
     const { rows } = await pool.query<TileRow>("SELECT * FROM tiles");
-    res.json(rows.map((t) => serializeTile(t, now)));
+    res.json(rows.map((t) => serializeTile(t, settings, now)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -39,10 +42,11 @@ tilesRouter.get("/me", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
     const now = Date.now();
+    const settings = await loadSettings();
     const { rows } = await pool.query<TileRow>("SELECT * FROM tiles WHERE owner_id = $1", [
       player.id,
     ]);
-    res.json(rows.map((t) => serializeTile(t, now)));
+    res.json(rows.map((t) => serializeTile(t, settings, now)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -54,6 +58,7 @@ tilesRouter.post("/:id/upgrade", authenticate, async (req: any, res) => {
     const player = req.player as Player;
     const tileId = Number(req.params.id);
     const now = Date.now();
+    const settings = await loadSettings();
 
     const { rows } = await pool.query<TileRow>("SELECT * FROM tiles WHERE id = $1", [tileId]);
     const tile = rows[0];
@@ -61,14 +66,14 @@ tilesRouter.post("/:id/upgrade", authenticate, async (req: any, res) => {
     if (tile.owner_id !== player.id)
       return res.status(403).json({ error: "Bu kare sana ait değil." });
 
-    const live = computeLiveResources(tile, now);
-    const cost = upgradeCost(tile.level);
+    const live = computeLiveResources(tile, settings, now);
+    const cost = upgradeCost(tile.level, settings);
     if (live.gold < cost) {
       return res.status(400).json({ error: `Yetersiz altın. Gerekli: ${cost}` });
     }
 
     const newLevel = tile.level + 1;
-    const production = productionForLevel(newLevel);
+    const production = productionForLevel(newLevel, settings);
 
     const { rows: updatedRows } = await pool.query<TileRow>(
       `UPDATE tiles
@@ -79,7 +84,7 @@ tilesRouter.post("/:id/upgrade", authenticate, async (req: any, res) => {
       [newLevel, production.gold_per_hour, production.troops_per_hour, live.gold - cost, live.troops, now, tileId]
     );
 
-    res.json(serializeTile(updatedRows[0], now));
+    res.json(serializeTile(updatedRows[0], settings, now));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -97,6 +102,7 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
     const fromTileId = Number(req.body?.fromTileId);
     const troopsSentRaw = Number(req.body?.troopsSent);
     const now = Date.now();
+    const settings = await loadSettings();
 
     const [{ rows: fromRows }, { rows: targetRows }] = await Promise.all([
       pool.query<TileRow>("SELECT * FROM tiles WHERE id = $1", [fromTileId]),
@@ -113,14 +119,14 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
     if (!isAdjacent(fromTile, targetTile))
       return res.status(400).json({ error: "Sadece komşu karelere saldırabilirsin." });
 
-    const fromLive = computeLiveResources(fromTile, now);
+    const fromLive = computeLiveResources(fromTile, settings, now);
     const troopsSent = Math.floor(troopsSentRaw);
     if (!troopsSent || troopsSent <= 0 || troopsSent > fromLive.troops) {
       return res.status(400).json({ error: "Geçersiz asker sayısı." });
     }
 
-    const targetLive = computeLiveResources(targetTile, now);
-    const combat = resolveCombat(troopsSent, targetLive.troops);
+    const targetLive = computeLiveResources(targetTile, settings, now);
+    const combat = resolveCombat(troopsSent, targetLive.troops, settings);
 
     const client = await pool.connect();
     try {
@@ -132,7 +138,7 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
       );
 
       if (combat.attackerWins) {
-        const production = productionForLevel(targetTile.level);
+        const production = productionForLevel(targetTile.level, settings);
         await client.query(
           `UPDATE tiles
            SET owner_id = $1, tile_type = 'PLAYER',

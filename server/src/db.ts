@@ -52,4 +52,11 @@ export async function initSchema() {
       occurred_at BIGINT NOT NULL
     );
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS game_settings (
+      key TEXT PRIMARY KEY,
+      value DOUBLE PRECISION NOT NULL
+    );
+  `);
 }

@@ -1,7 +1,7 @@
 import type { TileRow } from "../types.js";
+import type { Settings } from "./settings.js";
 
 const HOUR_MS = 60 * 60 * 1000;
-const CAP_HOURS = 24; // resources cap at 24h worth of production while uncollected
 
 /**
  * Idle-game style lazy accrual: instead of a server tick loop, we compute
@@ -9,14 +9,15 @@ const CAP_HOURS = 24; // resources cap at 24h worth of production while uncollec
  * stored amounts on read. This mirrors the time-based production pattern
  * already used in Kadim Topraklar.
  */
-export function computeLiveResources(tile: TileRow, now: number = Date.now()) {
+export function computeLiveResources(tile: TileRow, settings: Settings, now: number = Date.now()) {
   const elapsedHours = Math.max(0, (now - tile.last_collected_at) / HOUR_MS);
+  const capHours = settings.resource_cap_hours;
 
   // Static garrisons (NPC camps) have troops_per_hour = 0 but still hold a
   // fixed stored_troops value — the cap must never clamp that below what's
   // already stored, or NPC defense would incorrectly read as 0.
-  const goldCap = Math.max(tile.gold_per_hour * CAP_HOURS, tile.stored_gold);
-  const troopsCap = Math.max(tile.troops_per_hour * CAP_HOURS, tile.stored_troops);
+  const goldCap = Math.max(tile.gold_per_hour * capHours, tile.stored_gold);
+  const troopsCap = Math.max(tile.troops_per_hour * capHours, tile.stored_troops);
 
   const gold = Math.min(
     goldCap,
@@ -30,13 +31,13 @@ export function computeLiveResources(tile: TileRow, now: number = Date.now()) {
   return { gold, troops };
 }
 
-export function upgradeCost(level: number): number {
-  return Math.round(50 * Math.pow(level, 1.5));
+export function upgradeCost(level: number, settings: Settings): number {
+  return Math.round(settings.upgrade_cost_multiplier * Math.pow(level, settings.upgrade_cost_exponent));
 }
 
-export function productionForLevel(level: number) {
+export function productionForLevel(level: number, settings: Settings) {
   return {
-    gold_per_hour: 10 * level,
-    troops_per_hour: 10 * level,
+    gold_per_hour: settings.gold_per_level * level,
+    troops_per_hour: settings.troops_per_level * level,
   };
 }
