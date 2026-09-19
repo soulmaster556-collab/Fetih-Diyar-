@@ -14,6 +14,10 @@ const SESSION_KEY = "fetih-diyari-session";
 const WORLD_SIZE = 80;
 const CELL_SIZES = [8, 12, 16, 22, 28];
 const DEFAULT_CELL_SIZE_INDEX = 2;
+// 256px varyantı: küçük karolarda da netliğini korur, tek dosya olduğu için
+// (aynı URL) tarayıcı sadece bir kez indirir, tüm şehir karolarında paylaşılır.
+const CASTLE_ICON = "/buildings/Kale_Assest_256.png";
+const CASTLE_ICON_MIN_CELL = 14;
 
 function loadSession(): Session | null {
   try {
@@ -215,29 +219,39 @@ export default function App() {
                 gridTemplateRows: `repeat(${WORLD_SIZE}, ${cellSize}px)`,
               }}
             >
-              {tiles.map((tile) => (
-                <div
-                  key={tile.id}
-                  data-tile-id={tile.id}
-                  className={`tile ${selectedId === tile.id ? "selected" : ""}`}
-                  style={{
-                    gridColumn: tile.x + 1,
-                    gridRow: tile.y + 1,
-                    width: cellSize,
-                    height: cellSize,
-                    backgroundColor: tileColor(tile, session.playerId),
-                  }}
-                  onClick={() => {
-                    setSelectedId(tile.id);
-                    setAttackFromId(null);
-                    setMessage(null);
-                    setError(null);
-                  }}
-                  title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
-                >
-                  {tile.tileType === "PLAYER" && tile.ownerId === session.playerId && cellSize >= 16 && "★"}
-                </div>
-              ))}
+              {tiles.map((tile) => {
+                const showCastle = tile.tileType === "PLAYER" && cellSize >= CASTLE_ICON_MIN_CELL;
+                const isMine = tile.ownerId === session.playerId;
+                return (
+                  <div
+                    key={tile.id}
+                    data-tile-id={tile.id}
+                    className={`tile ${selectedId === tile.id ? "selected" : ""} ${showCastle ? "tile-city" : ""}`}
+                    style={{
+                      gridColumn: tile.x + 1,
+                      gridRow: tile.y + 1,
+                      width: cellSize,
+                      height: cellSize,
+                      backgroundColor: showCastle ? undefined : tileColor(tile, session.playerId),
+                      backgroundImage: showCastle ? `url(${CASTLE_ICON})` : undefined,
+                      borderColor: showCastle ? (isMine ? "#4caf50" : "#e53935") : "transparent",
+                    }}
+                    onClick={() => {
+                      setSelectedId(tile.id);
+                      setAttackFromId(null);
+                      setMessage(null);
+                      setError(null);
+                    }}
+                    title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
+                  >
+                    {!showCastle &&
+                      tile.tileType === "PLAYER" &&
+                      isMine &&
+                      cellSize >= 16 &&
+                      "★"}
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div className="legend">
@@ -254,11 +268,16 @@ export default function App() {
             <ul className="city-list">
               {myTiles.map((t) => (
                 <li key={t.id}>
-                  <div>
-                    ({t.x},{t.y}) — Lv{t.level} — ada #{t.islandId}
-                  </div>
-                  <div className="stats">
-                    🪙 {t.gold} &nbsp; ⚔️ {t.troops}
+                  <div className="city-row">
+                    <img src={CASTLE_ICON} alt="" className="city-icon" />
+                    <div>
+                      <div>
+                        ({t.x},{t.y}) — Lv{t.level} — ada #{t.islandId}
+                      </div>
+                      <div className="stats">
+                        🪙 {t.gold} &nbsp; ⚔️ {t.troops}
+                      </div>
+                    </div>
                   </div>
                   <div className="row-actions">
                     <button onClick={() => handleUpgrade(t.id)}>Yükselt</button>

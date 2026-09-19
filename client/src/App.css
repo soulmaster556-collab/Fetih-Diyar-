@@ -182,6 +182,14 @@ button:disabled {
   opacity: 1;
 }
 
+.tile-city {
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  border: 2px solid transparent;
+  border-radius: 4px;
+}
+
 .legend {
   display: flex;
   gap: 16px;
@@ -231,6 +239,19 @@ button:disabled {
   background: #21262d;
   border-radius: 6px;
   padding: 10px;
+}
+
+.city-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.city-icon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .row-actions {
