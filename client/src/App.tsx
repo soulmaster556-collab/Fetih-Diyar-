@@ -12,12 +12,15 @@ import {
 
 const SESSION_KEY = "fetih-diyari-session";
 const WORLD_SIZE = 80;
-const CELL_SIZES = [8, 12, 16, 22, 28];
-const DEFAULT_CELL_SIZE_INDEX = 2;
+// Karo genişliği (izometrik baklava şeklinin genişliği, px). Yükseklik hep
+// genişliğin yarısı — klasik 2:1 izometrik oran (Travian/Forge of Empires
+// tarzı haritalarda kullanılan oran).
+const TILE_WIDTHS = [16, 22, 32, 46, 64];
+const DEFAULT_TILE_WIDTH_INDEX = 2;
 // 256px varyantı: küçük karolarda da netliğini korur, tek dosya olduğu için
 // (aynı URL) tarayıcı sadece bir kez indirir, tüm şehir karolarında paylaşılır.
 const CASTLE_ICON = "/buildings/Kale_Assest_256.png";
-const CASTLE_ICON_MIN_CELL = 14;
+const CASTLE_ICON_MIN_WIDTH = 28;
 
 function loadSession(): Session | null {
   try {
@@ -30,13 +33,26 @@ function loadSession(): Session | null {
 
 function tileColor(tile: Tile, myId: string | undefined) {
   if (tile.tileType === "NPC") return "#8d6e63";
-  if (tile.tileType === "EMPTY") return "#dcd3c0";
+  if (tile.tileType === "EMPTY") return "#8bc34a";
   if (tile.ownerId === myId) return "#4caf50";
   return "#e53935";
 }
 
 function distance(a: Tile, b: Tile) {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+// Grid koordinatını (x,y) izometrik ekran merkezine çevirir. Standart 2:1
+// izometrik projeksiyon: sağa gitmek ekranda sağ-aşağı, aşağı gitmek
+// ekranda sol-aşağı hareket ettirir — bu da o klasik "baklava" ızgarayı
+// oluşturur. offsetX, en soldaki karonun negatif koordinata düşmesini önler.
+function isoCenter(x: number, y: number, tileWidth: number) {
+  const tileHeight = tileWidth / 2;
+  const offsetX = ((WORLD_SIZE - 1) * tileWidth) / 2;
+  return {
+    cx: offsetX + (x - y) * (tileWidth / 2),
+    cy: (x + y) * (tileHeight / 2),
+  };
 }
 
 export default function App() {
@@ -50,8 +66,9 @@ export default function App() {
   const [troopsToSend, setTroopsToSend] = useState(10);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [cellSizeIndex, setCellSizeIndex] = useState(DEFAULT_CELL_SIZE_INDEX);
-  const cellSize = CELL_SIZES[cellSizeIndex];
+  const [tileWidthIndex, setTileWidthIndex] = useState(DEFAULT_TILE_WIDTH_INDEX);
+  const tileWidth = TILE_WIDTHS[tileWidthIndex];
+  const tileHeight = tileWidth / 2;
 
   const refresh = () => {
     fetchMap().then(setTiles).catch((e) => setError(e.message));
@@ -69,6 +86,15 @@ export default function App() {
   );
 
   const selectedTile = tiles.find((t) => t.id === selectedId) ?? null;
+
+  // İzometrik görünümde alttaki karolar üsttekilerin önüne çizilmeli
+  // (aksi halde şehir ikonları arkadaki karoların altında kalır gibi
+  // görünür). DOM sırası = çizim sırası olduğu için basitçe x+y'ye göre
+  // artan sıralamak yeterli.
+  const sortedTiles = useMemo(
+    () => [...tiles].sort((a, b) => a.x + a.y - (b.x + b.y)),
+    [tiles]
+  );
 
   // Every owned tile is a *candidate* attack origin — same-island targets
   // still need direct adjacency, but a different island only needs to be
@@ -200,12 +226,12 @@ export default function App() {
       <div className="main-area">
         <div className="map-wrapper">
           <div className="map-toolbar">
-            <button onClick={() => setCellSizeIndex((i) => Math.max(0, i - 1))} disabled={cellSizeIndex === 0}>
+            <button onClick={() => setTileWidthIndex((i) => Math.max(0, i - 1))} disabled={tileWidthIndex === 0}>
               − Uzaklaş
             </button>
             <button
-              onClick={() => setCellSizeIndex((i) => Math.min(CELL_SIZES.length - 1, i + 1))}
-              disabled={cellSizeIndex === CELL_SIZES.length - 1}
+              onClick={() => setTileWidthIndex((i) => Math.min(TILE_WIDTHS.length - 1, i + 1))}
+              disabled={tileWidthIndex === TILE_WIDTHS.length - 1}
             >
               + Yakınlaş
             </button>
@@ -213,28 +239,27 @@ export default function App() {
           </div>
           <div className="map-viewport">
             <div
-              className="map-grid"
+              className="iso-map"
               style={{
-                gridTemplateColumns: `repeat(${WORLD_SIZE}, ${cellSize}px)`,
-                gridTemplateRows: `repeat(${WORLD_SIZE}, ${cellSize}px)`,
+                width: WORLD_SIZE * tileWidth,
+                height: WORLD_SIZE * tileHeight + tileHeight,
               }}
             >
-              {tiles.map((tile) => {
-                const showCastle = tile.tileType === "PLAYER" && cellSize >= CASTLE_ICON_MIN_CELL;
+              {sortedTiles.map((tile) => {
+                const showCastle = tile.tileType === "PLAYER" && tileWidth >= CASTLE_ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
+                const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
+                const castleSize = tileWidth * 1.3;
                 return (
                   <div
                     key={tile.id}
                     data-tile-id={tile.id}
-                    className={`tile ${selectedId === tile.id ? "selected" : ""} ${showCastle ? "tile-city" : ""}`}
+                    className="iso-tile-group"
                     style={{
-                      gridColumn: tile.x + 1,
-                      gridRow: tile.y + 1,
-                      width: cellSize,
-                      height: cellSize,
-                      backgroundColor: showCastle ? undefined : tileColor(tile, session.playerId),
-                      backgroundImage: showCastle ? `url(${CASTLE_ICON})` : undefined,
-                      borderColor: showCastle ? (isMine ? "#4caf50" : "#e53935") : "transparent",
+                      left: cx - tileWidth / 2,
+                      top: cy - tileHeight / 2,
+                      width: tileWidth,
+                      height: tileHeight,
                     }}
                     onClick={() => {
                       setSelectedId(tile.id);
@@ -244,11 +269,23 @@ export default function App() {
                     }}
                     title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
-                    {!showCastle &&
-                      tile.tileType === "PLAYER" &&
-                      isMine &&
-                      cellSize >= 16 &&
-                      "★"}
+                    <div
+                      className={`iso-diamond ${selectedId === tile.id ? "selected" : ""}`}
+                      style={{ backgroundColor: showCastle ? (isMine ? "#4caf50" : "#e53935") : tileColor(tile, session.playerId) }}
+                    />
+                    {showCastle && (
+                      <img
+                        src={CASTLE_ICON}
+                        alt=""
+                        className="iso-castle"
+                        style={{
+                          width: castleSize,
+                          height: castleSize,
+                          left: (tileWidth - castleSize) / 2,
+                          top: (tileHeight - castleSize) / 2 - tileHeight * 0.35,
+                        }}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -258,7 +295,7 @@ export default function App() {
             <span><i style={{ background: "#4caf50" }} /> Senin şehrin</span>
             <span><i style={{ background: "#e53935" }} /> Düşman</span>
             <span><i style={{ background: "#8d6e63" }} /> NPC kampı</span>
-            <span><i style={{ background: "#dcd3c0" }} /> Boş kare</span>
+            <span><i style={{ background: "#8bc34a" }} /> Boş kare</span>
           </div>
         </div>
 

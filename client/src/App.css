@@ -152,42 +152,44 @@ button:disabled {
   overflow: auto;
   border: 1px solid #2a2f36;
   border-radius: 8px;
-  background: #0d1b2a;
+  /* Adalar arasındaki deniz — izometrik karolar bunun üzerine "yüzer". */
+  background: radial-gradient(ellipse at center, #123a52 0%, #0a1d2c 70%, #071420 100%);
 }
 
-.map-grid {
-  display: grid;
-  gap: 1px;
-  padding: 8px;
+/* Her karonun mutlak konumlandığı, boyutu JS tarafında hesaplanan (WORLD_SIZE
+   × tileWidth) izometrik zemin. Karolar burada (x,y) grid koordinatından
+   izometrik ekran pozisyonuna çevrilerek yerleştiriliyor (bkz. isoCenter). */
+.iso-map {
+  position: relative;
 }
 
-.tile {
-  border-radius: 2px;
+.iso-tile-group {
+  position: absolute;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  color: #fff;
-  opacity: 0.9;
+  /* Kale görseli karo sınırlarının dışına taşabiliyor (bilerek — Travian
+     tarzı oyunlarda köy ikonları da altındaki tek bir karodan büyük çizilir). */
+  overflow: visible;
 }
 
-.tile:hover {
-  outline: 2px solid #fff;
-  opacity: 1;
+.iso-diamond {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  transition: filter 0.1s ease;
 }
 
-.tile.selected {
-  outline: 2px solid #ffd54f;
-  opacity: 1;
+.iso-tile-group:hover .iso-diamond {
+  filter: brightness(1.2);
 }
 
-.tile-city {
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  border: 2px solid transparent;
-  border-radius: 4px;
+.iso-diamond.selected {
+  filter: drop-shadow(0 0 3px #ffd54f) drop-shadow(0 0 3px #ffd54f);
+}
+
+.iso-castle {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
 }
 
 .legend {
@@ -205,10 +207,10 @@ button:disabled {
 }
 
 .legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 2px;
+  width: 12px;
+  height: 6px;
   display: inline-block;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
 }
 
 .side-panel {
