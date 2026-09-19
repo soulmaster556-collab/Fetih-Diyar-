@@ -15,6 +15,7 @@ function serializeTile(tile: TileRow, settings: Settings, now: number) {
     id: tile.id,
     x: tile.x,
     y: tile.y,
+    islandId: tile.island_id,
     ownerId: tile.owner_id,
     tileType: tile.tile_type,
     level: tile.level,
@@ -95,6 +96,20 @@ function isAdjacent(a: TileRow, b: TileRow) {
   return Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && a.id !== b.id;
 }
 
+function tileDistance(a: TileRow, b: TileRow) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+// Same island: must be directly touching (contiguous land expansion, as
+// before). Different island: reachable within the admin-configured naval
+// range, representing ships crossing open water — no adjacency required.
+function canReach(from: TileRow, target: TileRow, settings: Settings) {
+  if (from.island_id === target.island_id) {
+    return isAdjacent(from, target);
+  }
+  return tileDistance(from, target) <= settings.naval_attack_range;
+}
+
 tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
@@ -116,8 +131,8 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
       return res.status(403).json({ error: "Saldırı başlatılan kare sana ait değil." });
     if (targetTile.owner_id === player.id)
       return res.status(400).json({ error: "Kendi karene saldıramazsın." });
-    if (!isAdjacent(fromTile, targetTile))
-      return res.status(400).json({ error: "Sadece komşu karelere saldırabilirsin." });
+    if (!canReach(fromTile, targetTile, settings))
+      return res.status(400).json({ error: "Bu kareye ulaşamazsın (çok uzak)." });
 
     const fromLive = computeLiveResources(fromTile, settings, now);
     const troopsSent = Math.floor(troopsSentRaw);

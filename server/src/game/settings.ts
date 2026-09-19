@@ -51,6 +51,13 @@ export const SETTING_DEFS = [
     description: "Yeni bir oyuncunun kurduğu ilk şehirdeki başlangıç asker sayısı.",
     default: 20,
   },
+  {
+    key: "naval_attack_range",
+    label: "Deniz aşımı saldırı menzili",
+    description:
+      "Farklı bir adadaki kareye saldırabilmek için izin verilen maksimum mesafe. Aynı adadaki komşu karelere bu sınırdan bağımsız her zaman saldırılabilir.",
+    default: 15,
+  },
 ] as const;
 
 export type SettingKey = (typeof SETTING_DEFS)[number]["key"];

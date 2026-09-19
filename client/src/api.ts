@@ -2,6 +2,7 @@ export interface Tile {
   id: number;
   x: number;
   y: number;
+  islandId: number;
   ownerId: string | null;
   tileType: "NPC" | "PLAYER" | "EMPTY";
   level: number;
@@ -15,7 +16,7 @@ export interface Session {
   playerId: string;
   username: string;
   token: string;
-  startingTileId: number;
+  startingTileId?: number;
 }
 
 // In production (Render static site) this is baked in at build time via
@@ -29,11 +30,19 @@ async function handle<T>(res: Response): Promise<T> {
   return body as T;
 }
 
-export function register(username: string) {
+export function register(username: string, password: string) {
   return fetch(`${BASE}/players/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ username, password }),
+  }).then((r) => handle<Session>(r));
+}
+
+export function login(username: string, password: string) {
+  return fetch(`${BASE}/players/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
   }).then((r) => handle<Session>(r));
 }
 

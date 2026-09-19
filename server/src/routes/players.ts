@@ -4,16 +4,28 @@ import { pool } from "../db.js";
 import { pickRandomEmptyTile } from "../game/mapgen.js";
 import { productionForLevel } from "../game/resources.js";
 import { loadSettings } from "../game/settings.js";
+import { hashPassword, verifyPassword } from "../game/password.js";
 import type { Player } from "../types.js";
 
 export const playersRouter = Router();
 
+function validateCredentials(username: unknown, password: unknown) {
+  const u = String(username ?? "").trim();
+  const p = String(password ?? "");
+  if (!u || u.length < 3 || u.length > 20) {
+    return { error: "Kullanıcı adı 3-20 karakter olmalı." };
+  }
+  if (!p || p.length < 6) {
+    return { error: "Şifre en az 6 karakter olmalı." };
+  }
+  return { username: u, password: p };
+}
+
 playersRouter.post("/register", async (req, res) => {
   try {
-    const username = String(req.body?.username ?? "").trim();
-    if (!username || username.length < 3 || username.length > 20) {
-      return res.status(400).json({ error: "Kullanıcı adı 3-20 karakter olmalı." });
-    }
+    const parsed = validateCredentials(req.body?.username, req.body?.password);
+    if ("error" in parsed) return res.status(400).json({ error: parsed.error });
+    const { username, password } = parsed;
 
     const existing = await pool.query("SELECT id FROM players WHERE username = $1", [username]);
     if (existing.rows.length > 0) {
@@ -28,6 +40,7 @@ playersRouter.post("/register", async (req, res) => {
     const settings = await loadSettings();
     const id = randomUUID();
     const token = randomUUID();
+    const passwordHash = hashPassword(password);
     const now = Date.now();
     const production = productionForLevel(1, settings);
 
@@ -35,9 +48,9 @@ playersRouter.post("/register", async (req, res) => {
     try {
       await client.query("BEGIN");
       await client.query(
-        `INSERT INTO players (id, username, token, created_at, season_points)
-         VALUES ($1, $2, $3, $4, 0)`,
-        [id, username, token, now]
+        `INSERT INTO players (id, username, password_hash, token, created_at, season_points)
+         VALUES ($1, $2, $3, $4, $5, 0)`,
+        [id, username, passwordHash, token, now]
       );
       await client.query(
         `UPDATE tiles
@@ -56,6 +69,32 @@ playersRouter.post("/register", async (req, res) => {
     }
 
     res.json({ playerId: id, username, token, startingTileId });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
+playersRouter.post("/login", async (req, res) => {
+  try {
+    const username = String(req.body?.username ?? "").trim();
+    const password = String(req.body?.password ?? "");
+    if (!username || !password) {
+      return res.status(400).json({ error: "Kullanıcı adı ve şifre gerekli." });
+    }
+
+    const { rows } = await pool.query<Player>("SELECT * FROM players WHERE username = $1", [
+      username,
+    ]);
+    const player = rows[0];
+    if (!player || !verifyPassword(password, player.password_hash)) {
+      return res.status(401).json({ error: "Kullanıcı adı veya şifre yanlış." });
+    }
+
+    const newToken = randomUUID();
+    await pool.query("UPDATE players SET token = $1 WHERE id = $2", [newToken, player.id]);
+
+    res.json({ playerId: player.id, username: player.username, token: newToken });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });

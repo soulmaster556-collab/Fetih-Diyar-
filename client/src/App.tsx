@@ -3,6 +3,7 @@ import "./App.css";
 import {
   attackTile,
   fetchMap,
+  login,
   register,
   upgradeTile,
   type Session,
@@ -10,6 +11,9 @@ import {
 } from "./api";
 
 const SESSION_KEY = "fetih-diyari-session";
+const WORLD_SIZE = 80;
+const CELL_SIZES = [8, 12, 16, 22, 28];
+const DEFAULT_CELL_SIZE_INDEX = 2;
 
 function loadSession(): Session | null {
   try {
@@ -27,19 +31,23 @@ function tileColor(tile: Tile, myId: string | undefined) {
   return "#e53935";
 }
 
-function isAdjacent(a: Tile, b: Tile) {
-  return Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && a.id !== b.id;
+function distance(a: Tile, b: Tile) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession());
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [usernameInput, setUsernameInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
   const [tiles, setTiles] = useState<Tile[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [attackFromId, setAttackFromId] = useState<number | null>(null);
   const [troopsToSend, setTroopsToSend] = useState(10);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cellSizeIndex, setCellSizeIndex] = useState(DEFAULT_CELL_SIZE_INDEX);
+  const cellSize = CELL_SIZES[cellSizeIndex];
 
   const refresh = () => {
     fetchMap().then(setTiles).catch((e) => setError(e.message));
@@ -58,16 +66,24 @@ export default function App() {
 
   const selectedTile = tiles.find((t) => t.id === selectedId) ?? null;
 
-  const myAdjacentTiles = useMemo(() => {
+  // Every owned tile is a *candidate* attack origin — same-island targets
+  // still need direct adjacency, but a different island only needs to be
+  // within naval range, which the client doesn't know exactly. The server
+  // is the source of truth; this list is sorted by distance so the most
+  // plausible origins show up first.
+  const attackCandidates = useMemo(() => {
     if (!selectedTile) return [];
-    return myTiles.filter((mine) => isAdjacent(mine, selectedTile));
+    return myTiles
+      .map((t) => ({ tile: t, dist: distance(t, selectedTile), sameIsland: t.islandId === selectedTile.islandId }))
+      .sort((a, b) => a.dist - b.dist);
   }, [selectedTile, myTiles]);
 
-  async function handleRegister(e: React.FormEvent) {
+  async function handleAuthSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      const s = await register(usernameInput.trim());
+      const action = authMode === "login" ? login : register;
+      const s = await action(usernameInput.trim(), passwordInput);
       localStorage.setItem(SESSION_KEY, JSON.stringify(s));
       setSession(s);
       refresh();
@@ -111,21 +127,53 @@ export default function App() {
     }
   }
 
+  function goToTile(tileId: number) {
+    setSelectedId(tileId);
+    setAttackFromId(null);
+    document
+      .querySelector(`[data-tile-id="${tileId}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+  }
+
   if (!session) {
     return (
       <div className="login-screen">
         <h1>Fetih Diyarı</h1>
         <p className="subtitle">Million Lords tarzı, timer'sız fetih prototipi</p>
-        <form onSubmit={handleRegister} className="login-form">
+        <div className="auth-tabs">
+          <button
+            className={authMode === "login" ? "active" : ""}
+            onClick={() => { setAuthMode("login"); setError(null); }}
+            type="button"
+          >
+            Giriş Yap
+          </button>
+          <button
+            className={authMode === "register" ? "active" : ""}
+            onClick={() => { setAuthMode("register"); setError(null); }}
+            type="button"
+          >
+            Kayıt Ol
+          </button>
+        </div>
+        <form onSubmit={handleAuthSubmit} className="login-form">
           <input
-            placeholder="Kullanıcı adı seç"
+            placeholder="Kullanıcı adı"
             value={usernameInput}
             onChange={(e) => setUsernameInput(e.target.value)}
             minLength={3}
             maxLength={20}
             required
           />
-          <button type="submit">Krallığını Kur</button>
+          <input
+            type="password"
+            placeholder="Şifre (en az 6 karakter)"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            minLength={6}
+            required
+          />
+          <button type="submit">{authMode === "login" ? "Giriş Yap" : "Krallığını Kur"}</button>
         </form>
         {error && <p className="error">{error}</p>}
       </div>
@@ -147,26 +195,50 @@ export default function App() {
 
       <div className="main-area">
         <div className="map-wrapper">
-          <div className="map-grid">
-            {tiles
-              .slice()
-              .sort((a, b) => a.y - b.y || a.x - b.x)
-              .map((tile) => (
+          <div className="map-toolbar">
+            <button onClick={() => setCellSizeIndex((i) => Math.max(0, i - 1))} disabled={cellSizeIndex === 0}>
+              − Uzaklaş
+            </button>
+            <button
+              onClick={() => setCellSizeIndex((i) => Math.min(CELL_SIZES.length - 1, i + 1))}
+              disabled={cellSizeIndex === CELL_SIZES.length - 1}
+            >
+              + Yakınlaş
+            </button>
+            {myTiles[0] && <button onClick={() => goToTile(myTiles[0].id)}>Krallığıma git</button>}
+          </div>
+          <div className="map-viewport">
+            <div
+              className="map-grid"
+              style={{
+                gridTemplateColumns: `repeat(${WORLD_SIZE}, ${cellSize}px)`,
+                gridTemplateRows: `repeat(${WORLD_SIZE}, ${cellSize}px)`,
+              }}
+            >
+              {tiles.map((tile) => (
                 <div
                   key={tile.id}
+                  data-tile-id={tile.id}
                   className={`tile ${selectedId === tile.id ? "selected" : ""}`}
-                  style={{ backgroundColor: tileColor(tile, session.playerId) }}
+                  style={{
+                    gridColumn: tile.x + 1,
+                    gridRow: tile.y + 1,
+                    width: cellSize,
+                    height: cellSize,
+                    backgroundColor: tileColor(tile, session.playerId),
+                  }}
                   onClick={() => {
                     setSelectedId(tile.id);
                     setAttackFromId(null);
                     setMessage(null);
                     setError(null);
                   }}
-                  title={`(${tile.x}, ${tile.y}) Lv${tile.level}`}
+                  title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                 >
-                  {tile.tileType === "PLAYER" && tile.ownerId === session.playerId && "★"}
+                  {tile.tileType === "PLAYER" && tile.ownerId === session.playerId && cellSize >= 16 && "★"}
                 </div>
               ))}
+            </div>
           </div>
           <div className="legend">
             <span><i style={{ background: "#4caf50" }} /> Senin şehrin</span>
@@ -183,12 +255,15 @@ export default function App() {
               {myTiles.map((t) => (
                 <li key={t.id}>
                   <div>
-                    ({t.x},{t.y}) — Lv{t.level}
+                    ({t.x},{t.y}) — Lv{t.level} — ada #{t.islandId}
                   </div>
                   <div className="stats">
                     🪙 {t.gold} &nbsp; ⚔️ {t.troops}
                   </div>
-                  <button onClick={() => handleUpgrade(t.id)}>Yükselt</button>
+                  <div className="row-actions">
+                    <button onClick={() => handleUpgrade(t.id)}>Yükselt</button>
+                    <button onClick={() => goToTile(t.id)}>Haritada göster</button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -201,16 +276,14 @@ export default function App() {
               <div>
                 <p>
                   ({selectedTile.x}, {selectedTile.y}) — {selectedTile.tileType} — Lv
-                  {selectedTile.level}
+                  {selectedTile.level} — ada #{selectedTile.islandId}
                 </p>
                 <p>🪙 {selectedTile.gold} &nbsp; ⚔️ {selectedTile.troops}</p>
 
                 {selectedTile.ownerId !== session.playerId && (
                   <div className="attack-form">
-                    {myAdjacentTiles.length === 0 ? (
-                      <p className="hint">
-                        Buraya saldırmak için komşu bir kareye sahip olmalısın.
-                      </p>
+                    {attackCandidates.length === 0 ? (
+                      <p className="hint">Önce bir şehrin olmalı.</p>
                     ) : (
                       <>
                         <label>
@@ -222,9 +295,9 @@ export default function App() {
                             <option value="" disabled>
                               Şehir seç
                             </option>
-                            {myAdjacentTiles.map((t) => (
+                            {attackCandidates.map(({ tile: t, dist, sameIsland }) => (
                               <option key={t.id} value={t.id}>
-                                ({t.x},{t.y}) — {t.troops} asker
+                                ({t.x},{t.y}) — {t.troops} asker — {sameIsland ? "aynı ada" : `${Math.round(dist)} mesafe (deniz aşımı)`}
                               </option>
                             ))}
                           </select>

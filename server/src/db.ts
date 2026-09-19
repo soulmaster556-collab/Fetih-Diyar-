@@ -17,6 +17,7 @@ export async function initSchema() {
     CREATE TABLE IF NOT EXISTS players (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
       token TEXT UNIQUE NOT NULL,
       created_at BIGINT NOT NULL,
       season_points INTEGER NOT NULL DEFAULT 0
@@ -29,6 +30,7 @@ export async function initSchema() {
       x INTEGER NOT NULL,
       y INTEGER NOT NULL,
       owner_id TEXT NULL REFERENCES players(id),
+      island_id INTEGER NOT NULL,
       tile_type TEXT NOT NULL CHECK (tile_type IN ('NPC','PLAYER','EMPTY')),
       level INTEGER NOT NULL DEFAULT 1,
       gold_per_hour DOUBLE PRECISION NOT NULL,

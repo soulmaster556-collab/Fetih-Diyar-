@@ -1,6 +1,7 @@
 export interface Player {
   id: string;
   username: string;
+  password_hash: string;
   token: string;
   created_at: number;
   season_points: number;
@@ -12,6 +13,7 @@ export interface TileRow {
   id: number;
   x: number;
   y: number;
+  island_id: number;
   owner_id: string | null;
   tile_type: TileType;
   level: number;
