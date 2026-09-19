@@ -13,11 +13,14 @@ anında sonuçlanır.
 ```
 million-lords-clone/
   DESIGN.md          → oyun tasarımı, mekanikler, yol haritası
-  server/            → Node/Express/TypeScript API + SQLite veritabanı
+  server/            → Node/Express/TypeScript API + Postgres (Neon) veritabanı
   client/            → React/Vite/TypeScript arayüz
 ```
 
-## Çalıştırma
+## Çalıştırma (yerel geliştirme)
+
+Backend artık Postgres kullanıyor (Neon üzerinde barındırılıyor — kalıcı veri için,
+bkz. DESIGN.md). Yerelde çalıştırmak için önce bir `DATABASE_URL` gerekiyor.
 
 İki ayrı terminalde:
 
@@ -25,6 +28,7 @@ million-lords-clone/
 # 1) Backend
 cd server
 npm install
+export DATABASE_URL="postgresql://..."   # Neon connection string'in
 npm run dev        # http://localhost:4000
 
 # 2) Frontend (başka bir terminalde)
@@ -37,9 +41,20 @@ Tarayıcıda `http://localhost:5173` adresini aç, bir kullanıcı adı seçip "
 bas. Harita üzerinde bir kareye tıklayınca detayları ve (komşuysa) saldırı formunu
 göreceksin. Kendi şehrine tıklayınca yükseltme butonunu göreceksin.
 
-Veritabanı `server/data.sqlite` dosyasında tutulur; sıfırdan başlamak istersen bu dosyayı
-(ve `.sqlite-shm` / `.sqlite-wal` uzantılı dosyaları) silip sunucuyu yeniden başlatman
-yeterli — harita otomatik olarak yeniden üretilir.
+## Ortam değişkenleri
+
+- **server**: `DATABASE_URL` (Postgres bağlantı dizesi, zorunlu), `PORT` (Render otomatik
+  ayarlar), `CORS_ORIGIN` (virgülle ayrılmış izin verilen origin'ler; production'da frontend'in
+  adresi)
+- **client**: `VITE_API_URL` (production build'de backend'in tam adresi, ör.
+  `https://fetih-diyari-server.onrender.com/api`; yerelde boş bırakılırsa Vite proxy'si
+  üzerinden `/api` kullanılır)
+
+## Canlı ortam
+
+Backend: Render Web Service (Node) — Neon Postgres'e bağlı.
+Frontend: Render Static Site.
+Adresler için Render dashboard'una bak.
 
 ## Şu an neler çalışıyor (Faz 1)
 

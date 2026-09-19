@@ -18,7 +18,10 @@ export interface Session {
   startingTileId: number;
 }
 
-const BASE = "/api";
+// In production (Render static site) this is baked in at build time via
+// VITE_API_URL. In local dev it's left unset and falls back to the relative
+// "/api" path, which Vite's dev server proxies to the local backend.
+const BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "/api";
 
 async function handle<T>(res: Response): Promise<T> {
   const body = await res.json();

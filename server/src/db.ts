@@ -1,45 +1,55 @@
-import Database from "better-sqlite3";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import pg from "pg";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, "..", "data.sqlite");
+const { Pool } = pg;
 
-export const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL ortam değişkeni tanımlı değil.");
+}
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS players (
-  id TEXT PRIMARY KEY,
-  username TEXT UNIQUE NOT NULL,
-  token TEXT UNIQUE NOT NULL,
-  created_at INTEGER NOT NULL,
-  season_points INTEGER NOT NULL DEFAULT 0
-);
+export const pool = new Pool({
+  connectionString,
+  ssl: { rejectUnauthorized: false },
+});
 
-CREATE TABLE IF NOT EXISTS tiles (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  x INTEGER NOT NULL,
-  y INTEGER NOT NULL,
-  owner_id TEXT NULL REFERENCES players(id),
-  tile_type TEXT NOT NULL CHECK (tile_type IN ('NPC','PLAYER','EMPTY')),
-  level INTEGER NOT NULL DEFAULT 1,
-  gold_per_hour REAL NOT NULL,
-  troops_per_hour REAL NOT NULL,
-  stored_gold REAL NOT NULL DEFAULT 0,
-  stored_troops REAL NOT NULL DEFAULT 0,
-  last_collected_at INTEGER NOT NULL,
-  UNIQUE (x, y)
-);
+export async function initSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS players (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      token TEXT UNIQUE NOT NULL,
+      created_at BIGINT NOT NULL,
+      season_points INTEGER NOT NULL DEFAULT 0
+    );
+  `);
 
-CREATE TABLE IF NOT EXISTS battle_log (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  attacker_id TEXT NOT NULL,
-  defender_tile_id INTEGER NOT NULL,
-  attacker_power REAL NOT NULL,
-  defender_power REAL NOT NULL,
-  result TEXT NOT NULL,
-  troops_sent REAL NOT NULL,
-  occurred_at INTEGER NOT NULL
-);
-`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tiles (
+      id SERIAL PRIMARY KEY,
+      x INTEGER NOT NULL,
+      y INTEGER NOT NULL,
+      owner_id TEXT NULL REFERENCES players(id),
+      tile_type TEXT NOT NULL CHECK (tile_type IN ('NPC','PLAYER','EMPTY')),
+      level INTEGER NOT NULL DEFAULT 1,
+      gold_per_hour DOUBLE PRECISION NOT NULL,
+      troops_per_hour DOUBLE PRECISION NOT NULL,
+      stored_gold DOUBLE PRECISION NOT NULL DEFAULT 0,
+      stored_troops DOUBLE PRECISION NOT NULL DEFAULT 0,
+      last_collected_at BIGINT NOT NULL,
+      UNIQUE (x, y)
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS battle_log (
+      id SERIAL PRIMARY KEY,
+      attacker_id TEXT NOT NULL,
+      defender_tile_id INTEGER NOT NULL,
+      attacker_power DOUBLE PRECISION NOT NULL,
+      defender_power DOUBLE PRECISION NOT NULL,
+      result TEXT NOT NULL,
+      troops_sent DOUBLE PRECISION NOT NULL,
+      occurred_at BIGINT NOT NULL
+    );
+  `);
+}
