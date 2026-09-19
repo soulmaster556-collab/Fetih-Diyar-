@@ -2,12 +2,14 @@ import { pool } from "../db.js";
 import { productionForLevel } from "./resources.js";
 import type { Settings } from "./settings.js";
 
-const WORLD_SIZE = 80;
-const ISLAND_COUNT = 32;
-const ISLAND_MIN_SIZE = 15;
-const ISLAND_MAX_SIZE = 35;
-const MAX_SEED_ATTEMPTS_PER_ISLAND = 30;
-const MAX_GROWTH_STALLS = 50;
+// Not: WORLD_SIZE burada ve client/src/App.tsx'te birebir aynı olmalı —
+// ikisi de izometrik/harita hesaplarında kullanıyor.
+const WORLD_SIZE = 200;
+const ISLAND_COUNT = 40;
+const ISLAND_MIN_SIZE = 60;
+const ISLAND_MAX_SIZE = 160;
+const MAX_SEED_ATTEMPTS_PER_ISLAND = 60;
+const MAX_GROWTH_STALLS = 120;
 
 interface LandTile {
   x: number;

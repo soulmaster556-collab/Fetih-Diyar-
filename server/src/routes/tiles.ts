@@ -26,12 +26,44 @@ function serializeTile(tile: TileRow, settings: Settings, now: number) {
   };
 }
 
-// Public: full map view (used to render the grid)
-tilesRouter.get("/", async (_req, res) => {
+// Dünya büyüdükçe (binlerce karo) tüm haritayı her seferinde çekmek hem API
+// yanıtını hem de istemci tarafında çizilen DOM eleman sayısını şişirir.
+// Bu yüzden istemci sadece o an ekranda görünen bölgeyi (+ küçük bir pay)
+// minX/maxX/minY/maxY ile isteyebiliyor. Parametre verilmezse (geriye dönük
+// uyumluluk için) tüm harita döner — küçük haritalarda/testte hâlâ işe yarar.
+const MAX_BBOX_SPAN = 200;
+
+function parseBoundingBox(req: import("express").Request) {
+  const { minX, maxX, minY, maxY } = req.query;
+  if (minX === undefined && maxX === undefined && minY === undefined && maxY === undefined) {
+    return null;
+  }
+  const nMinX = Number(minX);
+  const nMaxX = Number(maxX);
+  const nMinY = Number(minY);
+  const nMaxY = Number(maxY);
+  if ([nMinX, nMaxX, nMinY, nMaxY].some((n) => !Number.isFinite(n))) {
+    return null;
+  }
+  // Aşırı geniş bir bbox istenirse (kötü niyetli ya da hatalı istemci)
+  // sunucuyu tüm haritayı dönmeye zorlamasın diye sınırlıyoruz.
+  const clampedMaxX = Math.min(nMaxX, nMinX + MAX_BBOX_SPAN);
+  const clampedMaxY = Math.min(nMaxY, nMinY + MAX_BBOX_SPAN);
+  return { minX: nMinX, maxX: clampedMaxX, minY: nMinY, maxY: clampedMaxY };
+}
+
+// Public: harita görünümü — bbox verilirse sadece o bölge, verilmezse tüm harita.
+tilesRouter.get("/", async (req, res) => {
   try {
     const now = Date.now();
     const settings = await loadSettings();
-    const { rows } = await pool.query<TileRow>("SELECT * FROM tiles");
+    const bbox = parseBoundingBox(req);
+    const { rows } = bbox
+      ? await pool.query<TileRow>(
+          "SELECT * FROM tiles WHERE x BETWEEN $1 AND $2 AND y BETWEEN $3 AND $4",
+          [bbox.minX, bbox.maxX, bbox.minY, bbox.maxY]
+        )
+      : await pool.query<TileRow>("SELECT * FROM tiles");
     res.json(rows.map((t) => serializeTile(t, settings, now)));
   } catch (err) {
     console.error(err);

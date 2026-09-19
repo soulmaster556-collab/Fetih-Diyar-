@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import {
   attackTile,
   fetchMap,
+  fetchMyTiles,
   login,
   register,
   upgradeTile,
@@ -11,7 +12,11 @@ import {
 } from "./api";
 
 const SESSION_KEY = "fetih-diyari-session";
-const WORLD_SIZE = 80;
+// Not: WORLD_SIZE burada ve server/src/game/mapgen.ts'te birebir aynı olmalı.
+const WORLD_SIZE = 200;
+// Görünen bölgenin kenarlarına eklenen pay (karo cinsinden) — küçük
+// kaydırmalarda hemen yeniden istek atmamak için.
+const VIEWPORT_MARGIN = 6;
 // Karo genişliği (izometrik baklava şeklinin genişliği, px). Yükseklik hep
 // genişliğin yarısı — klasik 2:1 izometrik oran (Travian/Forge of Empires
 // tarzı haritalarda kullanılan oran).
@@ -55,13 +60,31 @@ function isoCenter(x: number, y: number, tileWidth: number) {
   };
 }
 
+// isoCenter'ın tersi: ekrandaki bir (screenX, screenY) noktasının hangi
+// dünya koordinatına düştüğünü bulur. Dört köşeyi bu şekilde çözüp min/max
+// alarak, görünen dikdörtgen alanın kapsadığı (x,y) aralığını (bir dörtgen
+// değil, baklava şeklinde olsa da) yaklaşık olarak buluyoruz — sunucudan
+// sadece bu aralığı istemek için yeterli.
+function screenToWorld(sx: number, sy: number, tileWidth: number) {
+  const tileHeight = tileWidth / 2;
+  const offsetX = ((WORLD_SIZE - 1) * tileWidth) / 2;
+  const a = (sx - offsetX) / (tileWidth / 2); // x - y
+  const b = sy / (tileHeight / 2); // x + y
+  return { x: (a + b) / 2, y: (b - a) / 2 };
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession());
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
+  // `tiles`: sadece o an ekranda görünen bölgenin karoları (+ pay). Dünya
+  // binlerce karo olabileceği için tamamını her seferinde çekmiyoruz.
   const [tiles, setTiles] = useState<Tile[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // `myTiles`: oyuncunun SAHİP OLDUĞU tüm şehirler, görünen bölgeden
+  // bağımsız — "Krallığım" listesi haritada nerede olursan ol tam olmalı.
+  const [myTiles, setMyTiles] = useState<Tile[]>([]);
+  const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
   const [attackFromId, setAttackFromId] = useState<number | null>(null);
   const [troopsToSend, setTroopsToSend] = useState(10);
   const [message, setMessage] = useState<string | null>(null);
@@ -69,23 +92,125 @@ export default function App() {
   const [tileWidthIndex, setTileWidthIndex] = useState(DEFAULT_TILE_WIDTH_INDEX);
   const tileWidth = TILE_WIDTHS[tileWidthIndex];
   const tileHeight = tileWidth / 2;
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const scrollDebounceRef = useRef<number | undefined>(undefined);
+  const hasCenteredRef = useRef(false);
+  // Zoom seviyesi (tileWidth) değişince karo boyutu değiştiği için
+  // scrollLeft/scrollTop'un işaret ettiği dünya noktası da kayar — bu ref,
+  // zoom tuşuna basılır basılmaz "ekranın ortasındaki dünya noktasını"
+  // saklar, yeni tileWidth uygulandıktan sonra oraya yeniden kaydırırız.
+  const recenterOnZoomRef = useRef<{ x: number; y: number } | null>(null);
+
+  function currentViewportCenterWorld() {
+    const el = viewportRef.current;
+    if (!el) return null;
+    return screenToWorld(
+      el.scrollLeft + el.clientWidth / 2,
+      el.scrollTop + el.clientHeight / 2,
+      tileWidth
+    );
+  }
+
+  function zoomTo(nextIndex: number) {
+    recenterOnZoomRef.current = currentViewportCenterWorld();
+    setTileWidthIndex(nextIndex);
+  }
+
+  function currentBoundingBox() {
+    const el = viewportRef.current;
+    if (!el) return null;
+    const corners = [
+      [el.scrollLeft, el.scrollTop],
+      [el.scrollLeft + el.clientWidth, el.scrollTop],
+      [el.scrollLeft, el.scrollTop + el.clientHeight],
+      [el.scrollLeft + el.clientWidth, el.scrollTop + el.clientHeight],
+    ];
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const [sx, sy] of corners) {
+      const { x, y } = screenToWorld(sx, sy, tileWidth);
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+    return {
+      minX: Math.max(0, Math.floor(minX) - VIEWPORT_MARGIN),
+      maxX: Math.min(WORLD_SIZE - 1, Math.ceil(maxX) + VIEWPORT_MARGIN),
+      minY: Math.max(0, Math.floor(minY) - VIEWPORT_MARGIN),
+      maxY: Math.min(WORLD_SIZE - 1, Math.ceil(maxY) + VIEWPORT_MARGIN),
+    };
+  }
 
   const refresh = () => {
-    fetchMap().then(setTiles).catch((e) => setError(e.message));
+    const bbox = currentBoundingBox();
+    fetchMap(bbox ?? undefined)
+      .then(setTiles)
+      .catch((e) => setError(e.message));
   };
 
+  const refreshMyTiles = (token: string) => {
+    fetchMyTiles(token).then(setMyTiles).catch(() => {});
+  };
+
+  function scrollToWorld(x: number, y: number, smooth: boolean) {
+    const el = viewportRef.current;
+    if (!el) return;
+    const { cx, cy } = isoCenter(x, y, tileWidth);
+    el.scrollTo({
+      left: cx - el.clientWidth / 2,
+      top: cy - el.clientHeight / 2,
+      behavior: smooth ? "smooth" : "auto",
+    });
+  }
+
+  function handleViewportScroll() {
+    window.clearTimeout(scrollDebounceRef.current);
+    scrollDebounceRef.current = window.setTimeout(refresh, 250);
+  }
+
   useEffect(() => {
+    if (!session) return;
+    refreshMyTiles(session.token);
+    const interval = setInterval(() => refreshMyTiles(session.token), 3000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  // İlk açılışta oyuncunun ilk şehri gelince oraya kaydır (aksi halde 200x80
+  // dünyanın rastgele bir köşesinde, muhtemelen boş denizde kalırız).
+  useEffect(() => {
+    if (hasCenteredRef.current || myTiles.length === 0) return;
+    hasCenteredRef.current = true;
+    scrollToWorld(myTiles[0].x, myTiles[0].y, false);
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myTiles]);
+
+  // Zoom değişince bir karonun ekrandaki piksel karşılığı değiştiği için
+  // önce (varsa) ekranın ortasındaki dünya noktasını yeni ölçeğe göre
+  // yeniden ortala, sonra görünen bölgeyi çek.
+  useEffect(() => {
+    if (!session) return;
+    if (recenterOnZoomRef.current) {
+      scrollToWorld(recenterOnZoomRef.current.x, recenterOnZoomRef.current.y, false);
+      recenterOnZoomRef.current = null;
+    }
     refresh();
     const interval = setInterval(refresh, 3000);
     return () => clearInterval(interval);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tileWidth, session?.token]);
 
-  const myTiles = useMemo(
-    () => tiles.filter((t) => t.ownerId === session?.playerId),
-    [tiles, session]
-  );
-
-  const selectedTile = tiles.find((t) => t.id === selectedId) ?? null;
+  // Seçili kare hâlâ görünen bölgedeyse (ya da benim şehrimse) en güncel
+  // sayılarla senkron kalsın; ekrandan çıktıysa son bilinen haliyle kalır.
+  useEffect(() => {
+    if (!selectedTile) return;
+    const fresh =
+      tiles.find((t) => t.id === selectedTile.id) ??
+      myTiles.find((t) => t.id === selectedTile.id);
+    if (fresh && fresh !== selectedTile) setSelectedTile(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiles, myTiles]);
 
   // İzometrik görünümde alttaki karolar üsttekilerin önüne çizilmeli
   // (aksi halde şehir ikonları arkadaki karoların altında kalır gibi
@@ -115,8 +240,9 @@ export default function App() {
       const action = authMode === "login" ? login : register;
       const s = await action(usernameInput.trim(), passwordInput);
       localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+      hasCenteredRef.current = false;
       setSession(s);
-      refresh();
+      refreshMyTiles(s.token);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -125,6 +251,10 @@ export default function App() {
   function handleLogout() {
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
+    setTiles([]);
+    setMyTiles([]);
+    setSelectedTile(null);
+    hasCenteredRef.current = false;
   }
 
   async function handleUpgrade(tileId: number) {
@@ -135,6 +265,7 @@ export default function App() {
       await upgradeTile(session.token, tileId);
       setMessage("Şehir yükseltildi!");
       refresh();
+      refreshMyTiles(session.token);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -152,17 +283,18 @@ export default function App() {
           : `Saldırı püskürtüldü. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
       );
       refresh();
+      refreshMyTiles(session.token);
     } catch (err) {
       setError((err as Error).message);
     }
   }
 
-  function goToTile(tileId: number) {
-    setSelectedId(tileId);
+  function goToTile(tile: Tile) {
+    setSelectedTile(tile);
     setAttackFromId(null);
-    document
-      .querySelector(`[data-tile-id="${tileId}"]`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    setMessage(null);
+    setError(null);
+    scrollToWorld(tile.x, tile.y, true);
   }
 
   if (!session) {
@@ -226,18 +358,18 @@ export default function App() {
       <div className="main-area">
         <div className="map-wrapper">
           <div className="map-toolbar">
-            <button onClick={() => setTileWidthIndex((i) => Math.max(0, i - 1))} disabled={tileWidthIndex === 0}>
+            <button onClick={() => zoomTo(Math.max(0, tileWidthIndex - 1))} disabled={tileWidthIndex === 0}>
               − Uzaklaş
             </button>
             <button
-              onClick={() => setTileWidthIndex((i) => Math.min(TILE_WIDTHS.length - 1, i + 1))}
+              onClick={() => zoomTo(Math.min(TILE_WIDTHS.length - 1, tileWidthIndex + 1))}
               disabled={tileWidthIndex === TILE_WIDTHS.length - 1}
             >
               + Yakınlaş
             </button>
-            {myTiles[0] && <button onClick={() => goToTile(myTiles[0].id)}>Krallığıma git</button>}
+            {myTiles[0] && <button onClick={() => goToTile(myTiles[0])}>Krallığıma git</button>}
           </div>
-          <div className="map-viewport">
+          <div className="map-viewport" ref={viewportRef} onScroll={handleViewportScroll}>
             <div
               className="iso-map"
               style={{
@@ -262,7 +394,7 @@ export default function App() {
                       height: tileHeight,
                     }}
                     onClick={() => {
-                      setSelectedId(tile.id);
+                      setSelectedTile(tile);
                       setAttackFromId(null);
                       setMessage(null);
                       setError(null);
@@ -270,7 +402,7 @@ export default function App() {
                     title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
                     <div
-                      className={`iso-diamond ${selectedId === tile.id ? "selected" : ""}`}
+                      className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`}
                       style={{ backgroundColor: showCastle ? (isMine ? "#4caf50" : "#e53935") : tileColor(tile, session.playerId) }}
                     />
                     {showCastle && (
@@ -318,7 +450,7 @@ export default function App() {
                   </div>
                   <div className="row-actions">
                     <button onClick={() => handleUpgrade(t.id)}>Yükselt</button>
-                    <button onClick={() => goToTile(t.id)}>Haritada göster</button>
+                    <button onClick={() => goToTile(t)}>Haritada göster</button>
                   </div>
                 </li>
               ))}

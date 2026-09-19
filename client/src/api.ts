@@ -46,8 +46,20 @@ export function login(username: string, password: string) {
   }).then((r) => handle<Session>(r));
 }
 
-export function fetchMap() {
-  return fetch(`${BASE}/tiles`).then((r) => handle<Tile[]>(r));
+export interface BoundingBox {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+// bbox verilmezse tüm harita döner (küçük haritalarda/testte kullanışlı);
+// büyük dünyada App.tsx her zaman görünen bölgenin bbox'unu gönderir.
+export function fetchMap(bbox?: BoundingBox) {
+  const qs = bbox
+    ? `?minX=${Math.floor(bbox.minX)}&maxX=${Math.ceil(bbox.maxX)}&minY=${Math.floor(bbox.minY)}&maxY=${Math.ceil(bbox.maxY)}`
+    : "";
+  return fetch(`${BASE}/tiles${qs}`).then((r) => handle<Tile[]>(r));
 }
 
 export function fetchMyTiles(token: string) {
