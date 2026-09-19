@@ -1,0 +1,233 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #1b1f24;
+  color: #eee;
+}
+
+.login-screen {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.subtitle {
+  color: #9aa4af;
+  margin-top: -8px;
+}
+
+.login-form {
+  display: flex;
+  gap: 8px;
+}
+
+.login-form input {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #2a2f36;
+  color: #eee;
+}
+
+button {
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: none;
+  background: #3f8cff;
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover {
+  background: #2f78e6;
+}
+
+button:disabled {
+  background: #555;
+  cursor: not-allowed;
+}
+
+.error {
+  color: #ff6b6b;
+}
+
+.game-layout {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 20px;
+  background: #14171b;
+  border-bottom: 1px solid #2a2f36;
+}
+
+.topbar h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.player-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.banner {
+  padding: 8px 16px;
+  font-size: 14px;
+}
+
+.banner.success {
+  background: #1e3a25;
+  color: #8fe39a;
+}
+
+.banner.error {
+  background: #3a1e1e;
+  color: #ff9d9d;
+}
+
+.main-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.map-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(16, 24px);
+  grid-template-rows: repeat(16, 24px);
+  gap: 2px;
+}
+
+.tile {
+  width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: #fff;
+  opacity: 0.9;
+}
+
+.tile:hover {
+  outline: 2px solid #fff;
+  opacity: 1;
+}
+
+.tile.selected {
+  outline: 2px solid #ffd54f;
+  opacity: 1;
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: #9aa4af;
+}
+
+.legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.side-panel {
+  width: 300px;
+  background: #14171b;
+  border-left: 1px solid #2a2f36;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.side-panel h2 {
+  font-size: 14px;
+  text-transform: uppercase;
+  color: #9aa4af;
+  margin-bottom: 8px;
+}
+
+.city-list {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.city-list li {
+  background: #21262d;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.stats {
+  color: #cfd8e3;
+  margin: 4px 0 8px;
+}
+
+.hint {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.attack-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.attack-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #9aa4af;
+}
+
+.attack-form select,
+.attack-form input {
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #444;
+  background: #2a2f36;
+  color: #eee;
+}
