@@ -216,6 +216,13 @@ export default function App() {
   const [summary, setSummary] = useState<PlayerSummary | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Sağdaki/soldaki sabit barlar kaldırıldığı için "Seçili Kare" bilgi
+  // kartı artık tıklanan noktanın yakınında yüzen bir kutu -- konumu
+  // tıklama anındaki ekran koordinatlarında tutuluyor.
+  const [selectedScreenPos, setSelectedScreenPos] = useState<{ x: number; y: number } | null>(null);
+  // "Krallığım" şehir listesi artık kalıcı bir panel değil, üst menüdeki
+  // butona basınca açılan/kapanan yüzen bir açılır liste.
+  const [showKingdomList, setShowKingdomList] = useState(false);
   const [tileWidthIndex, setTileWidthIndex] = useState(DEFAULT_TILE_WIDTH_INDEX);
   const tileWidth = TILE_WIDTHS[tileWidthIndex];
   const tileHeight = tileWidth / 2;
@@ -228,19 +235,59 @@ export default function App() {
   // saklar, yeni tileWidth uygulandıktan sonra oraya yeniden kaydırırız.
   const recenterOnZoomRef = useRef<{ x: number; y: number } | null>(null);
 
-  function currentViewportCenterWorld() {
+  // Fare tekerleği artık haritayı kaydırmak yerine yakınlaştırıp
+  // uzaklaştırıyor -- imlecin altındaki dünya noktası zoom sonrasında da
+  // aynı yerde kalsın diye (ekranın ortası değil) o noktayı hesaplayıp
+  // recenterOnZoomRef'e yazıyoruz; tileWidth değişince aşağıdaki effect
+  // oraya yeniden kaydırıyor.
+  function handleWheel(e: React.WheelEvent<HTMLDivElement>) {
+    e.preventDefault();
     const el = viewportRef.current;
-    if (!el) return null;
-    return screenToWorld(
-      el.scrollLeft + el.clientWidth / 2,
-      el.scrollTop + el.clientHeight / 2,
-      tileWidth
-    );
+    if (!el) return;
+    const direction = e.deltaY < 0 ? 1 : -1;
+    const nextIndex = Math.min(TILE_WIDTHS.length - 1, Math.max(0, tileWidthIndex + direction));
+    if (nextIndex === tileWidthIndex) return;
+    const rect = el.getBoundingClientRect();
+    const sx = e.clientX - rect.left + el.scrollLeft;
+    const sy = e.clientY - rect.top + el.scrollTop;
+    recenterOnZoomRef.current = screenToWorld(sx, sy, tileWidth);
+    setTileWidthIndex(nextIndex);
   }
 
-  function zoomTo(nextIndex: number) {
-    recenterOnZoomRef.current = currentViewportCenterWorld();
-    setTileWidthIndex(nextIndex);
+  // Sol tıkla basılı tutup sürükleyerek haritayı kaydırma (artık native
+  // scrollbar/kaydırma çubuğu yok -- .map-viewport overflow:hidden).
+  // Sürükleme mesafesi küçükse (basit bir tıklama ise) karo seçimi normal
+  // şekilde çalışmaya devam etsin diye, gerçek bir sürükleme olduysa
+  // ardından gelen "click" olayını bir kereliğine yutuyoruz.
+  function handleViewportMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.button !== 0) return;
+    const el = viewportRef.current;
+    if (!el) return;
+    const drag = {
+      startX: e.clientX,
+      startY: e.clientY,
+      scrollLeft: el.scrollLeft,
+      scrollTop: el.scrollTop,
+      moved: false,
+    };
+
+    function onMove(ev: MouseEvent) {
+      const dx = ev.clientX - drag.startX;
+      const dy = ev.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) > 4) drag.moved = true;
+      el!.scrollLeft = drag.scrollLeft - dx;
+      el!.scrollTop = drag.scrollTop - dy;
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (drag.moved) {
+        const swallowClick = (ev: MouseEvent) => ev.stopPropagation();
+        el!.addEventListener("click", swallowClick, { capture: true, once: true });
+      }
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
   function currentBoundingBox() {
@@ -460,6 +507,12 @@ export default function App() {
     setMessage(null);
     setError(null);
     scrollToWorld(tile.x, tile.y, true);
+    setShowKingdomList(false);
+    const el = viewportRef.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      setSelectedScreenPos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    }
   }
 
   if (!session) {
@@ -512,7 +565,13 @@ export default function App() {
       {/* Harita artık tüm pencereyi kaplayan tek katman -- menü/panel bunun
           ÜZERİNE yarı saydam "HUD" katmanları olarak biniyor (ayrı kutular
           halinde değil, tek bütün bir oyun ekranı hissi için). */}
-      <div className="map-viewport" ref={viewportRef} onScroll={handleViewportScroll}>
+      <div
+        className="map-viewport"
+        ref={viewportRef}
+        onScroll={handleViewportScroll}
+        onWheel={handleWheel}
+        onMouseDown={handleViewportMouseDown}
+      >
         <div
           className="iso-map"
           style={{
@@ -545,12 +604,13 @@ export default function App() {
                       width: tileWidth,
                       height: tileHeight,
                     }}
-                    onClick={() => {
+                    onClick={(e) => {
                       setSelectedTile(tile);
                       setAttackFromId(null);
                       setReinforceFromId(null);
                       setMessage(null);
                       setError(null);
+                      setSelectedScreenPos({ x: e.clientX, y: e.clientY });
                     }}
                     title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
@@ -622,6 +682,12 @@ export default function App() {
           </div>
         )}
         <div className="player-info">
+          <button
+            className={`kingdom-toggle ${showKingdomList ? "active" : ""}`}
+            onClick={() => setShowKingdomList((v) => !v)}
+          >
+            🏰 Krallığım ({myTiles.length})
+          </button>
           <span>{session.username}</span>
           <button onClick={handleLogout}>Çıkış</button>
         </div>
@@ -634,151 +700,152 @@ export default function App() {
         </div>
       )}
 
-      <div className="map-toolbar">
-        <button onClick={() => zoomTo(Math.max(0, tileWidthIndex - 1))} disabled={tileWidthIndex === 0}>
-          − Uzaklaş
-        </button>
-        <button
-          onClick={() => zoomTo(Math.min(TILE_WIDTHS.length - 1, tileWidthIndex + 1))}
-          disabled={tileWidthIndex === TILE_WIDTHS.length - 1}
-        >
-          + Yakınlaş
-        </button>
-        {myTiles[0] && <button onClick={() => goToTile(myTiles[0])}>Krallığıma git</button>}
-      </div>
-
-      <div className="legend">
-        <span><i style={{ background: "#4caf50" }} /> Senin şehrin</span>
-        <span><i style={{ background: "#e53935" }} /> Düşman</span>
-        <span><i style={{ background: "#8d6e63" }} /> NPC kampı</span>
-        <span><i style={{ background: "#8bc34a" }} /> Boş kare</span>
-      </div>
-
-        <aside className="side-panel">
-          <section>
+      {showKingdomList && (
+        <div className="kingdom-dropdown">
+          <div className="tile-card-header">
             <h2>Krallığım</h2>
-            <ul className="city-list">
-              {myTiles.map((t) => (
-                <li key={t.id}>
-                  <div className="city-row">
-                    <img src={CASTLE_ICON} alt="" className="city-icon" />
+            <button className="icon-btn" onClick={() => setShowKingdomList(false)}>✕</button>
+          </div>
+          {myTiles.length === 0 && <p className="hint">Henüz bir şehrin yok.</p>}
+          <ul className="city-list">
+            {myTiles.map((t) => (
+              <li key={t.id}>
+                <div className="city-row">
+                  <img src={CASTLE_ICON} alt="" className="city-icon" />
+                  <div>
                     <div>
-                      <div>
-                        ({t.x},{t.y}) — Lv{t.level} — ada #{t.islandId}
-                      </div>
-                      <div className="stats">
-                        ⚔️ {t.troops} asker &nbsp; 🪙 +{t.goldPerHour}/sa
-                      </div>
+                      ({t.x},{t.y}) — Lv{t.level} — ada #{t.islandId}
+                    </div>
+                    <div className="stats">
+                      ⚔️ {t.troops} asker &nbsp; 🪙 +{t.goldPerHour}/sa
                     </div>
                   </div>
-                  <div className="row-actions">
-                    <button onClick={() => handleUpgrade(t.id)}>Yükselt</button>
-                    <button onClick={() => goToTile(t)}>Haritada göster</button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+                </div>
+                <div className="row-actions">
+                  <button onClick={() => handleUpgrade(t.id)}>Yükselt</button>
+                  <button onClick={() => goToTile(t)}>Haritada göster</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-          <section>
-            <h2>Seçili Kare</h2>
-            {!selectedTile && <p className="hint">Haritadan bir kare seç.</p>}
-            {selectedTile && (
-              <div>
-                <p>
-                  ({selectedTile.x}, {selectedTile.y}) — {selectedTile.tileType} — Lv
-                  {selectedTile.level} — ada #{selectedTile.islandId}
+      {selectedTile && selectedScreenPos && (() => {
+        const CARD_WIDTH = 300;
+        const CARD_MAX_HEIGHT = 440;
+        const margin = 12;
+        let left = selectedScreenPos.x + 18;
+        let top = selectedScreenPos.y - 20;
+        if (left + CARD_WIDTH > window.innerWidth - margin) left = selectedScreenPos.x - CARD_WIDTH - 18;
+        left = Math.max(margin, Math.min(left, window.innerWidth - CARD_WIDTH - margin));
+        top = Math.max(margin, Math.min(top, window.innerHeight - CARD_MAX_HEIGHT - margin));
+        return (
+          <div className="tile-card" style={{ left, top, maxHeight: CARD_MAX_HEIGHT }}>
+            <div className="tile-card-header">
+              <h2>Seçili Kare</h2>
+              <button
+                className="icon-btn"
+                onClick={() => { setSelectedTile(null); setSelectedScreenPos(null); }}
+              >
+                ✕
+              </button>
+            </div>
+            <div>
+              <p>
+                ({selectedTile.x}, {selectedTile.y}) — {selectedTile.tileType} — Lv
+                {selectedTile.level} — ada #{selectedTile.islandId}
+              </p>
+              <p>⚔️ {selectedTile.troops} asker &nbsp; 🪙 +{selectedTile.goldPerHour}/sa</p>
+
+              {selectedTile.tileType === "EMPTY" && (
+                <p className="hint">
+                  Boş kareye saldırılamaz. Haritada ilerlemek için NPC kamplarını veya
+                  düşman şehirlerini fethetmelisin.
                 </p>
-                <p>⚔️ {selectedTile.troops} asker &nbsp; 🪙 +{selectedTile.goldPerHour}/sa</p>
+              )}
 
-                {selectedTile.tileType === "EMPTY" && (
-                  <p className="hint">
-                    Boş kareye saldırılamaz. Haritada ilerlemek için NPC kamplarını veya
-                    düşman şehirlerini fethetmelisin.
-                  </p>
-                )}
-
-                {selectedTile.tileType !== "EMPTY" && selectedTile.ownerId !== session.playerId && (
-                  <div className="attack-form">
-                    {attackCandidates.length === 0 ? (
-                      <p className="hint">Önce bir şehrin olmalı.</p>
-                    ) : (
-                      <>
-                        <label>
-                          Nereden saldırılsın:
-                          <select
-                            value={attackFromId ?? ""}
-                            onChange={(e) => setAttackFromId(Number(e.target.value))}
-                          >
-                            <option value="" disabled>
-                              Şehir seç
+              {selectedTile.tileType !== "EMPTY" && selectedTile.ownerId !== session.playerId && (
+                <div className="attack-form">
+                  {attackCandidates.length === 0 ? (
+                    <p className="hint">Önce bir şehrin olmalı.</p>
+                  ) : (
+                    <>
+                      <label>
+                        Nereden saldırılsın:
+                        <select
+                          value={attackFromId ?? ""}
+                          onChange={(e) => setAttackFromId(Number(e.target.value))}
+                        >
+                          <option value="" disabled>
+                            Şehir seç
+                          </option>
+                          {attackCandidates.map(({ tile: t, dist, sameIsland }) => (
+                            <option key={t.id} value={t.id}>
+                              ({t.x},{t.y}) — {t.troops} asker — {sameIsland ? "aynı ada" : `${Math.round(dist)} mesafe (deniz aşımı)`}
                             </option>
-                            {attackCandidates.map(({ tile: t, dist, sameIsland }) => (
-                              <option key={t.id} value={t.id}>
-                                ({t.x},{t.y}) — {t.troops} asker — {sameIsland ? "aynı ada" : `${Math.round(dist)} mesafe (deniz aşımı)`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label>
-                          Gönderilecek asker:
-                          <input
-                            type="number"
-                            min={1}
-                            value={troopsToSend}
-                            onChange={(e) => setTroopsToSend(Number(e.target.value))}
-                          />
-                        </label>
-                        <button disabled={attackFromId === null} onClick={handleAttack}>
-                          Saldır
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Gönderilecek asker:
+                        <input
+                          type="number"
+                          min={1}
+                          value={troopsToSend}
+                          onChange={(e) => setTroopsToSend(Number(e.target.value))}
+                        />
+                      </label>
+                      <button disabled={attackFromId === null} onClick={handleAttack}>
+                        Saldır
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
 
-                {selectedTile.ownerId === session.playerId && (
-                  <div className="attack-form">
-                    {reinforceCandidates.length === 0 ? (
-                      <p className="hint">Takviye göndermek için başka bir şehrin olmalı.</p>
-                    ) : (
-                      <>
-                        <label>
-                          Nereden takviye gönderilsin:
-                          <select
-                            value={reinforceFromId ?? ""}
-                            onChange={(e) => setReinforceFromId(Number(e.target.value))}
-                          >
-                            <option value="" disabled>
-                              Şehir seç
+              {selectedTile.ownerId === session.playerId && (
+                <div className="attack-form">
+                  {reinforceCandidates.length === 0 ? (
+                    <p className="hint">Takviye göndermek için başka bir şehrin olmalı.</p>
+                  ) : (
+                    <>
+                      <label>
+                        Nereden takviye gönderilsin:
+                        <select
+                          value={reinforceFromId ?? ""}
+                          onChange={(e) => setReinforceFromId(Number(e.target.value))}
+                        >
+                          <option value="" disabled>
+                            Şehir seç
+                          </option>
+                          {reinforceCandidates.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              ({t.x},{t.y}) — {t.troops} asker
                             </option>
-                            {reinforceCandidates.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                ({t.x},{t.y}) — {t.troops} asker
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label>
-                          Gönderilecek asker:
-                          <input
-                            type="number"
-                            min={1}
-                            value={troopsToReinforce}
-                            onChange={(e) => setTroopsToReinforce(Number(e.target.value))}
-                          />
-                        </label>
-                        <button disabled={reinforceFromId === null} onClick={handleReinforce}>
-                          Takviye Gönder
-                        </button>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-        </aside>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Gönderilecek asker:
+                        <input
+                          type="number"
+                          min={1}
+                          value={troopsToReinforce}
+                          onChange={(e) => setTroopsToReinforce(Number(e.target.value))}
+                        />
+                      </label>
+                      <button disabled={reinforceFromId === null} onClick={handleReinforce}>
+                        Takviye Gönder
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
