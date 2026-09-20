@@ -42,8 +42,9 @@ export const SETTING_DEFS = [
   {
     key: "npc_spawn_chance",
     label: "NPC kampı oluşma olasılığı",
-    description: "Yeni harita üretildiğinde her karenin NPC kampı olma ihtimali (0-1). Mevcut haritayı etkilemez.",
-    default: 0.25,
+    description:
+      "Yeni harita üretildiğinde her karenin NPC kampı olma ihtimali (0-1); geri kalanı boş kare olur (oyuncu başlangıç noktaları). Boş karelere saldırı olmadığı için ilerleme büyük ölçüde NPC fethine dayanır. Mevcut haritayı etkilemez.",
+    default: 0.6,
   },
   {
     key: "starting_troops",

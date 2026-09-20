@@ -5,6 +5,9 @@ export interface Player {
   token: string;
   created_at: number;
   season_points: number;
+  // Krallık geneli ortak altın havuzu (bkz. game/resources.ts).
+  gold: number;
+  gold_collected_at: number;
 }
 
 export type TileType = "NPC" | "PLAYER" | "EMPTY";

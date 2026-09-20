@@ -2,7 +2,8 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { pool } from "../db.js";
 import { pickRandomEmptyTile } from "../game/mapgen.js";
-import { productionForLevel } from "../game/resources.js";
+import { computeLivePlayerGold, productionForLevel } from "../game/resources.js";
+import { getTotalGoldPerHour, getTotalTroopsPerHour } from "../game/economy.js";
 import { loadSettings } from "../game/settings.js";
 import { hashPassword, verifyPassword } from "../game/password.js";
 import type { Player } from "../types.js";
@@ -95,6 +96,25 @@ playersRouter.post("/login", async (req, res) => {
     await pool.query("UPDATE players SET token = $1 WHERE id = $2", [newToken, player.id]);
 
     res.json({ playerId: player.id, username: player.username, token: newToken });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
+// Tek yerde: krallığın toplam altın/asker üretimi ve ortak altın havuzu.
+// (Madde 1 — "tek yerde toplam asker ve altın üretimini görebilme".)
+playersRouter.get("/me/summary", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    const settings = await loadSettings();
+    const now = Date.now();
+    const [goldPerHour, troopsPerHour] = await Promise.all([
+      getTotalGoldPerHour(player.id),
+      getTotalTroopsPerHour(player.id),
+    ]);
+    const gold = computeLivePlayerGold(player, goldPerHour, settings, now);
+    res.json({ gold: Math.floor(gold), goldPerHour, troopsPerHour });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });

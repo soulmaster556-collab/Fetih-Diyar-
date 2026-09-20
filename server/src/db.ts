@@ -24,6 +24,12 @@ export async function initSchema() {
     );
   `);
 
+  // Altın artık kale başına değil, krallık genelinde ortak bir havuzda
+  // tutuluyor — bu yüzden oyuncunun kendi satırında birikmiş altın ve son
+  // hesaplama zamanı tutulur (bkz. game/resources.ts computeLivePlayerGold).
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS gold DOUBLE PRECISION NOT NULL DEFAULT 0;`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS gold_collected_at BIGINT NOT NULL DEFAULT 0;`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tiles (
       id SERIAL PRIMARY KEY,

@@ -8,8 +8,15 @@ export interface Tile {
   level: number;
   goldPerHour: number;
   troopsPerHour: number;
-  gold: number;
+  // Not: altın artık kale başına değil, krallık genelinde ortak bir havuzda
+  // tutuluyor (bkz. PlayerSummary) — bu yüzden karo başına "gold" alanı yok.
   troops: number;
+}
+
+export interface PlayerSummary {
+  gold: number;
+  goldPerHour: number;
+  troopsPerHour: number;
 }
 
 export interface Session {
@@ -68,6 +75,13 @@ export function fetchMyTiles(token: string) {
   }).then((r) => handle<Tile[]>(r));
 }
 
+// Tek yerde: ortak altın havuzu + krallığın toplam altın/asker üretimi.
+export function fetchPlayerSummary(token: string) {
+  return fetch(`${BASE}/players/me/summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<PlayerSummary>(r));
+}
+
 export function upgradeTile(token: string, tileId: number) {
   return fetch(`${BASE}/tiles/${tileId}/upgrade`, {
     method: "POST",
@@ -112,4 +126,18 @@ export function attackTile(
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ fromTileId, troopsSent }),
   }).then((r) => handle<{ result: string; attackerPower: number; defenderPower: number }>(r));
+}
+
+// Kendi kaleleri arasında asker takviyesi — anında, mesafe sınırı yok.
+export function reinforceTile(
+  token: string,
+  targetTileId: number,
+  fromTileId: number,
+  troopsSent: number
+) {
+  return fetch(`${BASE}/tiles/${targetTileId}/reinforce`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ fromTileId, troopsSent }),
+  }).then((r) => handle<Tile>(r));
 }

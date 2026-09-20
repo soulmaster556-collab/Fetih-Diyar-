@@ -5,16 +5,64 @@ import type { Settings } from "./settings.js";
 // Not: WORLD_SIZE burada ve client/src/App.tsx'te birebir aynı olmalı —
 // ikisi de izometrik/harita hesaplarında kullanıyor.
 const WORLD_SIZE = 200;
-const ISLAND_COUNT = 40;
-const ISLAND_MIN_SIZE = 60;
-const ISLAND_MAX_SIZE = 160;
-const MAX_SEED_ATTEMPTS_PER_ISLAND = 60;
-const MAX_GROWTH_STALLS = 120;
+
+// Adalar artık dünyaya tamamen rastgele saçılmıyor: WORLD_SIZE bir
+// GRID_COLS × GRID_ROWS ızgarasına bölünüyor ve her ada kendi hücresinde
+// büyüyor. Bu, adaların birbirine olan uzaklığını öngörülebilir ve küçük
+// tutar (komşu adalar sadece bitişik olamadıkları için aralarında ince bir
+// su şeridi kalır), ayrıca her ada kendi hücresini büyük ölçüde
+// doldurduğu için "her ada ekrana sığan bir harita gibi" hissi verir.
+// Hücre sayısından daha az ada üretilerek (ISLAND_COUNT < GRID_COLS×GRID_ROWS)
+// birkaç hücre boş deniz olarak kalır — uzaktan bakınca aşırı düzenli/ızgara
+// gibi görünmesini engelleyen doğal boşluklar.
+const GRID_COLS = 6;
+const GRID_ROWS = 6;
+const ISLAND_COUNT = 30;
+const ISLAND_MIN_SIZE = 400;
+const ISLAND_MAX_SIZE = 650;
+// Bir ada, organik/yuvarlak kenarlar oluşturabilsin diye kendi hücresinin
+// dışına bu kadar taşabilir — komşu ada büyümesi zaten bitişikliği
+// engellediği için bu taşma iki ada arasındaki boşluğu sıfırlamaz, sadece
+// kenarların hücre sınırında keskin bir dikdörtgen gibi kesilmesini önler.
+const CELL_OVERFLOW = 5;
+const MAX_SEED_ATTEMPTS_PER_ISLAND = 80;
+const MAX_GROWTH_STALLS = 300;
 
 interface LandTile {
   x: number;
   y: number;
   islandId: number;
+}
+
+interface CellBounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+function buildGridCells(): CellBounds[] {
+  const cells: CellBounds[] = [];
+  for (let row = 0; row < GRID_ROWS; row++) {
+    for (let col = 0; col < GRID_COLS; col++) {
+      cells.push({
+        minX: Math.floor((col * WORLD_SIZE) / GRID_COLS),
+        maxX: Math.floor(((col + 1) * WORLD_SIZE) / GRID_COLS) - 1,
+        minY: Math.floor((row * WORLD_SIZE) / GRID_ROWS),
+        maxY: Math.floor(((row + 1) * WORLD_SIZE) / GRID_ROWS) - 1,
+      });
+    }
+  }
+  return cells;
+}
+
+function shuffled<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
 }
 
 function key(x: number, y: number) {
@@ -37,18 +85,20 @@ function inBounds(x: number, y: number) {
 }
 
 /**
- * Generates a scattered archipelago instead of one solid landmass: each
- * island grows as a random blob, and a new tile is only accepted if none of
- * its neighbors already belong to a *different* island — that gap is what
- * keeps islands visually and mechanically separate (no accidental adjacency
- * across islands).
+ * Generates an archipelago of large, closely-packed islands: the world is
+ * divided into a grid and each island grows as a random blob confined to
+ * (roughly) its own grid cell. A new tile is only accepted if none of its
+ * neighbors already belong to a *different* island — that's what keeps
+ * islands visually and mechanically separate even though they now sit right
+ * next to each other with only a thin strip of water between them.
  */
 function generateIslandLayout(): LandTile[] {
   const occupied = new Map<string, number>(); // "x,y" -> islandId
   const allTiles: LandTile[] = [];
 
-  function canPlace(x: number, y: number, islandId: number) {
+  function canPlace(x: number, y: number, islandId: number, allowed: CellBounds) {
     if (!inBounds(x, y)) return false;
+    if (x < allowed.minX || x > allowed.maxX || y < allowed.minY || y > allowed.maxY) return false;
     if (occupied.has(key(x, y))) return false;
     for (const [nx, ny] of neighbors8(x, y)) {
       const owner = occupied.get(key(nx, ny));
@@ -57,17 +107,34 @@ function generateIslandLayout(): LandTile[] {
     return true;
   }
 
-  for (let islandId = 1; islandId <= ISLAND_COUNT; islandId++) {
+  const cells = shuffled(buildGridCells()).slice(0, ISLAND_COUNT);
+
+  cells.forEach((cell, idx) => {
+    const islandId = idx + 1;
+    const allowed: CellBounds = {
+      minX: Math.max(0, cell.minX - CELL_OVERFLOW),
+      maxX: Math.min(WORLD_SIZE - 1, cell.maxX + CELL_OVERFLOW),
+      minY: Math.max(0, cell.minY - CELL_OVERFLOW),
+      maxY: Math.min(WORLD_SIZE - 1, cell.maxY + CELL_OVERFLOW),
+    };
+
+    // Tohum, hücrenin iç %50'lik bölgesinden seçilir — kenara çok yakın
+    // başlarsa komşu hücrenin adasıyla erken çarpışıp büyümesi kısıtlanabilir.
+    const innerW = Math.max(1, Math.floor((cell.maxX - cell.minX) * 0.5));
+    const innerH = Math.max(1, Math.floor((cell.maxY - cell.minY) * 0.5));
+    const innerMinX = cell.minX + Math.floor(((cell.maxX - cell.minX) - innerW) / 2);
+    const innerMinY = cell.minY + Math.floor(((cell.maxY - cell.minY) - innerH) / 2);
+
     let seed: [number, number] | null = null;
     for (let t = 0; t < MAX_SEED_ATTEMPTS_PER_ISLAND; t++) {
-      const sx = Math.floor(Math.random() * WORLD_SIZE);
-      const sy = Math.floor(Math.random() * WORLD_SIZE);
-      if (canPlace(sx, sy, islandId)) {
+      const sx = innerMinX + Math.floor(Math.random() * (innerW + 1));
+      const sy = innerMinY + Math.floor(Math.random() * (innerH + 1));
+      if (canPlace(sx, sy, islandId, allowed)) {
         seed = [sx, sy];
         break;
       }
     }
-    if (!seed) continue; // map is full enough; fewer islands than requested is fine
+    if (!seed) return; // bu hücrede yer bulunamadı; ada atlanır
 
     const targetSize =
       ISLAND_MIN_SIZE + Math.floor(Math.random() * (ISLAND_MAX_SIZE - ISLAND_MIN_SIZE + 1));
@@ -77,7 +144,7 @@ function generateIslandLayout(): LandTile[] {
     let stalls = 0;
     while (islandTiles.length < targetSize && stalls < MAX_GROWTH_STALLS) {
       const [bx, by] = islandTiles[Math.floor(Math.random() * islandTiles.length)];
-      const candidates = neighbors8(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId));
+      const candidates = neighbors8(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId, allowed));
       if (candidates.length === 0) {
         stalls++;
         continue;
@@ -91,7 +158,7 @@ function generateIslandLayout(): LandTile[] {
     for (const [x, y] of islandTiles) {
       allTiles.push({ x, y, islandId });
     }
-  }
+  });
 
   return allTiles;
 }

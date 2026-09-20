@@ -4,9 +4,12 @@ import {
   attackTile,
   fetchMap,
   fetchMyTiles,
+  fetchPlayerSummary,
   login,
   register,
+  reinforceTile,
   upgradeTile,
+  type PlayerSummary,
   type Session,
   type Tile,
 } from "./api";
@@ -87,6 +90,10 @@ export default function App() {
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
   const [attackFromId, setAttackFromId] = useState<number | null>(null);
   const [troopsToSend, setTroopsToSend] = useState(10);
+  const [reinforceFromId, setReinforceFromId] = useState<number | null>(null);
+  const [troopsToReinforce, setTroopsToReinforce] = useState(10);
+  // Madde 1: tek yerde toplam altın/asker üretimi + ortak altın havuzu.
+  const [summary, setSummary] = useState<PlayerSummary | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tileWidthIndex, setTileWidthIndex] = useState(DEFAULT_TILE_WIDTH_INDEX);
@@ -152,6 +159,10 @@ export default function App() {
     fetchMyTiles(token).then(setMyTiles).catch(() => {});
   };
 
+  const refreshSummary = (token: string) => {
+    fetchPlayerSummary(token).then(setSummary).catch(() => {});
+  };
+
   function scrollToWorld(x: number, y: number, smooth: boolean) {
     const el = viewportRef.current;
     if (!el) return;
@@ -172,6 +183,14 @@ export default function App() {
     if (!session) return;
     refreshMyTiles(session.token);
     const interval = setInterval(() => refreshMyTiles(session.token), 3000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  useEffect(() => {
+    if (!session) return;
+    refreshSummary(session.token);
+    const interval = setInterval(() => refreshSummary(session.token), 3000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
@@ -233,6 +252,13 @@ export default function App() {
       .sort((a, b) => a.dist - b.dist);
   }, [selectedTile, myTiles]);
 
+  // Madde 3: kendi kalelerin arasında asker takviyesi — anında, mesafe
+  // sınırı yok, bu yüzden basitçe seçili kale hariç tüm şehirlerim.
+  const reinforceCandidates = useMemo(() => {
+    if (!selectedTile) return [];
+    return myTiles.filter((t) => t.id !== selectedTile.id);
+  }, [selectedTile, myTiles]);
+
   async function handleAuthSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -243,6 +269,7 @@ export default function App() {
       hasCenteredRef.current = false;
       setSession(s);
       refreshMyTiles(s.token);
+      refreshSummary(s.token);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -254,6 +281,7 @@ export default function App() {
     setTiles([]);
     setMyTiles([]);
     setSelectedTile(null);
+    setSummary(null);
     hasCenteredRef.current = false;
   }
 
@@ -266,6 +294,7 @@ export default function App() {
       setMessage("Şehir yükseltildi!");
       refresh();
       refreshMyTiles(session.token);
+      refreshSummary(session.token);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -284,6 +313,21 @@ export default function App() {
       );
       refresh();
       refreshMyTiles(session.token);
+      refreshSummary(session.token);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleReinforce() {
+    if (!session || !selectedTile || reinforceFromId === null) return;
+    setError(null);
+    setMessage(null);
+    try {
+      await reinforceTile(session.token, selectedTile.id, reinforceFromId, troopsToReinforce);
+      setMessage("Takviye gönderildi!");
+      refresh();
+      refreshMyTiles(session.token);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -292,6 +336,7 @@ export default function App() {
   function goToTile(tile: Tile) {
     setSelectedTile(tile);
     setAttackFromId(null);
+    setReinforceFromId(null);
     setMessage(null);
     setError(null);
     scrollToWorld(tile.x, tile.y, true);
@@ -346,6 +391,12 @@ export default function App() {
     <div className="game-layout">
       <header className="topbar">
         <h1>Fetih Diyarı</h1>
+        {summary && (
+          <div className="summary-bar">
+            <span className="summary-item">🪙 {Math.floor(summary.gold)} <small>(+{summary.goldPerHour}/sa)</small></span>
+            <span className="summary-item">⚔️ +{summary.troopsPerHour}/sa</span>
+          </div>
+        )}
         <div className="player-info">
           <span>{session.username}</span>
           <button onClick={handleLogout}>Çıkış</button>
@@ -396,6 +447,7 @@ export default function App() {
                     onClick={() => {
                       setSelectedTile(tile);
                       setAttackFromId(null);
+                      setReinforceFromId(null);
                       setMessage(null);
                       setError(null);
                     }}
@@ -444,7 +496,7 @@ export default function App() {
                         ({t.x},{t.y}) — Lv{t.level} — ada #{t.islandId}
                       </div>
                       <div className="stats">
-                        🪙 {t.gold} &nbsp; ⚔️ {t.troops}
+                        ⚔️ {t.troops} asker &nbsp; 🪙 +{t.goldPerHour}/sa
                       </div>
                     </div>
                   </div>
@@ -466,9 +518,16 @@ export default function App() {
                   ({selectedTile.x}, {selectedTile.y}) — {selectedTile.tileType} — Lv
                   {selectedTile.level} — ada #{selectedTile.islandId}
                 </p>
-                <p>🪙 {selectedTile.gold} &nbsp; ⚔️ {selectedTile.troops}</p>
+                <p>⚔️ {selectedTile.troops} asker &nbsp; 🪙 +{selectedTile.goldPerHour}/sa</p>
 
-                {selectedTile.ownerId !== session.playerId && (
+                {selectedTile.tileType === "EMPTY" && (
+                  <p className="hint">
+                    Boş kareye saldırılamaz. Haritada ilerlemek için NPC kamplarını veya
+                    düşman şehirlerini fethetmelisin.
+                  </p>
+                )}
+
+                {selectedTile.tileType !== "EMPTY" && selectedTile.ownerId !== session.playerId && (
                   <div className="attack-form">
                     {attackCandidates.length === 0 ? (
                       <p className="hint">Önce bir şehrin olmalı.</p>
@@ -501,6 +560,45 @@ export default function App() {
                         </label>
                         <button disabled={attackFromId === null} onClick={handleAttack}>
                           Saldır
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {selectedTile.ownerId === session.playerId && (
+                  <div className="attack-form">
+                    {reinforceCandidates.length === 0 ? (
+                      <p className="hint">Takviye göndermek için başka bir şehrin olmalı.</p>
+                    ) : (
+                      <>
+                        <label>
+                          Nereden takviye gönderilsin:
+                          <select
+                            value={reinforceFromId ?? ""}
+                            onChange={(e) => setReinforceFromId(Number(e.target.value))}
+                          >
+                            <option value="" disabled>
+                              Şehir seç
+                            </option>
+                            {reinforceCandidates.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                ({t.x},{t.y}) — {t.troops} asker
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Gönderilecek asker:
+                          <input
+                            type="number"
+                            min={1}
+                            value={troopsToReinforce}
+                            onChange={(e) => setTroopsToReinforce(Number(e.target.value))}
+                          />
+                        </label>
+                        <button disabled={reinforceFromId === null} onClick={handleReinforce}>
+                          Takviye Gönder
                         </button>
                       </>
                     )}
