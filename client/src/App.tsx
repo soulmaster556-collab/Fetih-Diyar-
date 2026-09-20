@@ -44,19 +44,36 @@ const TILE_WIDTHS = [22, 32, 46, 64, 88, 120];
 // Varsayılan hâlâ 46px (önceki turdaki "daha yakın plan" kararı korunuyor) --
 // bu istek sadece kullanılabilir zoom ARALIĞINI kaydırıyor, varsayılanı değil.
 const DEFAULT_TILE_WIDTH_INDEX = 2;
-// Oyuncu kalesi ve NPC/düşman kalesi görselleri -- Eren'in verdiği iki
-// fotoğraf, beyaz arka planları kaldırılıp (alfa şeffaflık) kırpılmış PNG
-// olarak public/buildings altına kondu. Eren'in düzeltmesi: "maviler oyuncu
-// kırmızılar düşman olmalıydı" -- yani hangi görselin hangi tarafı temsil
-// ettiği dosya adından değil, mavi/kırmızı sancaktan belirleniyor: mavi
-// sancaklı görsel HER ZAMAN oyuncunun kendi/klan kalesi, kırmızı sancaklı
-// görsel düşman oyuncu VEYA NPC için kullanılıyor (bkz. aşağıda castleIcon
-// seçimi -- artık kare tipine değil sahipliğe göre seçiliyor).
-const PLAYER_CASTLE_ICON = "/buildings/npc_castle_new.png"; // mavi sancak
-const ENEMY_CASTLE_ICON = "/buildings/player_castle_new.png"; // kırmızı sancak
-// Yeni kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın
-// diye kale/NPC boyutu bu orana göre hesaplanıyor (bkz. aşağıdaki
-// castleBoxWidth/Height).
+// Eren'in isteği: "kaleler leveline göre şekil değiştirsin" -- oyuncuya ait
+// (kendi/klan/düşman fark etmez, hepsi "gerçek oyuncu kalesi") karolar artık
+// TEK bir sabit görsel yerine, kalenin seviyesine göre 6 farklı görselden
+// birini kullanıyor (bkz. castleImageForLevel). Sahiplik artık görselin
+// kendisinden değil, kalenin yanındaki renkli rozetten anlaşılıyor (bkz.
+// ownership-badge) -- bu yüzden eski "mavi sancak/kırmızı sancak" iki-görsel
+// sistemi kaldırıldı, sadece NPC hâlâ ayrı (geçici) bir görsel kullanıyor.
+const CASTLE_LEVEL_TIERS: [number, string][] = [
+  [200, "/buildings/castle_levels/level_200.png"],
+  [100, "/buildings/castle_levels/level_100.png"],
+  [50, "/buildings/castle_levels/level_50.png"],
+  [25, "/buildings/castle_levels/level_25.png"],
+  [10, "/buildings/castle_levels/level_10.png"],
+  [1, "/buildings/castle_levels/level_1.png"],
+];
+function castleImageForLevel(level: number): string {
+  for (const [threshold, src] of CASTLE_LEVEL_TIERS) {
+    if (level >= threshold) return src;
+  }
+  return CASTLE_LEVEL_TIERS[CASTLE_LEVEL_TIERS.length - 1][1];
+}
+// Eren: "şimdilik sen geçici olarak NPC kale koy, ben sonra görselini
+// atacağım" -- NPC kampları için geçici görsel; gerçek NPC sanatı gelince
+// sadece bu satır değişecek.
+const NPC_CASTLE_ICON = "/buildings/player_castle_new.png";
+// Kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın diye
+// kale/NPC boyutu bu orana göre hesaplanıyor (bkz. aşağıdaki
+// castleBoxWidth/Height). object-fit:contain her görselin kendi gerçek
+// oranını koruduğu için 6 seviye görselinin birbirinden farklı oranları
+// olması sorun değil -- bu sadece dıştaki kutunun oranı.
 const CASTLE_IMAGE_ASPECT = 700 / 512;
 const ICON_MIN_WIDTH = 28;
 // Üretim/asker etiketi çok küçük karolarda okunaksız kalacağı için sadece
@@ -74,13 +91,11 @@ const GROUND_TEXTURE = "/terrain/ground.jpg";
 const PUDDLE_TEXTURE = "/terrain/puddle.png";
 const PUDDLE_CHANCE = 0.022;
 
-// Eren: "sadece haritayı (altıgene) çevirelim, içini sonradan görselleri
-// ekleyeceğiz" -- hex geçişinin bu ilk fazında kale/NPC/su birikintisi
-// GÖRSELLERİ bilinçli olarak render edilmiyor (harita/mesafe/tıklama
-// mantığının doğru çalıştığını önce boş yeşil zeminle doğrulayalım diye).
-// Kod silinmedi, sadece bu bayrakla kapatıldı -- hex'e göre yeniden
-// boyutlanmış görseller hazır olunca burası true yapılacak.
-const SHOW_BUILDINGS_AND_DECOR = false;
+// Eren: hex geçişinin ilk fazında (harita/mesafe/tıklama mantığını boş
+// zeminle doğrularken) bu bayrak false'tu. Artık seviyeye göre kale
+// görselleri hazır olduğu için TEKRAR açıldı -- kale/NPC/su birikintisi
+// hex karoların üzerinde tekrar görünüyor.
+const SHOW_BUILDINGS_AND_DECOR = true;
 
 // Karo koordinatından (x,y) 0-1 arası DETERMİNİSTİK (her render'da aynı
 // sonucu veren) bir sözde-rastgele değer üretir -- su birikintisi gibi
@@ -783,9 +798,12 @@ export default function App() {
                   SHOW_BUILDINGS_AND_DECOR && tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
                 const isGuildmate = !isMine && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
-                // Eren'in düzeltmesi: mavi sancak = oyuncu (ben/klanım),
-                // kırmızı sancak = düşman -- NPC kampları da "düşman" sayılır.
-                const castleIcon = showCastle && (isMine || isGuildmate) ? PLAYER_CASTLE_ICON : ENEMY_CASTLE_ICON;
+                // Eren'in isteği: gerçek oyuncu kaleleri artık sahipliğe göre
+                // değil SEVİYEYE göre görsel değiştiriyor (bkz.
+                // CASTLE_LEVEL_TIERS) -- sahiplik yanındaki renkli rozetten
+                // anlaşılıyor. NPC kampları hâlâ ayrı, geçici bir görsel
+                // kullanıyor (Eren gerçek NPC sanatını sonra gönderecek).
+                const castleIcon = castleImageForLevel(tile.level);
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
                 // Kale/NPC görselleri artık kendi karolarının DIŞINA
                 // taşmıyor -- kutu, karonun kendi (tileWidth × tileHeight)
@@ -909,7 +927,7 @@ export default function App() {
                     )}
                     {showNpc && (
                       <img
-                        src={castleIcon}
+                        src={NPC_CASTLE_ICON}
                         alt=""
                         className="iso-castle"
                         style={{
@@ -1248,28 +1266,39 @@ export default function App() {
         const isMineSel = selectedTile.ownerId === session.playerId;
         const isGuildmateSel = !isMineSel && !!selectedTile.ownerId && guildMemberIds.has(selectedTile.ownerId);
         const hasIntelSel = selectedTile.troops !== null && selectedTile.tileType !== "EMPTY";
+        // Eren'in isteği: kaleye tıklayınca açılan bu kart artık gönderdiği
+        // referans görsele benzer şekilde -- üstte oyuncu adı/seviye
+        // "kalkanı"/lonca rozetinden oluşan bir banner, altında altıgen
+        // aksiyon butonları -- tasarlandı (bkz. .hex-menu-* App.css). Veri/
+        // mantık aynı kaldı, sadece görünüm değişti.
+        const ownerLabel =
+          selectedTile.tileType === "NPC"
+            ? "NPC Kampı"
+            : selectedTile.tileType === "EMPTY"
+            ? "Boş Kare"
+            : selectedTile.ownerUsername ?? "Bilinmiyor";
         return (
-          <div className="tile-card tile-card-pro" style={{ left, top, maxHeight: CARD_MAX_HEIGHT }}>
-            <div className="tile-card-header">
-              <h2>
-                {selectedTile.tileType === "EMPTY" ? "Boş Kare" : selectedTile.tileType === "NPC" ? "NPC Kampı" : "Kale"}
-              </h2>
-              <button
-                className="icon-btn"
-                onClick={() => { setSelectedTile(null); setSelectedScreenPos(null); }}
-              >
-                ✕
-              </button>
-            </div>
-            <div>
-              <div className="tile-pro-meta">
-                <span className="tile-pro-coords">({selectedTile.x}, {selectedTile.y})</span>
-                <span className="tile-pro-badge">Lv{selectedTile.level}</span>
-                <span className="tile-pro-badge">Ada #{selectedTile.islandId}</span>
-                {isMineSel && <span className="tile-pro-badge tile-pro-badge-own">Benim</span>}
-                {isGuildmateSel && <span className="tile-pro-badge tile-pro-badge-guild">Klan</span>}
+          <div className="tile-card hex-menu" style={{ left, top, maxHeight: CARD_MAX_HEIGHT }}>
+            <button
+              className="hex-menu-close"
+              onClick={() => { setSelectedTile(null); setSelectedScreenPos(null); }}
+            >
+              ✕
+            </button>
+            <div className="hex-menu-banner">
+              <div className="hex-menu-level-shield">
+                <span>{selectedTile.level}</span>
               </div>
-
+              <div className="hex-menu-owner-block">
+                <div className="hex-menu-owner-name">{ownerLabel}</div>
+                <div className="hex-menu-owner-sub">
+                  ({selectedTile.x}, {selectedTile.y}) · Ada #{selectedTile.islandId}
+                  {isMineSel && <span className="hex-menu-pill hex-menu-pill-own">Benim</span>}
+                  {isGuildmateSel && <span className="hex-menu-pill hex-menu-pill-guild">Klan</span>}
+                </div>
+              </div>
+            </div>
+            <div className="hex-menu-body">
               {hasIntelSel ? (
                 <>
                   <div className="tile-stats-row">
@@ -1313,11 +1342,23 @@ export default function App() {
               )}
 
               {isMineSel && (
-                <div className="castle-actions">
-                  <button className="castle-action-attack" onClick={() => startAction("attack", selectedTile)}>⚔️ Saldır</button>
-                  <button className="castle-action-reinforce" onClick={() => startAction("reinforce", selectedTile)}>🛡️ Destek Gönder</button>
-                  <button className="castle-action-scout" onClick={() => startAction("scout", selectedTile)}>🔭 Gözcü Gönder</button>
-                  <button className="castle-action-upgrade" onClick={() => handleUpgrade(selectedTile.id)}>⬆️ Yükselt</button>
+                <div className="hex-actions">
+                  <button className="hex-action hex-action-attack" onClick={() => startAction("attack", selectedTile)}>
+                    <span className="hex-action-shape"><span className="hex-action-icon">⚔️</span></span>
+                    <span className="hex-action-label">Saldır</span>
+                  </button>
+                  <button className="hex-action hex-action-reinforce" onClick={() => startAction("reinforce", selectedTile)}>
+                    <span className="hex-action-shape"><span className="hex-action-icon">🛡️</span></span>
+                    <span className="hex-action-label">Destek</span>
+                  </button>
+                  <button className="hex-action hex-action-scout" onClick={() => startAction("scout", selectedTile)}>
+                    <span className="hex-action-shape"><span className="hex-action-icon">🔭</span></span>
+                    <span className="hex-action-label">Gözcü</span>
+                  </button>
+                  <button className="hex-action hex-action-upgrade" onClick={() => handleUpgrade(selectedTile.id)}>
+                    <span className="hex-action-shape"><span className="hex-action-icon">⬆️</span></span>
+                    <span className="hex-action-label">Yükselt</span>
+                  </button>
                 </div>
               )}
 

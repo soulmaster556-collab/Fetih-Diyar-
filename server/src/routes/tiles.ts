@@ -110,7 +110,7 @@ async function sameGuild(playerIdA: string, playerIdB: string): Promise<boolean>
 // veya GET /me) hep tam görünür -- zaten oyuncunun kendi eylemiyle ilgili
 // bir kareyi görüyor. Seviye (level) her zaman herkese açık.
 function serializeTile(
-  tile: TileRow,
+  tile: TileRow & { owner_username?: string | null },
   settings: Settings,
   now: number,
   reinforcements: ReinforcementInfo[] = [],
@@ -152,6 +152,11 @@ function serializeTile(
     y: tile.y,
     islandId: tile.island_id,
     ownerId: tile.owner_id,
+    // Eren: yeni altıgen aksiyon menüsündeki üst "banner" için -- kale
+    // sahibinin kullanıcı adı, seviye gibi her zaman herkese açık (istihbarat
+    // gerekmiyor, sadece KİM'in kalesi olduğunu gösteriyor -- asker/altın
+    // gibi hassas bilgiler hâlâ gözcü/klan kuralına tabi).
+    ownerUsername: tile.owner_username ?? null,
     tileType: tile.tile_type,
     level: tile.level,
     goldPerHour,
@@ -199,12 +204,21 @@ tilesRouter.get("/", optionalAuthenticate, async (req: any, res) => {
     const now = Date.now();
     const settings = await loadSettings();
     const bbox = parseBoundingBox(req);
+    // Eren'in isteği: yeni aksiyon menüsü banner'ında kalenin sahibinin adı
+    // görünüyor -- players tablosuna LEFT JOIN ile tek sorguda ekleniyor
+    // (N+1 sorgu yok, boş/NPC karolarda owner_id NULL olduğu için
+    // owner_username de doğal olarak NULL geliyor).
     const { rows } = bbox
-      ? await pool.query<TileRow>(
-          "SELECT * FROM tiles WHERE x BETWEEN $1 AND $2 AND y BETWEEN $3 AND $4",
+      ? await pool.query<TileRow & { owner_username: string | null }>(
+          `SELECT t.*, p.username AS owner_username
+           FROM tiles t LEFT JOIN players p ON p.id = t.owner_id
+           WHERE t.x BETWEEN $1 AND $2 AND t.y BETWEEN $3 AND $4`,
           [bbox.minX, bbox.maxX, bbox.minY, bbox.maxY]
         )
-      : await pool.query<TileRow>("SELECT * FROM tiles");
+      : await pool.query<TileRow & { owner_username: string | null }>(
+          `SELECT t.*, p.username AS owner_username
+           FROM tiles t LEFT JOIN players p ON p.id = t.owner_id`
+        );
     const tileIds = rows.map((t) => t.id);
     const [reinforcementMap, guildIds, scoutMap] = await Promise.all([
       fetchReinforcementsMap(tileIds),
@@ -224,9 +238,12 @@ tilesRouter.get("/me", authenticate, async (req: any, res) => {
     const player = req.player as Player;
     const now = Date.now();
     const settings = await loadSettings();
-    const { rows } = await pool.query<TileRow>("SELECT * FROM tiles WHERE owner_id = $1", [
-      player.id,
-    ]);
+    const { rows } = await pool.query<TileRow & { owner_username: string | null }>(
+      `SELECT t.*, p.username AS owner_username
+       FROM tiles t LEFT JOIN players p ON p.id = t.owner_id
+       WHERE t.owner_id = $1`,
+      [player.id]
+    );
     const reinforcementMap = await fetchReinforcementsMap(rows.map((t) => t.id));
     res.json(rows.map((t) => serializeTile(t, settings, now, reinforcementMap.get(t.id))));
   } catch (err) {

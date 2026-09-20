@@ -11,6 +11,10 @@ export interface Tile {
   y: number;
   islandId: number;
   ownerId: string | null;
+  // Kale sahibinin kullanıcı adı -- seviye gibi her zaman herkese açık
+  // (yeni altıgen aksiyon menüsü banner'ında gösteriliyor). Boş kare/NPC
+  // için her zaman null.
+  ownerUsername: string | null;
   tileType: "NPC" | "PLAYER" | "EMPTY";
   // Seviye her zaman herkese açık (gözcü gerekmez).
   level: number;

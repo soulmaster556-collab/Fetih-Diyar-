@@ -2,6 +2,31 @@
   box-sizing: border-box;
 }
 
+/* Eren'in isteği: "oyunun genel tasarımını da renklendir, pencereler olsun
+   üst menü olsun" -- yeni kale görsellerindeki lacivert/gece-mavisi taş +
+   turkuaz + altın paletini tüm arayüze (üst menü, panelller, kartlar,
+   butonlar) taşıyan tek bir renk sistemi. Böylece kaleler ile arayüz artık
+   aynı görsel dile ait hissediyor -- eskiden her şey düz beyaz/açık maviydi. */
+:root {
+  --ink: #101b26;
+  --panel-1: #16222f;
+  --panel-2: #1e2f3e;
+  --panel-border: rgba(94, 234, 212, 0.18);
+  --hairline-gold: rgba(240, 180, 41, 0.55);
+  --teal: #1fb6a6;
+  --teal-strong: #14a396;
+  --teal-soft: #5eead4;
+  --gold: #f0b429;
+  --gold-strong: #d99a0f;
+  --gold-soft: #ffe08a;
+  --danger: #e5484d;
+  --danger-strong: #c53137;
+  --good: #35b56a;
+  --blue-guild: #3f8cff;
+  --text-bright: #eef6f5;
+  --text-dim: #9db4c2;
+}
+
 /* Koyu/gece temasından, canlı ve açık bir "çizgi film" temasına geçildi --
    gökyüzü mavisi arka plan, beyaza yakın panel/kart yüzeyleri, koyu lacivert
    metin. Kaleler/NPC/dekor artık foto değil düz renkli (flat) SVG çizimler
@@ -110,7 +135,8 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px 32px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.97) 0%, rgba(255, 255, 255, 0.82) 65%, rgba(255, 255, 255, 0) 100%);
+  background: linear-gradient(to bottom, rgba(16, 27, 38, 0.97) 0%, rgba(16, 27, 38, 0.86) 65%, rgba(16, 27, 38, 0) 100%);
+  border-bottom: 1px solid var(--hairline-gold);
   pointer-events: none;
 }
 
@@ -123,54 +149,57 @@ button:disabled {
 .topbar h1 {
   font-size: 18px;
   margin: 0;
-  color: #1f2d3a;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  color: var(--gold-soft);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  letter-spacing: 0.02em;
 }
 
 .player-info {
   display: flex;
   align-items: center;
   gap: 10px;
+  color: var(--text-bright);
+  font-weight: 600;
 }
 
 /* Kabartma/cilalı buton hissi: üstte parlak vurgu, altta koyu "kenar"
    gölgesi -- basılınca (active/tıklama) o kenar payı azalıp buton bir
-   tık aşağı iner, gerçek bir fiziksel düğmeye basılmış gibi. */
-/* Eren: "Üst menüde arkaplan beyaz olduğu için üzerindeki aktif bölümler
-   hafif daha koyu olsunki belirgin olsun" -- üst menü de beyaza yakın
-   olduğundan düğmeler eskiden neredeyse görünmez şekilde beyaz-üstü-beyazdı;
-   dinlenme hâli artık hafif gri tonlu, kenarlık da biraz daha belirgin. */
+   tık aşağı iner, gerçek bir fiziksel düğmeye basılmış gibi.
+   Eren: "oyunun genel tasarımını renklendir, üst menü olsun" -- düğmeler
+   artık beyaz-üstü-gri değil, kale görselleriyle aynı lacivert/turkuaz
+   camsı yüzey; seçili (active) durum turkuaz/altın parıltıyla öne çıkıyor. */
 .kingdom-toggle {
-  background: linear-gradient(180deg, #eef1f5 0%, #dde6ef 100%);
-  color: #1f2d3a;
-  border: 1px solid rgba(31, 45, 58, 0.16);
+  background: linear-gradient(180deg, #24384a 0%, #17242f 100%);
+  color: var(--text-bright);
+  border: 1px solid var(--panel-border);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 2px 0 rgba(31, 45, 58, 0.14),
-    0 4px 8px rgba(31, 45, 58, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 2px 0 rgba(0, 0, 0, 0.35),
+    0 4px 8px rgba(0, 0, 0, 0.3);
   transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
 }
 
 .kingdom-toggle:hover {
-  background: linear-gradient(180deg, #e4ecf5 0%, #cddcea 100%);
+  background: linear-gradient(180deg, #2c4457 0%, #1c2c3a 100%);
+  border-color: rgba(94, 234, 212, 0.4);
 }
 
 .kingdom-toggle:active {
   transform: translateY(2px);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 0 0 rgba(31, 45, 58, 0.14),
-    0 1px 3px rgba(31, 45, 58, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 rgba(0, 0, 0, 0.3),
+    0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .kingdom-toggle.active {
-  background: linear-gradient(180deg, #5aa4ff 0%, #3f8cff 100%);
-  color: #fff;
-  border-color: rgba(20, 60, 130, 0.4);
+  background: linear-gradient(180deg, var(--teal-soft) 0%, var(--teal-strong) 100%);
+  color: #05221d;
+  border-color: rgba(20, 130, 110, 0.5);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 2px 0 rgba(20, 60, 130, 0.45),
-    0 4px 10px rgba(31, 45, 58, 0.25);
+    0 2px 0 rgba(13, 90, 80, 0.45),
+    0 4px 10px rgba(0, 0, 0, 0.3);
 }
 
 /* Madde 1: tek yerde toplam altın/asker üretimi + ortak altın havuzu.
@@ -188,28 +217,31 @@ button:disabled {
   gap: 5px;
   padding: 6px 12px;
   border-radius: 999px;
-  color: #1f2d3a;
+  color: var(--text-bright);
   font-weight: 700;
-  background: linear-gradient(180deg, #ffffff 0%, #eaf3fb 100%);
-  border: 1px solid rgba(31, 45, 58, 0.08);
+  background: linear-gradient(180deg, #223345 0%, #16232f 100%);
+  border: 1px solid var(--panel-border);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -3px 4px rgba(31, 45, 58, 0.06),
-    0 3px 6px rgba(31, 45, 58, 0.16);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.2),
+    0 3px 6px rgba(0, 0, 0, 0.25);
 }
 
 .summary-item small {
-  color: #2f9e4f;
+  color: var(--teal-soft);
   font-size: 11px;
   font-weight: 700;
 }
 
 .summary-item-gold {
-  background: linear-gradient(180deg, #fffdf5 0%, #fdf3d8 100%);
+  background: linear-gradient(180deg, #3a2f14 0%, #241d0d 100%);
+  border-color: var(--hairline-gold);
+  color: var(--gold-soft);
 }
 
 .summary-item-troops {
-  background: linear-gradient(180deg, #fff6f4 0%, #fdeee9 100%);
+  background: linear-gradient(180deg, #3a1f1c 0%, #241512 100%);
+  border-color: rgba(229, 72, 77, 0.35);
 }
 
 /* Bildirim/hata banner'ları artık üst menünün altında, ortada yüzen bir
@@ -419,15 +451,15 @@ button:disabled {
 .tile-card {
   position: fixed;
   width: 300px;
-  background: rgba(255, 255, 255, 0.96);
+  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel-1) 100%);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(31, 45, 58, 0.08);
+  border: 1px solid var(--panel-border);
   border-radius: 12px;
   padding: 14px 16px;
   overflow-y: auto;
   z-index: 25;
-  color: #1f2d3a;
-  box-shadow: 0 10px 30px rgba(31, 45, 58, 0.25);
+  color: var(--text-bright);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 
 .kingdom-dropdown {
@@ -455,18 +487,18 @@ button:disabled {
   min-width: 0;
   padding: 7px 10px;
   border-radius: 6px;
-  border: 1px solid #bcd3e0;
-  background: #fff;
-  color: #1f2d3a;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
   font-size: 13px;
 }
 
 .kingdom-sort {
   padding: 7px 8px;
   border-radius: 6px;
-  border: 1px solid #bcd3e0;
-  background: #fff;
-  color: #1f2d3a;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
   font-size: 12px;
   flex-shrink: 0;
 }
@@ -480,7 +512,7 @@ button:disabled {
   padding: 0 8px 4px;
   font-size: 10px;
   text-transform: uppercase;
-  color: #7c8b96;
+  color: var(--text-dim);
   font-weight: 700;
 }
 
@@ -503,11 +535,11 @@ button:disabled {
   padding: 7px 8px;
   border-radius: 6px;
   font-size: 12px;
-  color: #1f2d3a;
+  color: var(--text-bright);
 }
 
 .kingdom-table-row:nth-child(odd) {
-  background: #eef5fb;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .kingdom-table-coords {
@@ -519,22 +551,22 @@ button:disabled {
 
 .kingdom-table-coords small {
   font-weight: 500;
-  color: #7c8b96;
+  color: var(--text-dim);
 }
 
 .kingdom-table-level {
   font-weight: 700;
-  color: #916b06;
+  color: var(--gold-soft);
 }
 
 .kingdom-table-troops {
   font-weight: 700;
-  color: #b3441f;
+  color: #ff8a70;
 }
 
 .kingdom-table-gold {
   font-weight: 700;
-  color: #916b06;
+  color: var(--gold-soft);
 }
 
 .kingdom-table-actions {
@@ -551,14 +583,14 @@ button:disabled {
 .kingdom-load-more {
   width: 100%;
   margin-top: 8px;
-  background: #eef5fb;
-  color: #1f2d3a;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
   font-size: 12px;
   font-weight: 600;
 }
 
 .kingdom-load-more:hover {
-  background: #dcebf7;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 /* Raporlar panelindeki tür filtre çipleri. */
@@ -573,18 +605,19 @@ button:disabled {
   padding: 6px 8px;
   font-size: 12px;
   font-weight: 600;
-  background: #eef5fb;
-  color: #46596a;
-  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
 }
 
 .filter-chip:hover {
-  background: #dcebf7;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .filter-chip.active {
-  background: #3f8cff;
-  color: #fff;
+  background: linear-gradient(180deg, var(--teal-soft) 0%, var(--teal-strong) 100%);
+  color: #05221d;
+  border-color: transparent;
 }
 
 .tile-card-header {
@@ -603,19 +636,19 @@ button:disabled {
   background: transparent;
   padding: 2px 8px;
   font-weight: 400;
-  color: #6b7d8c;
+  color: var(--text-dim);
 }
 
 .icon-btn:hover {
-  background: rgba(31, 45, 58, 0.08);
-  color: #1f2d3a;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-bright);
 }
 
 .kingdom-dropdown h2,
 .tile-card h2 {
   font-size: 14px;
   text-transform: uppercase;
-  color: #6b7d8c;
+  color: var(--text-dim);
   margin-bottom: 8px;
 }
 
@@ -629,9 +662,10 @@ button:disabled {
 }
 
 .city-list li {
-  background: #eef5fb;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 6px;
   padding: 10px;
+  color: var(--text-bright);
 }
 
 .city-row {
@@ -700,8 +734,8 @@ button:disabled {
   gap: 4px;
   font-size: 12px;
   font-weight: 600;
-  color: #1f2d3a;
-  background: #eef5fb;
+  color: var(--text-bright);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 999px;
   padding: 3px 10px;
 }
@@ -711,13 +745,13 @@ button:disabled {
 }
 
 .stat-chip.stat-troops {
-  background: #fdeee9;
-  color: #b3441f;
+  background: rgba(229, 72, 77, 0.16);
+  color: #ff8a70;
 }
 
 .stat-chip.stat-gold {
-  background: #fdf3d8;
-  color: #916b06;
+  background: rgba(240, 180, 41, 0.16);
+  color: var(--gold-soft);
 }
 
 .row-actions {
@@ -731,12 +765,12 @@ button:disabled {
 }
 
 .stats {
-  color: #46596a;
+  color: var(--text-dim);
   margin: 4px 0 8px;
 }
 
 .hint {
-  color: #7c8b96;
+  color: var(--text-dim);
   font-size: 13px;
 }
 
@@ -752,16 +786,16 @@ button:disabled {
   flex-direction: column;
   gap: 4px;
   font-size: 13px;
-  color: #46596a;
+  color: var(--text-dim);
 }
 
 .attack-form select,
 .attack-form input {
   padding: 6px 8px;
   border-radius: 4px;
-  border: 1px solid #bcd3e0;
-  background: #fff;
-  color: #1f2d3a;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
 }
 
 /* Kendi kalene tıklayınca çıkan küçük eylem menüsü: Saldır / Destek
@@ -795,7 +829,7 @@ button:disabled {
   gap: 8px;
   margin-top: 6px;
   font-size: 13px;
-  color: #46596a;
+  color: var(--text-dim);
 }
 
 /* Hedef seçme modundayken haritanın üstünde beliren talimat şeridi. */
@@ -808,21 +842,23 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: rgba(31, 45, 58, 0.92);
-  color: #fff;
+  background: linear-gradient(180deg, var(--panel-2), var(--ink));
+  border: 1px solid var(--hairline-gold);
+  color: var(--text-bright);
   padding: 10px 16px;
   border-radius: 999px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
   font-size: 14px;
 }
 
 .action-hint button {
-  background: rgba(255, 255, 255, 0.15);
-  border: none;
-  color: #fff;
+  background: rgba(240, 180, 41, 0.16);
+  border: 1px solid var(--hairline-gold);
+  color: var(--gold-soft);
   border-radius: 999px;
   padding: 4px 10px;
   cursor: pointer;
+  font-weight: 600;
 }
 
 .admin-login {
@@ -933,10 +969,12 @@ button:disabled {
   max-height: 86vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #ffffff 0%, #f4f8fb 100%);
+  background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel-1) 100%);
+  border: 1px solid var(--panel-border);
   border-radius: 16px;
-  box-shadow: 0 24px 60px rgba(8, 14, 22, 0.45), 0 2px 0 rgba(255, 255, 255, 0.6) inset;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 2px 0 rgba(255, 255, 255, 0.06) inset;
   overflow: hidden;
+  color: var(--text-bright);
 }
 
 .modal-header {
@@ -945,8 +983,9 @@ button:disabled {
   justify-content: space-between;
   gap: 12px;
   padding: 18px 24px;
-  background: linear-gradient(180deg, #22314a 0%, #17233a 100%);
-  color: #fff;
+  background: linear-gradient(180deg, #223345 0%, #16222e 100%);
+  border-bottom: 1px solid var(--hairline-gold);
+  color: var(--gold-soft);
   flex-shrink: 0;
 }
 
@@ -994,7 +1033,7 @@ button:disabled {
 .leaderboard-heading {
   font-size: 12px;
   text-transform: uppercase;
-  color: #6b7d8c;
+  color: var(--teal-soft);
   margin: 0 0 8px;
 }
 
@@ -1011,7 +1050,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #eef5fb;
+  background: rgba(255, 255, 255, 0.04);
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 13px;
@@ -1019,7 +1058,7 @@ button:disabled {
 
 .leaderboard-rank {
   font-weight: 800;
-  color: #6b7d8c;
+  color: var(--text-dim);
   width: 24px;
   flex-shrink: 0;
 }
@@ -1027,7 +1066,7 @@ button:disabled {
 .leaderboard-name {
   flex: 1;
   font-weight: 600;
-  color: #1f2d3a;
+  color: var(--text-bright);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1035,7 +1074,7 @@ button:disabled {
 
 .leaderboard-value {
   font-weight: 800;
-  color: #2f78e6;
+  color: var(--teal-soft);
 }
 
 /* İlk üç sıra: altın/gümüş/bronz vurgusu -- profesyonel bir liderlik
@@ -1045,30 +1084,30 @@ button:disabled {
 }
 
 .leaderboard-top-1 {
-  background: linear-gradient(90deg, #fff6d8 0%, #eef5fb 100%);
-  border-color: #f0c94a;
+  background: linear-gradient(90deg, rgba(240, 180, 41, 0.22) 0%, rgba(255, 255, 255, 0.04) 100%);
+  border-color: var(--gold);
 }
 
 .leaderboard-top-1 .leaderboard-rank {
-  color: #a8790a;
+  color: var(--gold-soft);
 }
 
 .leaderboard-top-2 {
-  background: linear-gradient(90deg, #eef1f4 0%, #eef5fb 100%);
-  border-color: #c3ccd4;
+  background: linear-gradient(90deg, rgba(200, 210, 220, 0.18) 0%, rgba(255, 255, 255, 0.04) 100%);
+  border-color: #b7c2cc;
 }
 
 .leaderboard-top-2 .leaderboard-rank {
-  color: #6b7684;
+  color: #d3dbe2;
 }
 
 .leaderboard-top-3 {
-  background: linear-gradient(90deg, #fbe9dd 0%, #eef5fb 100%);
+  background: linear-gradient(90deg, rgba(219, 160, 119, 0.22) 0%, rgba(255, 255, 255, 0.04) 100%);
   border-color: #dba077;
 }
 
 .leaderboard-top-3 .leaderboard-rank {
-  color: #9c5a2c;
+  color: #e3ac81;
 }
 
 @media (max-width: 620px) {
@@ -1089,25 +1128,26 @@ button:disabled {
 }
 
 .report-row {
-  background: #eef5fb;
-  border-left: 3px solid #9db3c2;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--text-dim);
   border-radius: 6px;
   padding: 8px 10px;
+  color: var(--text-bright);
 }
 
 .report-row.report-attack_won,
 .report-row.report-defended_win {
-  border-left-color: #2f9e4f;
+  border-left-color: var(--good);
 }
 
 .report-row.report-attack_lost,
 .report-row.report-defended_loss {
-  border-left-color: #d3392f;
+  border-left-color: var(--danger);
 }
 
 .report-row.report-scout_sent,
 .report-row.report-scouted_by {
-  border-left-color: #916b06;
+  border-left-color: var(--gold);
 }
 
 .report-row-header {
@@ -1120,19 +1160,19 @@ button:disabled {
 .report-title {
   font-weight: 700;
   font-size: 13px;
-  color: #1f2d3a;
+  color: var(--text-bright);
 }
 
 .report-time {
   font-size: 11px;
-  color: #7c8b96;
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
 .report-body {
   margin: 4px 0 0;
   font-size: 12px;
-  color: #46596a;
+  color: var(--text-dim);
 }
 
 /* Seçili kare kartının profesyonelleştirilmiş üst meta satırı -- koordinat,
@@ -1233,7 +1273,7 @@ button:disabled {
 .pending-action-card .tile-card-header h2 {
   text-transform: none;
   font-size: 15px;
-  color: #1f2d3a;
+  color: var(--text-bright);
   letter-spacing: normal;
 }
 
@@ -1241,7 +1281,8 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #eef5fb;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 10px 12px;
   margin-bottom: 10px;
@@ -1259,18 +1300,18 @@ button:disabled {
   font-size: 10px;
   text-transform: uppercase;
   font-weight: 700;
-  color: #7c8b96;
+  color: var(--text-dim);
 }
 
 .pending-route-coords {
   font-size: 13px;
   font-weight: 700;
-  color: #1f2d3a;
+  color: var(--text-bright);
 }
 
 .pending-route-sub {
   font-size: 11px;
-  color: #5b6b78;
+  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1278,7 +1319,7 @@ button:disabled {
 
 .pending-route-arrow {
   font-size: 16px;
-  color: #6b7d8c;
+  color: var(--teal-soft);
   flex-shrink: 0;
 }
 
@@ -1291,40 +1332,220 @@ button:disabled {
   flex: 1;
   padding: 5px 0;
   font-size: 11px;
-  background: #eef5fb;
-  color: #46596a;
-  border: 1px solid #bcd3e0;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
 }
 
 .troop-quick-btn:hover {
-  background: #dcebf7;
+  background: rgba(94, 234, 212, 0.14);
+  color: var(--teal-soft);
+  border-color: var(--teal);
 }
 
 .confirm-action-btn {
   font-size: 14px;
   padding: 10px 14px;
+  color: var(--text-bright);
+  font-weight: 700;
 }
 
 .confirm-action-btn.confirm-attack {
-  background: #e53935;
+  background: linear-gradient(180deg, var(--danger), var(--danger-strong));
 }
 
 .confirm-action-btn.confirm-attack:hover {
-  background: #c62828;
+  background: var(--danger-strong);
 }
 
 .confirm-action-btn.confirm-reinforce {
-  background: #3f8cff;
+  background: linear-gradient(180deg, #5a9dff, var(--blue-guild));
 }
 
 .confirm-action-btn.confirm-reinforce:hover {
-  background: #2f78e6;
+  background: var(--blue-guild);
 }
 
 .confirm-action-btn.confirm-scout {
-  background: #b8860b;
+  background: linear-gradient(180deg, var(--gold), var(--gold-strong));
+  color: #2a1e02;
 }
 
 .confirm-action-btn.confirm-scout:hover {
-  background: #9c7009;
+  background: var(--gold-strong);
+}
+
+/* ---- Yeni altıgen kale menüsü (Eren'in referans görseline benzer mantık:
+   üstte oyuncu/klan/level banner'ı, altta altıgen şekilli eylem butonları). */
+.hex-menu {
+  padding: 0;
+  border: 1px solid var(--hairline-gold);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(240, 180, 41, 0.08);
+}
+
+.hex-menu-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: rgba(16, 27, 38, 0.65);
+  color: var(--text-bright);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hex-menu-close:hover {
+  background: rgba(229, 72, 77, 0.35);
+  border-color: var(--danger);
+}
+
+.hex-menu-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 34px 14px 14px;
+  background:
+    radial-gradient(120% 160% at 0% 0%, rgba(31, 182, 166, 0.25), transparent 60%),
+    linear-gradient(135deg, var(--panel-2), var(--ink));
+  border-bottom: 1px solid var(--hairline-gold);
+}
+
+.hex-menu-level-shield {
+  flex-shrink: 0;
+  width: 40px;
+  height: 44px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(180deg, var(--gold), var(--gold-strong));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.hex-menu-level-shield span {
+  font-size: 15px;
+  font-weight: 800;
+  color: #2a1e02;
+}
+
+.hex-menu-owner-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hex-menu-owner-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hex-menu-owner-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.hex-menu-pill {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+}
+
+.hex-menu-pill-own {
+  background: rgba(53, 181, 106, 0.18);
+  color: #7be3a3;
+  border: 1px solid rgba(53, 181, 106, 0.4);
+}
+
+.hex-menu-pill-guild {
+  background: rgba(63, 140, 255, 0.18);
+  color: #8fbaff;
+  border: 1px solid rgba(63, 140, 255, 0.4);
+}
+
+.hex-menu-body {
+  padding: 12px 14px 14px;
+}
+
+.hex-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 4px 0 6px;
+  flex-wrap: wrap;
+}
+
+.hex-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  width: 62px;
+}
+
+.hex-action-shape {
+  width: 52px;
+  height: 46px;
+  clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--panel-border);
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+.hex-action:hover .hex-action-shape {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+}
+
+.hex-action-icon {
+  font-size: 20px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+}
+
+.hex-action-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+
+.hex-action-attack .hex-action-shape {
+  background: linear-gradient(180deg, var(--danger), var(--danger-strong));
+}
+
+.hex-action-reinforce .hex-action-shape {
+  background: linear-gradient(180deg, #5a9dff, var(--blue-guild));
+}
+
+.hex-action-scout .hex-action-shape {
+  background: linear-gradient(180deg, var(--gold), var(--gold-strong));
+}
+
+.hex-action-upgrade .hex-action-shape {
+  background: linear-gradient(180deg, #4bd07f, var(--good));
 }

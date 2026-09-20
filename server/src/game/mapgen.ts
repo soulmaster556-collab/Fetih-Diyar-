@@ -18,20 +18,42 @@ const WORLD_SIZE = 200;
 // gibi görünmesini engelleyen doğal boşluklar.
 const GRID_COLS = 6;
 const GRID_ROWS = 6;
-// Eren'in isteği: test aşamasında dünyayı fazla büyütmeyelim -- ada sayısı
-// 30'dan 10'a düşürüldü. Not: bu sadece SIFIRDAN üretilecek bir haritayı
-// etkiler (ensureMapGenerated tiles tablosu doluysa hiçbir şey yapmaz), yani
-// mevcut canlı haritayı küçültmez.
-const ISLAND_COUNT = 10;
+// Eren'in isteği: "tek ve büyük ada" -- test aşamasında artık birden çok
+// küçük ada yerine TEK büyük bir test adası üretiliyor (birkaç kişi aynı
+// anda test edecek, sıkışmasınlar diye geniş tutuluyor; harita yine de
+// tamamı tek ekranda görünmeyecek kadar büyük -- kaydırma/uzaklaştırma hâlâ
+// gerekiyor, ama varsayılan yakınlıkta hiçbir yönde deniz görünmemeli).
+// ISLAND_COUNT === 1 olduğunda generateIslandLayout() aşağıdaki
+// GRID_COLS×GRID_ROWS hücre sistemini tamamen atlayıp adayı doğrudan
+// dünyanın ortasından, SINGLE_ISLAND_* sabitlerine göre büyütüyor (bkz.
+// generateIslandLayout içindeki "if (ISLAND_COUNT === 1)" dalı). Adayı
+// tekrar birden fazla parçaya bölmek istersek burayı eski haline (10,
+// 400-650) döndürüp bir sonraki migration'ı (applyBigSingleIslandMigration
+// gibi) tetiklemek yeterli -- ada üretimi tamamen tersine çevrilebilir.
+const ISLAND_COUNT = 1;
 const ISLAND_MIN_SIZE = 400;
 const ISLAND_MAX_SIZE = 650;
+// Tek-ada modunda hedef büyüklük: WORLD_SIZE 200×200 iken dünyanın kenarına
+// değmeyecek şekilde ortada büyüyen, önceki 10 adanın toplamından (~5000)
+// daha küçük ama tek bir adanın eski max'inden (650) çok daha büyük bir
+// alan -- birkaç test oyuncusu rahatça yayılabilsin, üstelik varsayılan
+// (46px) yakınlıkta merkezdeki bir kaleden hiçbir yönde deniz görünmesin.
+const SINGLE_ISLAND_MIN_SIZE = 3500;
+const SINGLE_ISLAND_MAX_SIZE = 5000;
+// Ada, dünyanın dört kenarından bu kadar tampon bırakarak büyüyor (hem
+// görsel olarak dünyanın tam sınırına yapışmasın hem de kıyı hesaplama
+// mantığı kenarda tuhaf davranmasın diye).
+const SINGLE_ISLAND_MARGIN = 12;
 // Bir ada, organik/yuvarlak kenarlar oluşturabilsin diye kendi hücresinin
 // dışına bu kadar taşabilir — komşu ada büyümesi zaten bitişikliği
 // engellediği için bu taşma iki ada arasındaki boşluğu sıfırlamaz, sadece
 // kenarların hücre sınırında keskin bir dikdörtgen gibi kesilmesini önler.
 const CELL_OVERFLOW = 5;
 const MAX_SEED_ATTEMPTS_PER_ISLAND = 80;
-const MAX_GROWTH_STALLS = 300;
+// Tek büyük ada, eski küçük adalardan çok daha fazla büyüme adımı
+// gerektiriyor -- 300 durak sınırı bu boyutta erken tetiklenip adayı
+// hedeflenenden küçük bırakabilirdi, bu yüzden yükseltildi.
+const MAX_GROWTH_STALLS = 1200;
 
 interface LandTile {
   x: number;
@@ -161,21 +183,42 @@ function generateIslandLayout(): LandTile[] {
     return true;
   }
 
-  const cells = shuffled(buildGridCells()).slice(0, ISLAND_COUNT);
+  // Eren: "tek ve büyük ada" -- ISLAND_COUNT === 1 iken GRID_COLS×GRID_ROWS
+  // hücre bölüşümünü tamamen atlıyoruz (tek adanın birkaç bin karoya
+  // büyümesi gerekiyor, bir hücreye -- 200/6 ≈ 33×33 -- asla sığmaz).
+  // Bunun yerine "hücre" doğrudan dünyanın tamamı (kenarlardan
+  // SINGLE_ISLAND_MARGIN payı çıkarılmış hâli) oluyor ve tohum tam ortadan
+  // seçiliyor.
+  const cells: CellBounds[] =
+    ISLAND_COUNT === 1
+      ? [
+          {
+            minX: SINGLE_ISLAND_MARGIN,
+            maxX: WORLD_SIZE - 1 - SINGLE_ISLAND_MARGIN,
+            minY: SINGLE_ISLAND_MARGIN,
+            maxY: WORLD_SIZE - 1 - SINGLE_ISLAND_MARGIN,
+          },
+        ]
+      : shuffled(buildGridCells()).slice(0, ISLAND_COUNT);
 
   cells.forEach((cell, idx) => {
     const islandId = idx + 1;
-    const allowed: CellBounds = {
-      minX: Math.max(0, cell.minX - CELL_OVERFLOW),
-      maxX: Math.min(WORLD_SIZE - 1, cell.maxX + CELL_OVERFLOW),
-      minY: Math.max(0, cell.minY - CELL_OVERFLOW),
-      maxY: Math.min(WORLD_SIZE - 1, cell.maxY + CELL_OVERFLOW),
-    };
+    const allowed: CellBounds =
+      ISLAND_COUNT === 1
+        ? cell
+        : {
+            minX: Math.max(0, cell.minX - CELL_OVERFLOW),
+            maxX: Math.min(WORLD_SIZE - 1, cell.maxX + CELL_OVERFLOW),
+            minY: Math.max(0, cell.minY - CELL_OVERFLOW),
+            maxY: Math.min(WORLD_SIZE - 1, cell.maxY + CELL_OVERFLOW),
+          };
 
-    // Tohum, hücrenin iç %50'lik bölgesinden seçilir — kenara çok yakın
-    // başlarsa komşu hücrenin adasıyla erken çarpışıp büyümesi kısıtlanabilir.
-    const innerW = Math.max(1, Math.floor((cell.maxX - cell.minX) * 0.5));
-    const innerH = Math.max(1, Math.floor((cell.maxY - cell.minY) * 0.5));
+    // Tek-ada modunda tohum tam ortadan (küçük bir rastgele sapmayla)
+    // seçilir; çoklu-ada modunda hücrenin iç %50'lik bölgesinden seçilir —
+    // kenara çok yakın başlarsa komşu hücrenin adasıyla erken çarpışıp
+    // büyümesi kısıtlanabilir.
+    const innerW = Math.max(1, Math.floor((cell.maxX - cell.minX) * (ISLAND_COUNT === 1 ? 0.1 : 0.5)));
+    const innerH = Math.max(1, Math.floor((cell.maxY - cell.minY) * (ISLAND_COUNT === 1 ? 0.1 : 0.5)));
     const innerMinX = cell.minX + Math.floor(((cell.maxX - cell.minX) - innerW) / 2);
     const innerMinY = cell.minY + Math.floor(((cell.maxY - cell.minY) - innerH) / 2);
 
@@ -191,7 +234,9 @@ function generateIslandLayout(): LandTile[] {
     if (!seed) return; // bu hücrede yer bulunamadı; ada atlanır
 
     const targetSize =
-      ISLAND_MIN_SIZE + Math.floor(Math.random() * (ISLAND_MAX_SIZE - ISLAND_MIN_SIZE + 1));
+      ISLAND_COUNT === 1
+        ? SINGLE_ISLAND_MIN_SIZE + Math.floor(Math.random() * (SINGLE_ISLAND_MAX_SIZE - SINGLE_ISLAND_MIN_SIZE + 1))
+        : ISLAND_MIN_SIZE + Math.floor(Math.random() * (ISLAND_MAX_SIZE - ISLAND_MIN_SIZE + 1));
     const islandTiles: [number, number][] = [seed];
     occupied.set(key(seed[0], seed[1]), islandId);
 
@@ -251,6 +296,29 @@ export async function applyHexGridConversionMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita hex olarak yeniden üretilecek.`);
+}
+
+// Eren'in isteği: "Tek ve büyük ada yapıcaz, sağa sola kaydırabilelim, birkaç
+// kişi test yapacağız sıkışmamalıyız" -- ISLAND_COUNT 10'dan 1'e indirildi ve
+// tek adanın hedef boyutu büyütüldü (bkz. SINGLE_ISLAND_MIN/MAX_SIZE). Bu da
+// koordinatların anlamını değiştirmiyor (hâlâ aynı hex sistemi) ama önceki
+// 10-adalı test haritasıyla artık uyuşmuyor, o yüzden hex geçişindeki gibi
+// tek seferlik bir sıfırlama daha gerekiyor. Adayı ileride tekrar birden
+// fazla parçaya bölmek istersek: ISLAND_COUNT'u eski haline getirip yeni bir
+// migration adıyla (v3, v4, ...) aynı deseni tekrarlamak yeterli.
+export async function applyBigSingleIslandMigration() {
+  const MIGRATION_NAME = "big_single_island_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: tek büyük test adasına geçiliyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita tek büyük ada olarak yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {

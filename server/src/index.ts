@@ -4,6 +4,7 @@ import { initSchema } from "./db.js";
 import {
   ensureMapGenerated,
   applyHexGridConversionMigration,
+  applyBigSingleIslandMigration,
   applyNpcBorderMigration,
   applyNpcDensityReductionMigration,
 } from "./game/mapgen.js";
@@ -25,6 +26,10 @@ async function main() {
   // tablosu boşaldıktan hemen sonra yeni hex-komşuluklu ada üretimi devreye
   // girsin.
   await applyHexGridConversionMigration();
+  // Tek büyük test adasına geçiş -- yukarıdaki gibi ÖNCE ve senkron
+  // çalışmalı ki tiles tablosu boşaldıktan hemen sonra ensureMapGenerated
+  // tek büyük adayı üretsin.
+  await applyBigSingleIslandMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);
