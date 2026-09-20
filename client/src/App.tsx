@@ -509,46 +509,18 @@ export default function App() {
 
   return (
     <div className="game-layout">
-      <header className="topbar">
-        <h1>Fetih Diyarı</h1>
-        {summary && (
-          <div className="summary-bar">
-            <span className="summary-item">🪙 {Math.floor(summary.gold)} <small>(+{summary.goldPerHour}/sa)</small></span>
-            <span className="summary-item">⚔️ +{summary.troopsPerHour}/sa</span>
-          </div>
-        )}
-        <div className="player-info">
-          <span>{session.username}</span>
-          <button onClick={handleLogout}>Çıkış</button>
-        </div>
-      </header>
-
-      {message && <div className="banner success">{message}</div>}
-      {error && <div className="banner error">{error}</div>}
-
-      <div className="main-area">
-        <div className="map-wrapper">
-          <div className="map-toolbar">
-            <button onClick={() => zoomTo(Math.max(0, tileWidthIndex - 1))} disabled={tileWidthIndex === 0}>
-              − Uzaklaş
-            </button>
-            <button
-              onClick={() => zoomTo(Math.min(TILE_WIDTHS.length - 1, tileWidthIndex + 1))}
-              disabled={tileWidthIndex === TILE_WIDTHS.length - 1}
-            >
-              + Yakınlaş
-            </button>
-            {myTiles[0] && <button onClick={() => goToTile(myTiles[0])}>Krallığıma git</button>}
-          </div>
-          <div className="map-viewport" ref={viewportRef} onScroll={handleViewportScroll}>
-            <div
-              className="iso-map"
-              style={{
-                width: WORLD_SIZE * tileWidth,
-                height: WORLD_SIZE * tileHeight + tileHeight,
-              }}
-            >
-              {sortedTiles.map((tile) => {
+      {/* Harita artık tüm pencereyi kaplayan tek katman -- menü/panel bunun
+          ÜZERİNE yarı saydam "HUD" katmanları olarak biniyor (ayrı kutular
+          halinde değil, tek bütün bir oyun ekranı hissi için). */}
+      <div className="map-viewport" ref={viewportRef} onScroll={handleViewportScroll}>
+        <div
+          className="iso-map"
+          style={{
+            width: WORLD_SIZE * tileWidth,
+            height: WORLD_SIZE * tileHeight + tileHeight,
+          }}
+        >
+          {sortedTiles.map((tile) => {
                 const showCastle = tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
                 const showNpc = tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
@@ -640,13 +612,47 @@ export default function App() {
               })}
             </div>
           </div>
-          <div className="legend">
-            <span><i style={{ background: "#4caf50" }} /> Senin şehrin</span>
-            <span><i style={{ background: "#e53935" }} /> Düşman</span>
-            <span><i style={{ background: "#8d6e63" }} /> NPC kampı</span>
-            <span><i style={{ background: "#8bc34a" }} /> Boş kare</span>
+
+      <header className="topbar">
+        <h1>Fetih Diyarı</h1>
+        {summary && (
+          <div className="summary-bar">
+            <span className="summary-item">🪙 {Math.floor(summary.gold)} <small>(+{summary.goldPerHour}/sa)</small></span>
+            <span className="summary-item">⚔️ +{summary.troopsPerHour}/sa</span>
           </div>
+        )}
+        <div className="player-info">
+          <span>{session.username}</span>
+          <button onClick={handleLogout}>Çıkış</button>
         </div>
+      </header>
+
+      {(message || error) && (
+        <div className="hud-banners">
+          {message && <div className="banner success">{message}</div>}
+          {error && <div className="banner error">{error}</div>}
+        </div>
+      )}
+
+      <div className="map-toolbar">
+        <button onClick={() => zoomTo(Math.max(0, tileWidthIndex - 1))} disabled={tileWidthIndex === 0}>
+          − Uzaklaş
+        </button>
+        <button
+          onClick={() => zoomTo(Math.min(TILE_WIDTHS.length - 1, tileWidthIndex + 1))}
+          disabled={tileWidthIndex === TILE_WIDTHS.length - 1}
+        >
+          + Yakınlaş
+        </button>
+        {myTiles[0] && <button onClick={() => goToTile(myTiles[0])}>Krallığıma git</button>}
+      </div>
+
+      <div className="legend">
+        <span><i style={{ background: "#4caf50" }} /> Senin şehrin</span>
+        <span><i style={{ background: "#e53935" }} /> Düşman</span>
+        <span><i style={{ background: "#8d6e63" }} /> NPC kampı</span>
+        <span><i style={{ background: "#8bc34a" }} /> Boş kare</span>
+      </div>
 
         <aside className="side-panel">
           <section>
@@ -773,7 +779,6 @@ export default function App() {
             )}
           </section>
         </aside>
-      </div>
     </div>
   );
 }
