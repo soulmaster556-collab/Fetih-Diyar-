@@ -2,11 +2,12 @@ import { Router } from "express";
 import { randomUUID } from "node:crypto";
 import { pool } from "../db.js";
 import { pickRandomEmptyTile } from "../game/mapgen.js";
-import { computeLivePlayerGold, productionForLevel } from "../game/resources.js";
+import { computeLivePlayerGold, computeLiveTroops, productionForLevel } from "../game/resources.js";
 import { getTotalGoldPerHour, getTotalTroopsPerHour } from "../game/economy.js";
 import { loadSettings } from "../game/settings.js";
 import { hashPassword, verifyPassword } from "../game/password.js";
-import type { Player } from "../types.js";
+import type { ReportRow } from "../game/reports.js";
+import type { Player, TileRow } from "../types.js";
 
 export const playersRouter = Router();
 
@@ -138,3 +139,96 @@ export async function authenticate(req: any, res: any, next: any) {
     res.status(500).json({ error: "Sunucu hatası." });
   }
 }
+
+// Harita görünümü (GET /tiles) herkese açık kalmaya devam ediyor ama artık
+// gözcü/casusluk sistemi yüzünden İSTEĞE BAĞLI olarak "kim bakıyor" bilgisine
+// ihtiyaç duyuyor (kendi/klan kalelerin canlı, düşman/NPC'ler sadece
+// gözcülenmişse görünür olsun diye). Token yoksa ya da geçersizse isteği
+// REDDETMEZ, sadece req.player'ı boş bırakıp anonim gibi devam eder.
+export async function optionalAuthenticate(req: any, _res: any, next: any) {
+  try {
+    const header = req.headers.authorization ?? "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (token) {
+      const { rows } = await pool.query<Player>("SELECT * FROM players WHERE token = $1", [token]);
+      if (rows[0]) req.player = rows[0];
+    }
+  } catch (err) {
+    console.error(err);
+  }
+  next();
+}
+
+// Liderlik panosu: en çok asker / en çok kaleye sahip oyuncular. Canlı asker
+// sayısı (computeLiveTroops) her PLAYER karosu için hesaplanıp sahibine göre
+// toplanıyor -- dünya küçük olduğu için (sadece fethedilmiş kareler) bu iş
+// yükü ihmal edilebilir düzeyde.
+playersRouter.get("/leaderboard", async (_req, res) => {
+  try {
+    const settings = await loadSettings();
+    const now = Date.now();
+    const { rows } = await pool.query<TileRow & { username: string }>(
+      `SELECT t.*, p.username as username FROM tiles t
+       JOIN players p ON p.id = t.owner_id
+       WHERE t.tile_type = 'PLAYER' AND t.owner_id IS NOT NULL`
+    );
+    const byPlayer = new Map<string, { username: string; troops: number; castles: number }>();
+    for (const t of rows) {
+      const entry = byPlayer.get(t.owner_id as string) ?? { username: t.username, troops: 0, castles: 0 };
+      entry.troops += computeLiveTroops(t, settings, now);
+      entry.castles += 1;
+      byPlayer.set(t.owner_id as string, entry);
+    }
+    const list = Array.from(byPlayer.values());
+    const topTroops = [...list]
+      .sort((a, b) => b.troops - a.troops)
+      .slice(0, 10)
+      .map((e) => ({ username: e.username, value: Math.floor(e.troops) }));
+    const topCastles = [...list]
+      .sort((a, b) => b.castles - a.castles)
+      .slice(0, 10)
+      .map((e) => ({ username: e.username, value: e.castles }));
+    res.json({ topTroops, topCastles });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
+// Mesaj/rapor kutusu -- en yeni 50 olay.
+playersRouter.get("/me/reports", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    const { rows } = await pool.query<ReportRow>(
+      "SELECT id, type, title, body, created_at, read_at FROM player_reports WHERE player_id = $1 ORDER BY created_at DESC LIMIT 50",
+      [player.id]
+    );
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        type: r.type,
+        title: r.title,
+        body: r.body,
+        createdAt: Number(r.created_at),
+        readAt: r.read_at !== null ? Number(r.read_at) : null,
+      }))
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
+playersRouter.post("/me/reports/read-all", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    await pool.query(
+      "UPDATE player_reports SET read_at = $1 WHERE player_id = $2 AND read_at IS NULL",
+      [Date.now(), player.id]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});

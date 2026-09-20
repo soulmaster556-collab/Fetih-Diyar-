@@ -12,16 +12,25 @@ export interface Tile {
   islandId: number;
   ownerId: string | null;
   tileType: "NPC" | "PLAYER" | "EMPTY";
+  // Seviye her zaman herkese açık (gözcü gerekmez).
   level: number;
-  goldPerHour: number;
-  troopsPerHour: number;
+  // Gözcü/casusluk sistemi: kendi/klan kaleleri için hep dolu (canlı), ama
+  // düşman oyuncu ya da NPC kaleleri için `scoutTile` ile daha önce gözcü
+  // gönderilmemişse bu üç alan `null` gelir (bkz. server tiles.ts
+  // serializeTile). Dolu geldiğinde de -- kendi/klan hariç -- CANLI değil,
+  // gözcünün gönderildiği andaki donmuş bilgidir (bkz. `scoutedAt`).
+  goldPerHour: number | null;
+  troopsPerHour: number | null;
   // Not: altın artık kale başına değil, krallık genelinde ortak bir havuzda
   // tutuluyor (bkz. PlayerSummary) — bu yüzden karo başına "gold" alanı yok.
-  troops: number;
+  troops: number | null;
   // Klan arkadaşlarından gelen, sahiplenilemeyen (sadece savunma için)
   // takviye askerleri -- `troops` alanına dahil değil.
   reinforcementTroops: number;
   reinforcements: ReinforcementInfo[];
+  // Görüntüleyenin bu kareye en son ne zaman gözcü gönderdiği (ms epoch),
+  // yoksa null. Kendi/klan kalelerinde her zaman null (gözcüye gerek yok).
+  scoutedAt: number | null;
 }
 
 export interface PlayerSummary {
@@ -73,11 +82,15 @@ export interface BoundingBox {
 
 // bbox verilmezse tüm harita döner (küçük haritalarda/testte kullanışlı);
 // büyük dünyada App.tsx her zaman görünen bölgenin bbox'unu gönderir.
-export function fetchMap(bbox?: BoundingBox) {
+// `token` verilirse (artık her zaman veriliyor) sunucu gözcü/klan
+// görünürlüğünü buna göre uygular -- bkz. Tile arayüzündeki not.
+export function fetchMap(bbox?: BoundingBox, token?: string) {
   const qs = bbox
     ? `?minX=${Math.floor(bbox.minX)}&maxX=${Math.ceil(bbox.maxX)}&minY=${Math.floor(bbox.minY)}&maxY=${Math.ceil(bbox.maxY)}`
     : "";
-  return fetch(`${BASE}/tiles${qs}`).then((r) => handle<Tile[]>(r));
+  return fetch(`${BASE}/tiles${qs}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  }).then((r) => handle<Tile[]>(r));
 }
 
 export function fetchMyTiles(token: string) {
@@ -164,6 +177,26 @@ export function recallReinforcement(token: string, reinforcementId: number) {
   }).then((r) => handle<{ ok: true; returnedTo: number; troops: number }>(r));
 }
 
+// Gözcü/casusluk: hedef karenin o ANKİ (donmuş) bilgisini öğrenir --
+// yeniden gönderene kadar bu bilgi güncellenmez (bkz. Tile arayüzündeki not).
+export interface ScoutResult {
+  ok: true;
+  tileId: number;
+  level: number;
+  troops: number;
+  goldPerHour: number;
+  troopsPerHour: number;
+  scoutedAt: number;
+}
+
+export function scoutTile(token: string, targetTileId: number, fromTileId: number, troopsSent: number) {
+  return fetch(`${BASE}/tiles/${targetTileId}/scout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ fromTileId, troopsSent }),
+  }).then((r) => handle<ScoutResult>(r));
+}
+
 export interface GuildMember {
   playerId: string;
   username: string;
@@ -212,6 +245,54 @@ export function joinGuild(token: string, guildId: number) {
 
 export function leaveGuild(token: string) {
   return fetch(`${BASE}/guilds/leave`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
+// Liderlik Panosu: en çok asker / en çok kaleye sahip ilk 10 oyuncu.
+// Herkese açık (giriş gerekmez).
+export interface LeaderboardEntry {
+  username: string;
+  value: number;
+}
+
+export interface LeaderboardResponse {
+  topTroops: LeaderboardEntry[];
+  topCastles: LeaderboardEntry[];
+}
+
+export function fetchLeaderboard() {
+  return fetch(`${BASE}/players/leaderboard`).then((r) => handle<LeaderboardResponse>(r));
+}
+
+// Mesaj/rapor kutusu -- saldırı sonuçları, gözcü raporları, gözetlendiğine
+// dair bildirimler (bkz. server game/reports.ts).
+export type ReportType =
+  | "attack_won"
+  | "attack_lost"
+  | "defended_win"
+  | "defended_loss"
+  | "scout_sent"
+  | "scouted_by";
+
+export interface Report {
+  id: number;
+  type: ReportType;
+  title: string;
+  body: string;
+  createdAt: number;
+  readAt: number | null;
+}
+
+export function fetchMyReports(token: string) {
+  return fetch(`${BASE}/players/me/reports`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<Report[]>(r));
+}
+
+export function markReportsRead(token: string) {
+  return fetch(`${BASE}/players/me/reports/read-all`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   }).then((r) => handle<{ ok: true }>(r));

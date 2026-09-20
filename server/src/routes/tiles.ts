@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { pool } from "../db.js";
-import { authenticate } from "./players.js";
+import { authenticate, optionalAuthenticate } from "./players.js";
 import { computeLivePlayerGold, computeLiveTroops, productionForLevel, upgradeCost } from "../game/resources.js";
 import { getTotalGoldPerHour, settlePlayerGold } from "../game/economy.js";
 import { resolveCombat } from "../game/combat.js";
 import { loadSettings } from "../game/settings.js";
+import { addReport } from "../game/reports.js";
 import type { Settings } from "../game/settings.js";
 import type { Player, TileRow } from "../types.js";
 
@@ -15,6 +16,47 @@ interface ReinforcementInfo {
   fromPlayerId: string;
   fromUsername: string;
   troops: number;
+}
+
+interface ScoutSnapshot {
+  level: number;
+  troops: number;
+  gold_per_hour: number;
+  troops_per_hour: number;
+  owner_username: string | null;
+  scouted_at: number;
+}
+
+// Haritayı görüntüleyenin (varsa) kendi kimliği + klanı: kendi/klan
+// kaleleri her zaman canlı bilgiyle, geri kalan (düşman oyuncu/NPC) kaleler
+// sadece gözcülenmişse görünür (bkz. serializeTile'daki "vis" parametresi).
+interface VisibilityContext {
+  viewerId: string | null;
+  guildIds: Set<string>;
+  scoutMap: Map<number, ScoutSnapshot>;
+}
+
+async function fetchGuildMemberIds(playerId: string | null): Promise<Set<string>> {
+  if (!playerId) return new Set();
+  const { rows } = await pool.query<{ player_id: string }>(
+    `SELECT gm2.player_id FROM guild_members gm1
+     JOIN guild_members gm2 ON gm1.guild_id = gm2.guild_id
+     WHERE gm1.player_id = $1`,
+    [playerId]
+  );
+  return new Set(rows.map((r) => r.player_id));
+}
+
+async function fetchScoutMap(viewerId: string | null, tileIds: number[]): Promise<Map<number, ScoutSnapshot>> {
+  const map = new Map<number, ScoutSnapshot>();
+  if (!viewerId || tileIds.length === 0) return map;
+  const { rows } = await pool.query<ScoutSnapshot & { tile_id: number }>(
+    `SELECT tile_id, level, troops, gold_per_hour, troops_per_hour, owner_username, scouted_at
+     FROM scout_reports WHERE scout_player_id = $1 AND tile_id = ANY($2)`,
+    [viewerId, tileIds]
+  );
+  for (const r of rows) map.set(r.tile_id, r);
+  return map;
 }
 
 // Bir veya birden fazla karo için klan takviyesi kayıtlarını TEK sorguda
@@ -58,14 +100,52 @@ async function sameGuild(playerIdA: string, playerIdB: string): Promise<boolean>
 // (kale ise) canlı asker sayısı gösterilir. `reinforcements`: klan
 // arkadaşlarından gelen, sahiplenilemeyen (sadece savunma için) takviye
 // askerleri -- bu askerler `troops` alanına dahil DEĞİL, ayrı gösteriliyor.
+//
+// Gözcü/casusluk sistemi (Eren'in isteği): `vis` verilmişse (harita
+// görünümü GET /) kendi/klan kaleleri hâlâ CANLI bilgiyle gösterilir, ama
+// düşman oyuncu ya da NPC kaleleri sadece o kareye daha önce gözcü
+// gönderilmişse (scout_reports'ta bir kayıt varsa) görünür -- ve o zaman da
+// CANLI değil, gözcünün gönderildiği ANDAKİ donmuş bilgiyle. `vis`
+// verilmezse (upgrade/reinforce/attack/scout gibi doğrudan eylem yanıtları,
+// veya GET /me) hep tam görünür -- zaten oyuncunun kendi eylemiyle ilgili
+// bir kareyi görüyor. Seviye (level) her zaman herkese açık.
 function serializeTile(
   tile: TileRow,
   settings: Settings,
   now: number,
-  reinforcements: ReinforcementInfo[] = []
+  reinforcements: ReinforcementInfo[] = [],
+  vis?: VisibilityContext
 ) {
-  const troops = computeLiveTroops(tile, settings, now);
-  const reinforcementTroops = reinforcements.reduce((sum, r) => sum + r.troops, 0);
+  const isMineOrGuild =
+    !vis || tile.tile_type === "EMPTY" || (!!tile.owner_id && (tile.owner_id === vis.viewerId || vis.guildIds.has(tile.owner_id)));
+
+  let troops: number | null;
+  let goldPerHour: number | null;
+  let troopsPerHour: number | null;
+  let reinforcementTroops = 0;
+  let reinforcementsOut: { id: number; fromPlayerId: string; fromUsername: string; troops: number }[] = [];
+  let scoutedAt: number | null = null;
+
+  if (isMineOrGuild) {
+    troops = Math.floor(computeLiveTroops(tile, settings, now));
+    goldPerHour = tile.gold_per_hour;
+    troopsPerHour = tile.troops_per_hour;
+    reinforcementTroops = Math.floor(reinforcements.reduce((sum, r) => sum + r.troops, 0));
+    reinforcementsOut = reinforcements.map((r) => ({ ...r, troops: Math.floor(r.troops) }));
+  } else {
+    const snap = vis!.scoutMap.get(tile.id);
+    if (snap) {
+      troops = Math.floor(snap.troops);
+      goldPerHour = snap.gold_per_hour;
+      troopsPerHour = snap.troops_per_hour;
+      scoutedAt = Number(snap.scouted_at);
+    } else {
+      troops = null;
+      goldPerHour = null;
+      troopsPerHour = null;
+    }
+  }
+
   return {
     id: tile.id,
     x: tile.x,
@@ -74,11 +154,12 @@ function serializeTile(
     ownerId: tile.owner_id,
     tileType: tile.tile_type,
     level: tile.level,
-    goldPerHour: tile.gold_per_hour,
-    troopsPerHour: tile.troops_per_hour,
-    troops: Math.floor(troops),
-    reinforcementTroops: Math.floor(reinforcementTroops),
-    reinforcements: reinforcements.map((r) => ({ ...r, troops: Math.floor(r.troops) })),
+    goldPerHour,
+    troopsPerHour,
+    troops,
+    reinforcementTroops,
+    reinforcements: reinforcementsOut,
+    scoutedAt,
   };
 }
 
@@ -108,9 +189,13 @@ function parseBoundingBox(req: import("express").Request) {
   return { minX: nMinX, maxX: clampedMaxX, minY: nMinY, maxY: clampedMaxY };
 }
 
-// Public: harita görünümü — bbox verilirse sadece o bölge, verilmezse tüm harita.
-tilesRouter.get("/", async (req, res) => {
+// Public: harita görünümü — bbox verilirse sadece o bölge, verilmezse tüm
+// harita. Token varsa (optionalAuthenticate) gözcü/klan görünürlüğü
+// uygulanır; yoksa hiçbir kale bilgisi (asker/üretim) görünmez, sadece
+// seviye ve tür (herkese açık).
+tilesRouter.get("/", optionalAuthenticate, async (req: any, res) => {
   try {
+    const viewer = req.player as Player | undefined;
     const now = Date.now();
     const settings = await loadSettings();
     const bbox = parseBoundingBox(req);
@@ -120,8 +205,14 @@ tilesRouter.get("/", async (req, res) => {
           [bbox.minX, bbox.maxX, bbox.minY, bbox.maxY]
         )
       : await pool.query<TileRow>("SELECT * FROM tiles");
-    const reinforcementMap = await fetchReinforcementsMap(rows.map((t) => t.id));
-    res.json(rows.map((t) => serializeTile(t, settings, now, reinforcementMap.get(t.id))));
+    const tileIds = rows.map((t) => t.id);
+    const [reinforcementMap, guildIds, scoutMap] = await Promise.all([
+      fetchReinforcementsMap(tileIds),
+      fetchGuildMemberIds(viewer?.id ?? null),
+      fetchScoutMap(viewer?.id ?? null, tileIds),
+    ]);
+    const vis: VisibilityContext = { viewerId: viewer?.id ?? null, guildIds, scoutMap };
+    res.json(rows.map((t) => serializeTile(t, settings, now, reinforcementMap.get(t.id), vis)));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -354,21 +445,18 @@ tilesRouter.post("/reinforcements/:id/recall", authenticate, async (req: any, re
   }
 });
 
-function isAdjacent(a: TileRow, b: TileRow) {
-  return Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1 && a.id !== b.id;
-}
-
 function tileDistance(a: TileRow, b: TileRow) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-// Same island: must be directly touching (contiguous land expansion, as
-// before). Different island: reachable within the admin-configured naval
-// range, representing ships crossing open water — no adjacency required.
+// BUG FİX (Eren): naval_attack_range sadece FARKLI adadaki bir kareye
+// saldırırken (deniz aşımı) uygulanmalı -- aynı adadaki herhangi bir kareye
+// (komşu olsun olmasın) HER ZAMAN, bu sınırdan tamamen bağımsız
+// saldırılabilmeli. Önceki sürüm aynı adada da "isAdjacent" (sadece bitişik
+// karo) şartı arıyordu, bu da aynı adadaki uzak bir NPC'ye ulaşılamaması
+// gibi "mesafe sınırı" hissi veren bir kısıtlamaya yol açıyordu.
 function canReach(from: TileRow, target: TileRow, settings: Settings) {
-  if (from.island_id === target.island_id) {
-    return isAdjacent(from, target);
-  }
+  if (from.island_id === target.island_id) return true;
   return tileDistance(from, target) <= settings.naval_attack_range;
 }
 
@@ -497,10 +585,154 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
       client.release();
     }
 
+    // Mesaj/rapor bölümü: saldıran her zaman, savunan (sahipli bir kaleyse)
+    // de bir bildirim alır. Rapor yazımı savaşın sonucunu etkilemesin diye
+    // ana transaction'dan SONRA, best-effort olarak yapılıyor.
+    const coordText = `(${targetTile.x}, ${targetTile.y})`;
+    if (combat.attackerWins) {
+      await addReport(
+        player.id,
+        "attack_won",
+        "Zafer!",
+        `${coordText} karesini ele geçirdin. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
+        now
+      ).catch(() => {});
+      if (targetTile.owner_id) {
+        await addReport(
+          targetTile.owner_id,
+          "defended_loss",
+          "Kalen ele geçirildi",
+          `${player.username}, ${coordText} karesindeki kaleni ele geçirdi. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
+          now
+        ).catch(() => {});
+      }
+    } else {
+      await addReport(
+        player.id,
+        "attack_lost",
+        "Saldırı püskürtüldü",
+        `${coordText} karesine saldırın başarısız oldu. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
+        now
+      ).catch(() => {});
+      if (targetTile.owner_id) {
+        await addReport(
+          targetTile.owner_id,
+          "defended_win",
+          "Saldırıyı savuşturdun",
+          `${player.username}, ${coordText} karesindeki kaleni ele geçirmeye çalıştı ama başarısız oldu. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
+          now
+        ).catch(() => {});
+      }
+    }
+
     res.json({
       result: combat.attackerWins ? "ATTACKER_WINS" : "DEFENDER_WINS",
       attackerPower: combat.attackerPower,
       defenderPower: combat.defenderPower,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
+// Gözcü/casusluk: kendi kalenden bir miktar asker göndererek hedef
+// karenin ANLIK bilgisini (seviye, toplam asker -- ev garnizonu + klan
+// takviyeleri, altın/asker üretimi) öğrenirsin. Gönderilen askerler bir
+// keşif/istihbarat maliyeti olarak tüketilir (MVP: risksiz, her zaman
+// başarılı -- yakalanma/keşfedilme mekaniği yok). Rapor `scout_reports`'a
+// UPSERT edilir: aynı kareye tekrar gözcü göndermeden bilgi GÜNCELLENMEZ
+// (Eren'in isteği).
+tilesRouter.post("/:id/scout", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    const targetId = Number(req.params.id);
+    const fromTileId = Number(req.body?.fromTileId);
+    const troopsSentRaw = Number(req.body?.troopsSent);
+    const now = Date.now();
+    const settings = await loadSettings();
+
+    const [{ rows: fromRows }, { rows: targetRows }] = await Promise.all([
+      pool.query<TileRow>("SELECT * FROM tiles WHERE id = $1", [fromTileId]),
+      pool.query<TileRow>("SELECT * FROM tiles WHERE id = $1", [targetId]),
+    ]);
+    const fromTile = fromRows[0];
+    const targetTile = targetRows[0];
+
+    if (!fromTile || !targetTile) return res.status(404).json({ error: "Kare bulunamadı." });
+    if (fromTile.owner_id !== player.id)
+      return res.status(403).json({ error: "Gözcü gönderilen kale sana ait değil." });
+    if (targetTile.id === fromTile.id)
+      return res.status(400).json({ error: "Kendi kaleni gözetlemene gerek yok." });
+    if (targetTile.tile_type === "EMPTY")
+      return res.status(400).json({ error: "Boş bir kareyi gözetlemeye gerek yok." });
+    if (!canReach(fromTile, targetTile, settings))
+      return res.status(400).json({ error: "Bu kareye ulaşamazsın (çok uzak)." });
+
+    const fromLive = computeLiveTroops(fromTile, settings, now);
+    const troopsSent = Math.floor(troopsSentRaw);
+    if (!troopsSent || troopsSent <= 0 || troopsSent > fromLive) {
+      return res.status(400).json({ error: "Geçersiz asker sayısı." });
+    }
+
+    const targetLive = computeLiveTroops(targetTile, settings, now);
+    const { rows: reinforcementRows } = await pool.query<{ troops: number }>(
+      "SELECT troops FROM tile_reinforcements WHERE tile_id = $1",
+      [targetTile.id]
+    );
+    const reinforcementTotal = reinforcementRows.reduce((sum, r) => sum + Number(r.troops), 0);
+    const totalTroops = targetLive + reinforcementTotal;
+
+    let ownerUsername: string | null = null;
+    if (targetTile.owner_id) {
+      const { rows: ownerRows } = await pool.query<{ username: string }>(
+        "SELECT username FROM players WHERE id = $1",
+        [targetTile.owner_id]
+      );
+      ownerUsername = ownerRows[0]?.username ?? null;
+    }
+
+    await pool.query(
+      "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
+      [fromLive - troopsSent, now, fromTile.id]
+    );
+
+    await pool.query(
+      `INSERT INTO scout_reports (scout_player_id, tile_id, level, troops, gold_per_hour, troops_per_hour, owner_username, scouted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (scout_player_id, tile_id) DO UPDATE SET
+         level = EXCLUDED.level, troops = EXCLUDED.troops, gold_per_hour = EXCLUDED.gold_per_hour,
+         troops_per_hour = EXCLUDED.troops_per_hour, owner_username = EXCLUDED.owner_username,
+         scouted_at = EXCLUDED.scouted_at`,
+      [player.id, targetTile.id, targetTile.level, totalTroops, targetTile.gold_per_hour, targetTile.troops_per_hour, ownerUsername, now]
+    );
+
+    const coordText = `(${targetTile.x}, ${targetTile.y})`;
+    await addReport(
+      player.id,
+      "scout_sent",
+      "Gözcü raporu",
+      `${coordText} karesine gözcü gönderdin: Seviye ${targetTile.level}, ~${Math.floor(totalTroops)} asker, +${Math.floor(targetTile.gold_per_hour)}/sa altın.`,
+      now
+    ).catch(() => {});
+    if (targetTile.owner_id) {
+      await addReport(
+        targetTile.owner_id,
+        "scouted_by",
+        "Kalen gözetlendi",
+        `${player.username}, ${coordText} karesindeki kaleni gözetledi.`,
+        now
+      ).catch(() => {});
+    }
+
+    res.json({
+      ok: true,
+      tileId: targetTile.id,
+      level: targetTile.level,
+      troops: Math.floor(totalTroops),
+      goldPerHour: targetTile.gold_per_hour,
+      troopsPerHour: targetTile.troops_per_hour,
+      scoutedAt: now,
     });
   } catch (err) {
     console.error(err);

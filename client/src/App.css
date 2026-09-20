@@ -294,7 +294,9 @@ button:disabled {
 }
 
 /* Kale/NPC'nin üstündeki "orada" (haritada, tıklamadan görünen) küçük
-   üretim/asker etiketi. Karonun üst ucunun biraz üstünde, ortalanmış. */
+   üretim/asker etiketi. Karonun üst ucunun biraz üstünde, ortalanmış. Artık
+   sadece gözcülenmiş (ya da kendi/klan) kalelerde görünüyor -- bkz. App.tsx
+   hasIntel/showInfoLabel. */
 .tile-info-label {
   position: absolute;
   top: -18px;
@@ -313,6 +315,26 @@ button:disabled {
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 1px 4px rgba(31, 45, 58, 0.35);
+}
+
+/* Seviye rozeti -- gözcüye bağlı değil, her zaman görünür (Eren: "Haritada
+   kalelerin üzerine levellerini yazalım"). Bilgi etiketinin biraz üstünde
+   durur ki ikisi de görünürken üst üste binmesin. */
+.level-badge {
+  position: absolute;
+  top: -34px;
+  transform: translateX(-50%);
+  z-index: 3;
+  background: rgba(255, 193, 7, 0.95);
+  color: #4a3200;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.4;
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(31, 45, 58, 0.3);
 }
 
 /* Sağdaki/soldaki kalıcı barlar kalktı -- "Krallığım" listesi ve "Seçili
@@ -661,4 +683,311 @@ button:disabled {
   color: #1f2d3a;
   text-align: right;
   flex-shrink: 0;
+}
+
+/* Liderlik Panosu -- iki ayrı sıralama (asker / kale), her biri numaralı
+   satırlar halinde. */
+.leaderboard-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.leaderboard-heading {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: #6b7d8c;
+  margin: 0 0 8px;
+}
+
+.leaderboard-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #eef5fb;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.leaderboard-rank {
+  font-weight: 800;
+  color: #6b7d8c;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.leaderboard-name {
+  flex: 1;
+  font-weight: 600;
+  color: #1f2d3a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-value {
+  font-weight: 800;
+  color: #2f78e6;
+}
+
+/* Mesaj & Rapor kutusu -- saldırı sonuçları, gözcü raporları, gözetlendiğine
+   dair bildirimler. Türe göre sol kenarlıkta hafif bir renk ayrımı var. */
+.report-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-row {
+  background: #eef5fb;
+  border-left: 3px solid #9db3c2;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.report-row.report-attack_won,
+.report-row.report-defended_win {
+  border-left-color: #2f9e4f;
+}
+
+.report-row.report-attack_lost,
+.report-row.report-defended_loss {
+  border-left-color: #d3392f;
+}
+
+.report-row.report-scout_sent,
+.report-row.report-scouted_by {
+  border-left-color: #916b06;
+}
+
+.report-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.report-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #1f2d3a;
+}
+
+.report-time {
+  font-size: 11px;
+  color: #7c8b96;
+  white-space: nowrap;
+}
+
+.report-body {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #46596a;
+}
+
+/* Seçili kare kartının profesyonelleştirilmiş üst meta satırı -- koordinat,
+   seviye, ada ve sahiplik rozetleri tek bir chip sırası halinde. */
+.tile-pro-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tile-pro-coords {
+  font-weight: 700;
+  color: #1f2d3a;
+  font-size: 13px;
+}
+
+.tile-pro-badge {
+  background: #eef5fb;
+  color: #46596a;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+
+.tile-pro-badge-own {
+  background: #e1f7e6;
+  color: #1e7a35;
+}
+
+.tile-pro-badge-guild {
+  background: #e1ecfd;
+  color: #1c56b0;
+}
+
+.tile-stats-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.scout-hint {
+  background: #fdf3d8;
+  color: #7a5c05;
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 6px 0;
+}
+
+/* Kendi kalenin eylem menüsü -- her eylem türü kendi rengiyle ayırt
+   ediliyor (Eren: "Saldırı menüsünü daha profesyonel hale getir"). */
+.castle-actions button.castle-action-attack {
+  background: #fdeee9;
+  border-color: #f3c3b3;
+  color: #b3441f;
+}
+
+.castle-actions button.castle-action-attack:hover {
+  background: #fadfd6;
+}
+
+.castle-actions button.castle-action-reinforce {
+  background: #e1ecfd;
+  border-color: #bcd3e0;
+  color: #1c56b0;
+}
+
+.castle-actions button.castle-action-reinforce:hover {
+  background: #d2e3fc;
+}
+
+.castle-actions button.castle-action-scout {
+  background: #fdf3d8;
+  border-color: #ecd48f;
+  color: #7a5c05;
+}
+
+.castle-actions button.castle-action-scout:hover {
+  background: #faeabd;
+}
+
+.castle-actions button.castle-action-upgrade {
+  background: #e1f7e6;
+  border-color: #b7e0c0;
+  color: #1e7a35;
+}
+
+.castle-actions button.castle-action-upgrade:hover {
+  background: #cdf0d5;
+}
+
+/* Saldır/Destek/Gözcü onay kartı -- rota özeti + hızlı yüzde butonları ile
+   daha profesyonel bir akış (Eren: "Saldırı menüsünü daha profesyonel hale
+   getir"). */
+.pending-action-card .tile-card-header h2 {
+  text-transform: none;
+  font-size: 15px;
+  color: #1f2d3a;
+  letter-spacing: normal;
+}
+
+.pending-route {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #eef5fb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.pending-route-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pending-route-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #7c8b96;
+}
+
+.pending-route-coords {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1f2d3a;
+}
+
+.pending-route-sub {
+  font-size: 11px;
+  color: #5b6b78;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-route-arrow {
+  font-size: 16px;
+  color: #6b7d8c;
+  flex-shrink: 0;
+}
+
+.troop-quick-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.troop-quick-btn {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 11px;
+  background: #eef5fb;
+  color: #46596a;
+  border: 1px solid #bcd3e0;
+}
+
+.troop-quick-btn:hover {
+  background: #dcebf7;
+}
+
+.confirm-action-btn {
+  font-size: 14px;
+  padding: 10px 14px;
+}
+
+.confirm-action-btn.confirm-attack {
+  background: #e53935;
+}
+
+.confirm-action-btn.confirm-attack:hover {
+  background: #c62828;
+}
+
+.confirm-action-btn.confirm-reinforce {
+  background: #3f8cff;
+}
+
+.confirm-action-btn.confirm-reinforce:hover {
+  background: #2f78e6;
+}
+
+.confirm-action-btn.confirm-scout {
+  background: #b8860b;
+}
+
+.confirm-action-btn.confirm-scout:hover {
+  background: #9c7009;
 }

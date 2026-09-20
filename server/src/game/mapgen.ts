@@ -18,7 +18,11 @@ const WORLD_SIZE = 200;
 // gibi görünmesini engelleyen doğal boşluklar.
 const GRID_COLS = 6;
 const GRID_ROWS = 6;
-const ISLAND_COUNT = 30;
+// Eren'in isteği: test aşamasında dünyayı fazla büyütmeyelim -- ada sayısı
+// 30'dan 10'a düşürüldü. Not: bu sadece SIFIRDAN üretilecek bir haritayı
+// etkiler (ensureMapGenerated tiles tablosu doluysa hiçbir şey yapmaz), yani
+// mevcut canlı haritayı küçültmez.
+const ISLAND_COUNT = 10;
 const ISLAND_MIN_SIZE = 400;
 const ISLAND_MAX_SIZE = 650;
 // Bir ada, organik/yuvarlak kenarlar oluşturabilsin diye kendi hücresinin

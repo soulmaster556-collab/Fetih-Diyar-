@@ -3,21 +3,27 @@ import "./App.css";
 import {
   attackTile,
   createGuild,
+  fetchLeaderboard,
   fetchMap,
   fetchMyGuild,
+  fetchMyReports,
   fetchMyTiles,
   fetchPlayerSummary,
   joinGuild,
   leaveGuild,
   listGuilds,
   login,
+  markReportsRead,
   recallReinforcement,
   register,
   reinforceTile,
+  scoutTile,
   upgradeTile,
   type Guild,
   type GuildListEntry,
+  type LeaderboardResponse,
   type PlayerSummary,
+  type Report,
   type Session,
   type Tile,
 } from "./api";
@@ -32,13 +38,19 @@ const VIEWPORT_MARGIN = 6;
 // genişliğin yarısı — klasik 2:1 izometrik oran (Travian/Forge of Empires
 // tarzı haritalarda kullanılan oran).
 const TILE_WIDTHS = [16, 22, 32, 46, 64];
-const DEFAULT_TILE_WIDTH_INDEX = 2;
-// Oyuncu kalesi ve NPC kalesi görselleri -- Eren'in verdiği iki fotoğraf
-// (kırmızı sancak = oyuncu, mavi sancak = NPC), beyaz arka planları
-// kaldırılıp (alfa şeffaflık) kırpılmış PNG olarak public/buildings altına
-// kondu (bkz. sohbetteki görsel işleme adımları).
-const CASTLE_ICON = "/buildings/player_castle_new.png";
-const NPC_ICON = "/buildings/npc_castle_new.png";
+// Eren'in isteği: "Oyunun standart oynanışı daha yakın plan olsın" -- eski
+// varsayılan (index 2 = 32px) yerine bir kademe daha yakın (46px) başlıyor.
+const DEFAULT_TILE_WIDTH_INDEX = 3;
+// Oyuncu kalesi ve NPC/düşman kalesi görselleri -- Eren'in verdiği iki
+// fotoğraf, beyaz arka planları kaldırılıp (alfa şeffaflık) kırpılmış PNG
+// olarak public/buildings altına kondu. Eren'in düzeltmesi: "maviler oyuncu
+// kırmızılar düşman olmalıydı" -- yani hangi görselin hangi tarafı temsil
+// ettiği dosya adından değil, mavi/kırmızı sancaktan belirleniyor: mavi
+// sancaklı görsel HER ZAMAN oyuncunun kendi/klan kalesi, kırmızı sancaklı
+// görsel düşman oyuncu VEYA NPC için kullanılıyor (bkz. aşağıda castleIcon
+// seçimi -- artık kare tipine değil sahipliğe göre seçiliyor).
+const PLAYER_CASTLE_ICON = "/buildings/npc_castle_new.png"; // mavi sancak
+const ENEMY_CASTLE_ICON = "/buildings/player_castle_new.png"; // kırmızı sancak
 // Yeni kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın
 // diye kale/NPC boyutu bu orana göre hesaplanıyor (bkz. aşağıdaki
 // castleBoxWidth/Height).
@@ -102,12 +114,14 @@ export default function App() {
   const [myTiles, setMyTiles] = useState<Tile[]>([]);
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
   // Yeni akış: önce KENDİ kalene tıklarsın -> küçük bir menü (Saldır /
-  // Destek Gönder) açılır -> sonra haritada HEDEFİ seçersin -> asker sayısı
-  // sorulur. `actionMode` "hedef seçme" adımındayken aktif; geçerli bir
-  // hedefe tıklanınca `pendingTarget` dolar ve asker sayısı modalı açılır.
-  const [actionMode, setActionMode] = useState<{ type: "attack" | "reinforce"; fromTile: Tile } | null>(null);
+  // Destek Gönder / Gözcü Gönder) açılır -> sonra haritada HEDEFİ seçersin
+  // -> asker sayısı sorulur. `actionMode` "hedef seçme" adımındayken aktif;
+  // geçerli bir hedefe tıklanınca `pendingTarget` dolar ve asker sayısı
+  // modalı açılır.
+  type ActionType = "attack" | "reinforce" | "scout";
+  const [actionMode, setActionMode] = useState<{ type: ActionType; fromTile: Tile } | null>(null);
   const [pendingTarget, setPendingTarget] = useState<{
-    type: "attack" | "reinforce";
+    type: ActionType;
     fromTile: Tile;
     targetTile: Tile;
   } | null>(null);
@@ -128,6 +142,15 @@ export default function App() {
   // "Krallığım" şehir listesi artık kalıcı bir panel değil, üst menüdeki
   // butona basınca açılan/kapanan yüzen bir açılır liste.
   const [showKingdomList, setShowKingdomList] = useState(false);
+  // Liderlik Panosu (Eren: "Sıralama olucak en çok askere sahip olan - En
+  // çok kaleye sahip olan").
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
+  // Mesaj/rapor bölümü (Eren: "Mesaj ve rapor bölümü olucak") -- saldırı
+  // sonuçları, gözcü raporları, gözetlendiğine dair bildirimler.
+  const [showReports, setShowReports] = useState(false);
+  const [reports, setReports] = useState<Report[]>([]);
+  const unreadReportCount = useMemo(() => reports.filter((r) => r.readAt === null).length, [reports]);
   const [tileWidthIndex, setTileWidthIndex] = useState(DEFAULT_TILE_WIDTH_INDEX);
   const tileWidth = TILE_WIDTHS[tileWidthIndex];
   const tileHeight = tileWidth / 2;
@@ -222,7 +245,9 @@ export default function App() {
 
   const refresh = () => {
     const bbox = currentBoundingBox();
-    fetchMap(bbox ?? undefined)
+    // Token her zaman gönderiliyor ki sunucu gözcü/klan görünürlüğünü
+    // (bkz. Tile arayüzündeki not) doğru uygulayabilsin.
+    fetchMap(bbox ?? undefined, session?.token)
       .then(setTiles)
       .catch((e) => setError(e.message));
   };
@@ -237,6 +262,10 @@ export default function App() {
 
   const refreshGuild = (token: string) => {
     fetchMyGuild(token).then(setGuild).catch(() => {});
+  };
+
+  const refreshReports = (token: string) => {
+    fetchMyReports(token).then(setReports).catch(() => {});
   };
 
   function scrollToWorld(x: number, y: number, smooth: boolean) {
@@ -275,6 +304,16 @@ export default function App() {
     if (!session) return;
     refreshGuild(session.token);
     const interval = setInterval(() => refreshGuild(session.token), 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  // Mesaj/rapor kutusu -- okunmamış sayısı üst menüdeki rozette her zaman
+  // güncel kalsın diye periyodik olarak (panel kapalıyken de) çekiliyor.
+  useEffect(() => {
+    if (!session) return;
+    refreshReports(session.token);
+    const interval = setInterval(() => refreshReports(session.token), 10000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
@@ -383,9 +422,10 @@ export default function App() {
     }
   }
 
-  // Kendi kalemize tıklayınca açılan küçük menüden "Saldır" ya da "Destek
-  // Gönder" seçilince: bilgi kartını kapatıp "hedef seç" moduna geçiyoruz.
-  function startAction(type: "attack" | "reinforce", fromTile: Tile) {
+  // Kendi kalemize tıklayınca açılan küçük menüden "Saldır", "Destek
+  // Gönder" ya da "Gözcü Gönder" seçilince: bilgi kartını kapatıp "hedef
+  // seç" moduna geçiyoruz.
+  function startAction(type: ActionType, fromTile: Tile) {
     setActionMode({ type, fromTile });
     setPendingTarget(null);
     setSelectedTile(null);
@@ -407,16 +447,26 @@ export default function App() {
     if (!actionMode || !session) return;
     const { type, fromTile } = actionMode;
     if (tile.id === fromTile.id) {
-      setError(type === "attack" ? "Kendi kalene saldıramazsın." : "Aynı kaleye takviye gönderilemez.");
+      setError(
+        type === "attack"
+          ? "Kendi kalene saldıramazsın."
+          : type === "scout"
+          ? "Kendi kalene gözcü göndermene gerek yok."
+          : "Aynı kaleye takviye gönderilemez."
+      );
       return;
     }
-    if (type === "attack") {
+    if (type === "attack" || type === "scout") {
       if (tile.tileType === "EMPTY") {
-        setError("Boş kareye saldırılamaz. Sadece NPC kampına veya bir oyuncunun kalesine saldırabilirsin.");
+        setError(
+          type === "attack"
+            ? "Boş kareye saldırılamaz. Sadece NPC kampına veya bir oyuncunun kalesine saldırabilirsin."
+            : "Boş kareye gözcü gönderilemez. Sadece NPC kampına veya bir oyuncunun kalesine gözcü gönderebilirsin."
+        );
         return;
       }
       if (tile.ownerId === session.playerId) {
-        setError("Kendi karene saldıramazsın.");
+        setError(type === "attack" ? "Kendi karene saldıramazsın." : "Kendi karene gözcü göndermene gerek yok.");
         return;
       }
     } else {
@@ -446,6 +496,11 @@ export default function App() {
             ? `Zafer! Kare ele geçirildi. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
             : `Saldırı püskürtüldü. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
         );
+      } else if (type === "scout") {
+        const result = await scoutTile(session.token, targetTile.id, fromTile.id, troopsInput);
+        setMessage(
+          `Gözcü raporu geldi: Lv${result.level} — ⚔️ ${Math.floor(result.troops)} asker, 🪙 +${result.goldPerHour}/sa`
+        );
       } else {
         await reinforceTile(session.token, targetTile.id, fromTile.id, troopsInput);
         setMessage("Takviye gönderildi!");
@@ -453,6 +508,7 @@ export default function App() {
       refresh();
       refreshMyTiles(session.token);
       refreshSummary(session.token);
+      if (session) refreshReports(session.token);
       setPendingTarget(null);
       setActionMode(null);
       setSelectedScreenPos(null);
@@ -478,6 +534,24 @@ export default function App() {
   function openGuildPanel() {
     setShowGuildPanel((v) => !v);
     if (!guild) listGuilds().then(setAvailableGuilds).catch(() => {});
+  }
+
+  function openLeaderboard() {
+    setShowLeaderboard((v) => !v);
+    fetchLeaderboard().then(setLeaderboard).catch(() => {});
+  }
+
+  // Raporlar panelini açınca hem en güncel listeyi çekiyoruz hem de hepsini
+  // okunmuş işaretliyoruz -- rozet sayısı böylece panel kapanınca sıfırlanır.
+  function openReports() {
+    setShowReports((v) => !v);
+    if (!session) return;
+    fetchMyReports(session.token).then(setReports).catch(() => {});
+    if (unreadReportCount > 0) {
+      markReportsRead(session.token)
+        .then(() => refreshReports(session.token))
+        .catch(() => {});
+    }
   }
 
   async function handleCreateGuild(e: React.FormEvent) {
@@ -600,20 +674,33 @@ export default function App() {
                 const showNpc = tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
                 const isGuildmate = !isMine && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
+                // Eren'in düzeltmesi: mavi sancak = oyuncu (ben/klanım),
+                // kırmızı sancak = düşman -- NPC kampları da "düşman" sayılır.
+                const castleIcon = showCastle && (isMine || isGuildmate) ? PLAYER_CASTLE_ICON : ENEMY_CASTLE_ICON;
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
                 // Kale/NPC görselleri artık kendi karolarının DIŞINA
                 // taşmıyor -- kutu, karonun kendi (tileWidth × tileHeight)
                 // sınırlarını asla aşmayacak şekilde (yükseklik sınırlayıcı
                 // boyut, CASTLE_IMAGE_ASPECT'e göre genişlik ondan türetiliyor)
-                // hesaplanıp karonun ALT ucuna yaslanıyor (Eren'in isteği:
-                // "Kaleler bulunduğu karenin dışına çıkmasın").
+                // hesaplanıyor. Eren'in isteği: "kaleleri karenin içine
+                // ortala" -- alt ucuna yaslamak yerine artık dikey olarak
+                // karonun tam ortasına yerleştiriliyor.
                 const castleBoxHeight = tileHeight * 0.94;
                 const castleBoxWidth = castleBoxHeight * CASTLE_IMAGE_ASPECT;
                 const npcBoxHeight = tileHeight * 0.84;
                 const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
+                const castleTop = (tileHeight - castleBoxHeight) / 2;
+                const npcTop = (tileHeight - npcBoxHeight) / 2;
                 const badgeSize = Math.max(8, castleBoxHeight * 0.32);
-                const showInfoLabel = (showCastle || showNpc) && tileWidth >= LABEL_MIN_WIDTH;
-                const totalTroops = tile.troops + (tile.reinforcementTroops ?? 0);
+                // Gözcü/casusluk sistemi: asker/altın bilgisi sadece kendi/
+                // klan kalelerinde ya da daha önce gözcülenmiş düşman/NPC
+                // kalelerinde gösterilir (tile.troops null ise hiç bilgi yok).
+                const hasIntel = tile.troops !== null;
+                const showInfoLabel = (showCastle || showNpc) && tileWidth >= LABEL_MIN_WIDTH && hasIntel;
+                const totalTroops = (tile.troops ?? 0) + (tile.reinforcementTroops ?? 0);
+                // Seviye artık her zaman herkese açık -- gözcü gerekmeden
+                // haritada kalenin/NPC'nin üstünde gösteriliyor.
+                const showLevelBadge = (showCastle || showNpc) && tileWidth >= LABEL_MIN_WIDTH;
                 return (
                   <div
                     key={tile.id}
@@ -646,14 +733,14 @@ export default function App() {
                     {showCastle && (
                       <>
                         <img
-                          src={CASTLE_ICON}
+                          src={castleIcon}
                           alt=""
                           className="iso-castle"
                           style={{
                             width: castleBoxWidth,
                             height: castleBoxHeight,
                             left: (tileWidth - castleBoxWidth) / 2,
-                            top: tileHeight - castleBoxHeight,
+                            top: castleTop,
                           }}
                         />
                         {/* Sahiplik artık zeminin renginden değil, kalenin
@@ -669,31 +756,40 @@ export default function App() {
                             width: badgeSize,
                             height: badgeSize,
                             left: (tileWidth - castleBoxWidth) / 2 + castleBoxWidth - badgeSize * 0.7,
-                            top: tileHeight - castleBoxHeight - badgeSize * 0.35,
+                            top: castleTop - badgeSize * 0.35,
                           }}
                         />
                       </>
                     )}
                     {showNpc && (
                       <img
-                        src={NPC_ICON}
+                        src={castleIcon}
                         alt=""
                         className="iso-castle"
                         style={{
                           width: npcBoxWidth,
                           height: npcBoxHeight,
                           left: (tileWidth - npcBoxWidth) / 2,
-                          top: tileHeight - npcBoxHeight,
+                          top: npcTop,
                         }}
                       />
                     )}
+                    {/* Seviye rozeti: her zaman görünür, gözcüye bağlı değil
+                        (Eren: "Haritada kalelerin üzerine levellerini
+                        yazalım her level aldığında orda görünebilsin"). */}
+                    {showLevelBadge && (
+                      <div className="level-badge" style={{ left: tileWidth / 2 }}>
+                        Lv{tile.level}
+                      </div>
+                    )}
                     {/* Madde: "Saatlik üretimlerin orada toplam asker
-                        sayılarıda görünsün" -- kale/NPC'nin üstünde, haritada
-                        doğrudan görünen küçük bir üretim/asker etiketi. */}
+                        sayılarıda görünsün" -- ama artık sadece gözcülenmiş
+                        (ya da kendi/klan) kalelerde, ve donmuş/son bilinen
+                        bilgi olarak (bkz. Tile.scoutedAt). */}
                     {showInfoLabel && (
                       <div className="tile-info-label" style={{ left: tileWidth / 2 }}>
                         <span>⚔️ {totalTroops}</span>
-                        <span>🪙 +{tile.goldPerHour}/sa</span>
+                        <span>🪙 +{tile.goldPerHour ?? 0}/sa</span>
                       </div>
                     )}
                   </div>
@@ -731,6 +827,18 @@ export default function App() {
           >
             🛡️ {guild ? guild.name : "Lonca"}
           </button>
+          <button
+            className={`kingdom-toggle ${showLeaderboard ? "active" : ""}`}
+            onClick={openLeaderboard}
+          >
+            🏆 Liderlik
+          </button>
+          <button
+            className={`kingdom-toggle ${showReports ? "active" : ""}`}
+            onClick={openReports}
+          >
+            📨 Raporlar{unreadReportCount > 0 ? ` (${unreadReportCount})` : ""}
+          </button>
           <span>{session.username}</span>
           <button onClick={handleLogout}>Çıkış</button>
         </div>
@@ -748,9 +856,75 @@ export default function App() {
           <span>
             {actionMode.type === "attack"
               ? "Saldırmak istediğin kaleyi haritada seç"
+              : actionMode.type === "scout"
+              ? "Gözcü göndermek istediğin kaleyi haritada seç"
               : "Takviye göndermek istediğin kaleyi (kendi ya da klan arkadaşının) haritada seç"}
           </span>
           <button className="icon-btn" onClick={cancelAction}>✕ İptal</button>
+        </div>
+      )}
+
+      {showLeaderboard && (
+        <div className="kingdom-dropdown">
+          <div className="tile-card-header">
+            <h2>Liderlik Panosu</h2>
+            <button className="icon-btn" onClick={() => setShowLeaderboard(false)}>✕</button>
+          </div>
+          {!leaderboard ? (
+            <p className="hint">Yükleniyor…</p>
+          ) : (
+            <div className="leaderboard-sections">
+              <div>
+                <h3 className="leaderboard-heading">⚔️ En Çok Askere Sahip</h3>
+                {leaderboard.topTroops.length === 0 && <p className="hint">Henüz veri yok.</p>}
+                <ol className="leaderboard-list">
+                  {leaderboard.topTroops.map((e, i) => (
+                    <li key={`troops-${e.username}-${i}`} className="leaderboard-row">
+                      <span className="leaderboard-rank">#{i + 1}</span>
+                      <span className="leaderboard-name">{e.username}</span>
+                      <span className="leaderboard-value">{e.value}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              <div>
+                <h3 className="leaderboard-heading">🏰 En Çok Kaleye Sahip</h3>
+                {leaderboard.topCastles.length === 0 && <p className="hint">Henüz veri yok.</p>}
+                <ol className="leaderboard-list">
+                  {leaderboard.topCastles.map((e, i) => (
+                    <li key={`castles-${e.username}-${i}`} className="leaderboard-row">
+                      <span className="leaderboard-rank">#{i + 1}</span>
+                      <span className="leaderboard-name">{e.username}</span>
+                      <span className="leaderboard-value">{e.value}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showReports && (
+        <div className="kingdom-dropdown">
+          <div className="tile-card-header">
+            <h2>Mesaj &amp; Raporlar</h2>
+            <button className="icon-btn" onClick={() => setShowReports(false)}>✕</button>
+          </div>
+          {reports.length === 0 && <p className="hint">Henüz hiç mesajın yok.</p>}
+          <ul className="report-list">
+            {reports.map((r) => (
+              <li key={r.id} className={`report-row report-${r.type}`}>
+                <div className="report-row-header">
+                  <span className="report-title">{r.title}</span>
+                  <span className="report-time">
+                    {new Date(r.createdAt).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                <p className="report-body">{r.body}</p>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -821,7 +995,7 @@ export default function App() {
             {myTiles.map((t) => (
               <li key={t.id} className="city-card">
                 <div className="city-card-top">
-                  <img src={CASTLE_ICON} alt="" className="city-icon" />
+                  <img src={PLAYER_CASTLE_ICON} alt="" className="city-icon" />
                   <div className="city-card-title">
                     <div className="city-name">
                       Kale <span className="city-coords">({t.x}, {t.y})</span>
@@ -852,10 +1026,15 @@ export default function App() {
         if (left + CARD_WIDTH > window.innerWidth - margin) left = selectedScreenPos.x - CARD_WIDTH - 18;
         left = Math.max(margin, Math.min(left, window.innerWidth - CARD_WIDTH - margin));
         top = Math.max(margin, Math.min(top, window.innerHeight - CARD_MAX_HEIGHT - margin));
+        const isMineSel = selectedTile.ownerId === session.playerId;
+        const isGuildmateSel = !isMineSel && !!selectedTile.ownerId && guildMemberIds.has(selectedTile.ownerId);
+        const hasIntelSel = selectedTile.troops !== null && selectedTile.tileType !== "EMPTY";
         return (
-          <div className="tile-card" style={{ left, top, maxHeight: CARD_MAX_HEIGHT }}>
+          <div className="tile-card tile-card-pro" style={{ left, top, maxHeight: CARD_MAX_HEIGHT }}>
             <div className="tile-card-header">
-              <h2>Seçili Kare</h2>
+              <h2>
+                {selectedTile.tileType === "EMPTY" ? "Boş Kare" : selectedTile.tileType === "NPC" ? "NPC Kampı" : "Kale"}
+              </h2>
               <button
                 className="icon-btn"
                 onClick={() => { setSelectedTile(null); setSelectedScreenPos(null); }}
@@ -864,19 +1043,42 @@ export default function App() {
               </button>
             </div>
             <div>
-              <p>
-                ({selectedTile.x}, {selectedTile.y}) — {selectedTile.tileType} — Lv
-                {selectedTile.level} — ada #{selectedTile.islandId}
-              </p>
-              <p>⚔️ {selectedTile.troops} asker &nbsp; 🪙 +{selectedTile.goldPerHour}/sa</p>
-              {(selectedTile.reinforcementTroops ?? 0) > 0 && (
-                <p>🛡️ +{selectedTile.reinforcementTroops} takviye (klan)</p>
+              <div className="tile-pro-meta">
+                <span className="tile-pro-coords">({selectedTile.x}, {selectedTile.y})</span>
+                <span className="tile-pro-badge">Lv{selectedTile.level}</span>
+                <span className="tile-pro-badge">Ada #{selectedTile.islandId}</span>
+                {isMineSel && <span className="tile-pro-badge tile-pro-badge-own">Benim</span>}
+                {isGuildmateSel && <span className="tile-pro-badge tile-pro-badge-guild">Klan</span>}
+              </div>
+
+              {hasIntelSel ? (
+                <>
+                  <div className="tile-stats-row">
+                    <span className="stat-chip stat-troops">⚔️ <strong>{selectedTile.troops}</strong></span>
+                    <span className="stat-chip stat-gold">🪙 <strong>+{selectedTile.goldPerHour}</strong>/sa</span>
+                  </div>
+                  {(selectedTile.reinforcementTroops ?? 0) > 0 && (
+                    <p className="hint">🛡️ +{selectedTile.reinforcementTroops} takviye (klan)</p>
+                  )}
+                  {!isMineSel && !isGuildmateSel && selectedTile.scoutedAt !== null && (
+                    <p className="hint scout-hint">
+                      🔍 Gözcü raporu: {new Date(selectedTile.scoutedAt).toLocaleString("tr-TR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                      {" "}(bu bilgi donmuş — güncellemek için tekrar gözcü gönder)
+                    </p>
+                  )}
+                </>
+              ) : (
+                selectedTile.tileType !== "EMPTY" && (
+                  <p className="hint scout-hint">
+                    🔍 Bu kale hakkında istihbaratın yok. Asker sayısını görmek için önce gözcü gönder.
+                  </p>
+                )
               )}
-              {!selectedTile.ownerId
-                ? null
-                : selectedTile.ownerId === session.playerId
-                ? null
-                : guildMemberIds.has(selectedTile.ownerId) && <p className="hint">Bu bir klan arkadaşının kalesi.</p>}
 
               {selectedTile.tileType === "EMPTY" && (
                 <p className="hint">
@@ -885,17 +1087,18 @@ export default function App() {
                 </p>
               )}
 
-              {selectedTile.tileType !== "EMPTY" && selectedTile.ownerId !== session.playerId && (
+              {selectedTile.tileType !== "EMPTY" && !isMineSel && (
                 <p className="hint">
-                  Saldırmak için önce kendi kalene tıkla, açılan menüden "Saldır"ı seç, sonra bu kareyi hedef göster.
+                  Saldırmak veya gözcü göndermek için önce kendi kalene tıkla, açılan menüden seç, sonra bu kareyi hedef göster.
                 </p>
               )}
 
-              {selectedTile.ownerId === session.playerId && (
+              {isMineSel && (
                 <div className="castle-actions">
-                  <button onClick={() => startAction("attack", selectedTile)}>⚔️ Saldır</button>
-                  <button onClick={() => startAction("reinforce", selectedTile)}>🛡️ Destek Gönder</button>
-                  <button onClick={() => handleUpgrade(selectedTile.id)}>⬆️ Yükselt</button>
+                  <button className="castle-action-attack" onClick={() => startAction("attack", selectedTile)}>⚔️ Saldır</button>
+                  <button className="castle-action-reinforce" onClick={() => startAction("reinforce", selectedTile)}>🛡️ Destek Gönder</button>
+                  <button className="castle-action-scout" onClick={() => startAction("scout", selectedTile)}>🔭 Gözcü Gönder</button>
+                  <button className="castle-action-upgrade" onClick={() => handleUpgrade(selectedTile.id)}>⬆️ Yükselt</button>
                 </div>
               )}
 
@@ -913,27 +1116,45 @@ export default function App() {
       })()}
 
       {pendingTarget && (() => {
-        const CARD_WIDTH = 300;
+        const CARD_WIDTH = 320;
         const margin = 12;
         const pos = selectedScreenPos ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
         let left = pos.x + 18;
         let top = pos.y - 20;
         if (left + CARD_WIDTH > window.innerWidth - margin) left = pos.x - CARD_WIDTH - 18;
         left = Math.max(margin, Math.min(left, window.innerWidth - CARD_WIDTH - margin));
-        top = Math.max(margin, Math.min(top, window.innerHeight - 260 - margin));
-        const maxTroops =
-          pendingTarget.type === "attack" ? pendingTarget.fromTile.troops : pendingTarget.fromTile.troops;
+        top = Math.max(margin, Math.min(top, window.innerHeight - 320 - margin));
+        const maxTroops = pendingTarget.fromTile.troops ?? 0;
+        const actionMeta = {
+          attack: { title: "Saldırı Emri", icon: "⚔️", confirmLabel: "Saldır", cls: "confirm-attack" },
+          reinforce: { title: "Destek Gönder", icon: "🛡️", confirmLabel: "Gönder", cls: "confirm-reinforce" },
+          scout: { title: "Gözcü Gönder", icon: "🔭", confirmLabel: "Gönder", cls: "confirm-scout" },
+        }[pendingTarget.type];
+        const targetLabel =
+          pendingTarget.targetTile.tileType === "NPC" ? "NPC Kampı" : "Oyuncu Kalesi";
         return (
-          <div className="tile-card" style={{ left, top }}>
+          <div className="tile-card pending-action-card" style={{ left, top }}>
             <div className="tile-card-header">
-              <h2>{pendingTarget.type === "attack" ? "Saldır" : "Destek Gönder"}</h2>
+              <h2>{actionMeta.icon} {actionMeta.title}</h2>
               <button className="icon-btn" onClick={cancelAction}>✕</button>
             </div>
             <div>
-              <p>
-                ({pendingTarget.fromTile.x},{pendingTarget.fromTile.y}) → ({pendingTarget.targetTile.x},{pendingTarget.targetTile.y})
-              </p>
-              <p className="hint">Elindeki asker: {maxTroops}</p>
+              <div className="pending-route">
+                <div className="pending-route-side">
+                  <span className="pending-route-label">Kalen</span>
+                  <span className="pending-route-coords">({pendingTarget.fromTile.x}, {pendingTarget.fromTile.y})</span>
+                  <span className="pending-route-sub">Lv{pendingTarget.fromTile.level}</span>
+                </div>
+                <span className="pending-route-arrow">→</span>
+                <div className="pending-route-side">
+                  <span className="pending-route-label">Hedef</span>
+                  <span className="pending-route-coords">({pendingTarget.targetTile.x}, {pendingTarget.targetTile.y})</span>
+                  <span className="pending-route-sub">{targetLabel} · Lv{pendingTarget.targetTile.level}</span>
+                </div>
+              </div>
+
+              <p className="hint">Elindeki asker: <strong>{maxTroops}</strong></p>
+
               <div className="attack-form">
                 <label>
                   Gönderilecek asker:
@@ -946,8 +1167,24 @@ export default function App() {
                     autoFocus
                   />
                 </label>
-                <button disabled={troopsInput <= 0 || troopsInput > maxTroops} onClick={handleConfirmAction}>
-                  {pendingTarget.type === "attack" ? "Saldır" : "Gönder"}
+                <div className="troop-quick-btns">
+                  {[0.25, 0.5, 1].map((frac) => (
+                    <button
+                      key={frac}
+                      type="button"
+                      className="troop-quick-btn"
+                      onClick={() => setTroopsInput(Math.max(1, Math.floor(maxTroops * frac)))}
+                    >
+                      {frac === 1 ? "Tümü" : `%${frac * 100}`}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className={`confirm-action-btn ${actionMeta.cls}`}
+                  disabled={troopsInput <= 0 || troopsInput > maxTroops}
+                  onClick={handleConfirmAction}
+                >
+                  {actionMeta.icon} {actionMeta.confirmLabel}
                 </button>
               </div>
             </div>

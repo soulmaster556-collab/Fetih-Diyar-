@@ -116,6 +116,45 @@ export async function initSchema() {
       applied_at BIGINT NOT NULL
     );
   `);
+
+  // Gözcü/casusluk sistemi: bir oyuncunun bir kareye gönderdiği en SON
+  // gözcü raporunun anlık görüntüsü (asker/üretim). Eren'in isteği:
+  // "gözlendiği bilgi kalıcak, yeni bilgi için yine casus gönderilmesi
+  // gerekicek" -- yani bilgi CANLI değil, bir sonraki gözcüye kadar dondu.
+  // Bu yüzden (scout_player_id, tile_id) başına TEK satır tutulup yeni
+  // gözcü göndermede üzerine yazılıyor (UPSERT), geçmiş raporlar birikmiyor.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS scout_reports (
+      id SERIAL PRIMARY KEY,
+      scout_player_id TEXT NOT NULL REFERENCES players(id),
+      tile_id INTEGER NOT NULL REFERENCES tiles(id),
+      level INTEGER NOT NULL,
+      troops DOUBLE PRECISION NOT NULL,
+      gold_per_hour DOUBLE PRECISION NOT NULL,
+      troops_per_hour DOUBLE PRECISION NOT NULL,
+      owner_username TEXT,
+      scouted_at BIGINT NOT NULL,
+      UNIQUE (scout_player_id, tile_id)
+    );
+  `);
+
+  // Mesaj/rapor bölümü: saldırı sonuçları, gözcü raporları, gözetlendiğine
+  // dair bildirimler vb. her oyuncunun kendi kutusunda (player_id) biriken,
+  // en yeniden eskiye sıralı basit bir olay akışı.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS player_reports (
+      id SERIAL PRIMARY KEY,
+      player_id TEXT NOT NULL REFERENCES players(id),
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at BIGINT NOT NULL,
+      read_at BIGINT
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS player_reports_player_idx ON player_reports (player_id, created_at DESC);`
+  );
 }
 
 export async function hasMigration(name: string): Promise<boolean> {
