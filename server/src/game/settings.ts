@@ -44,7 +44,9 @@ export const SETTING_DEFS = [
     label: "NPC kampı oluşma olasılığı",
     description:
       "Yeni harita üretildiğinde her karenin NPC kampı olma ihtimali (0-1); geri kalanı boş kare olur (oyuncu başlangıç noktaları). Boş karelere saldırı olmadığı için ilerleme büyük ölçüde NPC fethine dayanır. Mevcut haritayı etkilemez.",
-    default: 0.6,
+    // Önceden 0.6 idi -- adaların ~%60'ı NPC kampıydı, bu da boş/genişleme
+    // alanını çok daraltıyordu. 0.3'e düşürüldü (Eren'in isteği).
+    default: 0.3,
   },
   {
     key: "starting_troops",

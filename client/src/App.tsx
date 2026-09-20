@@ -25,25 +25,35 @@ const VIEWPORT_MARGIN = 6;
 // tarzı haritalarda kullanılan oran).
 const TILE_WIDTHS = [16, 22, 32, 46, 64];
 const DEFAULT_TILE_WIDTH_INDEX = 2;
-// 256px varyantı: küçük karolarda da netliğini korur, tek dosya olduğu için
-// (aynı URL) tarayıcı sadece bir kez indirir, tüm şehir karolarında paylaşılır.
-const CASTLE_ICON = "/buildings/Kale_Assest_256.png";
-const CASTLE_ICON_MIN_WIDTH = 28;
+// Oyuncu kalesi ve NPC kampı görselleri (tek dosya olduğu için tarayıcı
+// her ikisini de bir kez indirir, tüm ilgili karolarda paylaşılır).
+const CASTLE_ICON = "/buildings/player_castle.png";
+const NPC_ICON = "/buildings/npc_camp.png";
+const ICON_MIN_WIDTH = 28;
 
 // Boş karolar için zemin dokusu + dekor görselleri. Hangi karonun hangi
 // dokuyu/dekoru aldığı (x,y) koordinatından deterministik olarak
 // hesaplanıyor (bkz. tileVariantHash) -- böylece harita her 3sn'de bir
 // yeniden çekilse bile karolar "titremiyor" / rastgele değişmiyor.
 const GRASS_VARIANTS = ["/terrain/grass_1.png", "/terrain/grass_2.png", "/terrain/grass_3.png"];
-const DECOR_VARIANTS = [
-  "/terrain/decor_ruins.png",
-  "/terrain/decor_trees.png",
-  "/terrain/decor_rocks.png",
-  "/terrain/decor_stump.png",
-];
+const TREE_DECOR = "/terrain/decor_trees.png";
+// Tek tük (kümeye dahil olmayan) serpiştirilmiş dekorlar -- taş/kütük/kazıntı
+// artık daha seyrek (önceden %35'lik tek bir havuzun parçasıydı).
+const SCATTERED_DECOR_VARIANTS = ["/terrain/decor_ruins.png", "/terrain/decor_rocks.png", "/terrain/decor_stump.png"];
 const DECOR_MIN_WIDTH = 28;
-// Boş karoların yaklaşık bu oranı bir dekor öğesi (ağaç, kaya, kazı vb.) alır.
-const DECOR_CHANCE = 0.35;
+const SCATTERED_DECOR_CHANCE = 0.14;
+// Kümeye dahil olmayan tekil (yalnız) ağaç ihtimali -- orman kümelerinden
+// bağımsız, seyrek bir "tek ağaç" hissi için. Artık ağaçların çoğu kümeler
+// üzerinden geliyor, bu yüzden düşük tutuluyor.
+const LONE_TREE_CHANCE = 0.04;
+
+// Ağaç kümeleri: harita (x,y) uzayı FOREST_BLOCK_SIZE×FOREST_BLOCK_SIZE'lık
+// bloklara bölünür, her blok bağımsız ve deterministik olarak "bu blokta
+// nadir bir orman kümesi var mı" diye zar atar -- varsa 3-4 (sık) veya 6-7
+// (nadir) bitişik kareden oluşan organik bir küme büyütülür (mapgen.ts'teki
+// ada büyütme mantığına benzer, sadece küçük ölçekte ve tamamen client-side).
+const FOREST_BLOCK_SIZE = 8;
+const FOREST_CLUSTER_CHANCE = 0.12;
 
 // (x,y) tam sayı çiftinden [0,1) aralığında deterministik bir sayı üretir
 // (basit bir integer hash -- Math.random YOK, aynı karo hep aynı sonucu verir).
@@ -59,13 +69,74 @@ function grassVariantFor(tile: Tile) {
   return GRASS_VARIANTS[Math.min(idx, GRASS_VARIANTS.length - 1)];
 }
 
-function decorVariantFor(tile: Tile) {
-  // Farklı bir hash "tuzu" kullanarak dekor var/yok kararını, zemin dokusu
-  // seçiminden bağımsız kılıyoruz.
-  const roll = tileVariantHash(tile.x + 9973, tile.y + 9973);
-  if (roll >= DECOR_CHANCE) return null;
-  const idx = Math.floor(tileVariantHash(tile.x - 9973, tile.y - 9973) * DECOR_VARIANTS.length);
-  return DECOR_VARIANTS[Math.min(idx, DECOR_VARIANTS.length - 1)];
+// Verilen (bx,by) bloğu için (varsa) orman kümesinin üye karolarını
+// hesaplar. Büyüme, bloğun kendi sınırları içine sıkıştırılır ki bir
+// karonun üyeliği her zaman KENDİ bloğundan (bx,by) hesaplanarak
+// bulunabilsin (komşu bloklara taşıp da oradan görünmez kalmasın).
+function forestClusterMembers(bx: number, by: number): Set<string> {
+  const spawnRoll = tileVariantHash(bx * 92821 + 17, by * 63841 + 29);
+  if (spawnRoll >= FOREST_CLUSTER_CHANCE) return new Set();
+
+  const sizeRoll = tileVariantHash(bx * 15485 + 3, by * 25733 + 11);
+  const extra = Math.floor(tileVariantHash(bx * 5051 + 41, by * 7919 + 59) * 2); // 0 ya da 1
+  const size = sizeRoll >= 0.65 ? 6 + extra : 3 + extra; // %65 küçük (3-4), %35 nadir büyük (6-7)
+
+  const blockMinX = bx * FOREST_BLOCK_SIZE;
+  const blockMinY = by * FOREST_BLOCK_SIZE;
+  const originX = blockMinX + Math.floor(tileVariantHash(bx * 104729 + 5, by * 101 + 7) * FOREST_BLOCK_SIZE);
+  const originY = blockMinY + Math.floor(tileVariantHash(bx * 211 + 13, by * 104723 + 19) * FOREST_BLOCK_SIZE);
+
+  const members = new Set<string>([`${originX},${originY}`]);
+  const frontier: [number, number][] = [[originX, originY]];
+  const dirs: [number, number][] = [
+    [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1],
+  ];
+
+  let step = 0;
+  while (members.size < size && step < size * 8) {
+    step++;
+    const frontierIdx = Math.floor(tileVariantHash(originX + step * 733, originY + step * 977) * frontier.length);
+    const [px, py] = frontier[frontierIdx];
+    const dirIdx = Math.floor(tileVariantHash(originX * 31 + step * 17, originY * 31 + step * 23) * dirs.length);
+    const [dx, dy] = dirs[dirIdx];
+    const nx = px + dx;
+    const ny = py + dy;
+    // Kümeyi kendi bloğunun sınırları içinde tut (bkz. yukarıdaki not).
+    if (nx < blockMinX || nx >= blockMinX + FOREST_BLOCK_SIZE) continue;
+    if (ny < blockMinY || ny >= blockMinY + FOREST_BLOCK_SIZE) continue;
+    const k = `${nx},${ny}`;
+    if (!members.has(k)) {
+      members.add(k);
+      frontier.push([nx, ny]);
+    }
+  }
+  return members;
+}
+
+function isInForestCluster(x: number, y: number): boolean {
+  const bx = Math.floor(x / FOREST_BLOCK_SIZE);
+  const by = Math.floor(y / FOREST_BLOCK_SIZE);
+  const members = forestClusterMembers(bx, by);
+  return members.size > 0 && members.has(`${x},${y}`);
+}
+
+function decorVariantFor(tile: Tile): string | null {
+  // 1) Orman kümesinin parçası mı? (en yüksek öncelik)
+  if (isInForestCluster(tile.x, tile.y)) return TREE_DECOR;
+
+  // 2) Seyrek serpiştirilmiş dekor (taş/kütük/kazıntı) -- farklı hash
+  // "tuzları" kullanılarak diğer kararlardan bağımsız tutuluyor.
+  const scatteredRoll = tileVariantHash(tile.x + 9973, tile.y + 9973);
+  if (scatteredRoll < SCATTERED_DECOR_CHANCE) {
+    const idx = Math.floor(tileVariantHash(tile.x - 9973, tile.y - 9973) * SCATTERED_DECOR_VARIANTS.length);
+    return SCATTERED_DECOR_VARIANTS[Math.min(idx, SCATTERED_DECOR_VARIANTS.length - 1)];
+  }
+
+  // 3) Kümeye dahil olmayan tekil/yalnız ağaç.
+  const loneTreeRoll = tileVariantHash(tile.x + 42017, tile.y + 42017);
+  if (loneTreeRoll < LONE_TREE_CHANCE) return TREE_DECOR;
+
+  return null;
 }
 
 function loadSession(): Session | null {
@@ -467,12 +538,14 @@ export default function App() {
               }}
             >
               {sortedTiles.map((tile) => {
-                const showCastle = tile.tileType === "PLAYER" && tileWidth >= CASTLE_ICON_MIN_WIDTH;
+                const showCastle = tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
+                const showNpc = tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-                // Kale artık tek karonun içine sığıyor (önceden 1.3x + büyük
-                // bir yukarı taşma vardı, komşu karolara taşıyordu).
+                // Kale/NPC kampı artık tek karonun içine sığıyor (önceden kale
+                // 1.3x + büyük bir yukarı taşma vardı, komşu karolara taşıyordu).
                 const castleSize = tileWidth * 0.92;
+                const npcSize = tileWidth * 0.92;
                 const isEmpty = tile.tileType === "EMPTY";
                 const grassImg = isEmpty ? grassVariantFor(tile) : null;
                 const decorImg = isEmpty && tileWidth >= DECOR_MIN_WIDTH ? decorVariantFor(tile) : null;
@@ -531,6 +604,19 @@ export default function App() {
                           height: castleSize,
                           left: (tileWidth - castleSize) / 2,
                           top: (tileHeight - castleSize) / 2 - tileHeight * 0.2,
+                        }}
+                      />
+                    )}
+                    {showNpc && (
+                      <img
+                        src={NPC_ICON}
+                        alt=""
+                        className="iso-castle"
+                        style={{
+                          width: npcSize,
+                          height: npcSize,
+                          left: (tileWidth - npcSize) / 2,
+                          top: (tileHeight - npcSize) / 2 - tileHeight * 0.2,
                         }}
                       />
                     )}
