@@ -136,10 +136,14 @@ button:disabled {
 /* Kabartma/cilalı buton hissi: üstte parlak vurgu, altta koyu "kenar"
    gölgesi -- basılınca (active/tıklama) o kenar payı azalıp buton bir
    tık aşağı iner, gerçek bir fiziksel düğmeye basılmış gibi. */
+/* Eren: "Üst menüde arkaplan beyaz olduğu için üzerindeki aktif bölümler
+   hafif daha koyu olsunki belirgin olsun" -- üst menü de beyaza yakın
+   olduğundan düğmeler eskiden neredeyse görünmez şekilde beyaz-üstü-beyazdı;
+   dinlenme hâli artık hafif gri tonlu, kenarlık da biraz daha belirgin. */
 .kingdom-toggle {
-  background: linear-gradient(180deg, #ffffff 0%, #eef5fb 100%);
+  background: linear-gradient(180deg, #eef1f5 0%, #dde6ef 100%);
   color: #1f2d3a;
-  border: 1px solid rgba(31, 45, 58, 0.08);
+  border: 1px solid rgba(31, 45, 58, 0.16);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 2px 0 rgba(31, 45, 58, 0.14),
@@ -148,7 +152,7 @@ button:disabled {
 }
 
 .kingdom-toggle:hover {
-  background: linear-gradient(180deg, #ffffff 0%, #e2eefb 100%);
+  background: linear-gradient(180deg, #e4ecf5 0%, #cddcea 100%);
 }
 
 .kingdom-toggle:active {
@@ -206,11 +210,6 @@ button:disabled {
 
 .summary-item-troops {
   background: linear-gradient(180deg, #fff6f4 0%, #fdeee9 100%);
-}
-
-.summary-item-production {
-  background: linear-gradient(180deg, #fffdf5 0%, #fdf3d8 100%);
-  color: #7a5c05;
 }
 
 /* Bildirim/hata banner'ları artık üst menünün altında, ortada yüzen bir
@@ -910,12 +909,84 @@ button:disabled {
   flex-shrink: 0;
 }
 
-/* Liderlik Panosu -- iki ayrı sıralama (asker / kale), her biri numaralı
-   satırlar halinde. */
-.leaderboard-sections {
+/* Eren: "Liderlik panosu öne ayrı ekran olarak çıksın" / "Mesajlar
+   raporlar bölümü de öne ayrı ekran olarak açılsın... profesyonel bir
+   şekilde tasarla" -- ikisi de artık haritanın üstüne koyu bir perde
+   (backdrop) ile açılan, ortalanmış, kendi başına bir "ekran". */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 32, 0.55);
+  backdrop-filter: blur(3px);
+  padding: 32px 16px;
+}
+
+.modal-screen {
+  width: 100%;
+  max-width: 720px;
+  max-height: 86vh;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8fb 100%);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(8, 14, 22, 0.45), 0 2px 0 rgba(255, 255, 255, 0.6) inset;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 24px;
+  background: linear-gradient(180deg, #22314a 0%, #17233a 100%);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  letter-spacing: 0.02em;
+}
+
+.modal-header .icon-btn {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+}
+
+.modal-header .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.modal-body {
+  padding: 22px 24px 26px;
+  overflow-y: auto;
+}
+
+.modal-leaderboard {
+  max-width: 780px;
+}
+
+.modal-reports {
+  max-width: 620px;
+}
+
+/* Liderlik Panosu -- iki ayrı sıralama (asker / kale), tam ekran modalda
+   artık yan yana iki sütun halinde, ilk üç sıra madalya rengiyle vurgulu. */
+.leaderboard-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 28px;
+}
+
+.leaderboard-column {
+  min-width: 0;
 }
 
 .leaderboard-heading {
@@ -963,6 +1034,45 @@ button:disabled {
 .leaderboard-value {
   font-weight: 800;
   color: #2f78e6;
+}
+
+/* İlk üç sıra: altın/gümüş/bronz vurgusu -- profesyonel bir liderlik
+   panosunun beklenen "podyum" hissi. */
+.leaderboard-top {
+  border: 1px solid transparent;
+}
+
+.leaderboard-top-1 {
+  background: linear-gradient(90deg, #fff6d8 0%, #eef5fb 100%);
+  border-color: #f0c94a;
+}
+
+.leaderboard-top-1 .leaderboard-rank {
+  color: #a8790a;
+}
+
+.leaderboard-top-2 {
+  background: linear-gradient(90deg, #eef1f4 0%, #eef5fb 100%);
+  border-color: #c3ccd4;
+}
+
+.leaderboard-top-2 .leaderboard-rank {
+  color: #6b7684;
+}
+
+.leaderboard-top-3 {
+  background: linear-gradient(90deg, #fbe9dd 0%, #eef5fb 100%);
+  border-color: #dba077;
+}
+
+.leaderboard-top-3 .leaderboard-rank {
+  color: #9c5a2c;
+}
+
+@media (max-width: 620px) {
+  .leaderboard-sections {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Mesaj & Rapor kutusu -- saldırı sonuçları, gözcü raporları, gözetlendiğine

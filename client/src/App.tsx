@@ -348,6 +348,8 @@ export default function App() {
       if (e.key !== "Escape") return;
       setPendingTarget(null);
       setActionMode(null);
+      setShowLeaderboard(false);
+      setShowReports(false);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -830,20 +832,30 @@ export default function App() {
                         .iso-ground) ki komşu karolar arasında beyaz köşe/dikiş
                         görünmesin. Üstüne serpiştirilmiş hiçbir obje yok. */}
                     <img src={GROUND_TEXTURE} alt="" className="iso-ground" draggable={false} />
-                    {showPuddle && (
-                      <img
-                        src={PUDDLE_TEXTURE}
-                        alt=""
-                        className="iso-puddle"
-                        draggable={false}
-                        style={{
-                          width: tileWidth * 0.6,
-                          height: tileWidth * 0.6 * (248 / 323),
-                          left: tileWidth * 0.2,
-                          top: tileHeight * 0.22,
-                        }}
-                      />
-                    )}
+                    {showPuddle && (() => {
+                      // Eren: "hiçbir yerleştirilen objeyi karelerin dibine
+                      // dayama, ortala" -- kale ile aynı mantık: kutunun
+                      // sol/üst konumu (karo genişliği/yüksekliği - kutu) / 2
+                      // olarak hesaplanıyor, böylece obje her zaman karonun
+                      // TAM ortasında oturuyor (önceki sabit yüzdelik
+                      // ofsetler su birikintisini hafifçe aşağı kaydırıyordu).
+                      const puddleWidth = tileWidth * 0.6;
+                      const puddleHeight = puddleWidth * (248 / 323);
+                      return (
+                        <img
+                          src={PUDDLE_TEXTURE}
+                          alt=""
+                          className="iso-puddle"
+                          draggable={false}
+                          style={{
+                            width: puddleWidth,
+                            height: puddleHeight,
+                            left: (tileWidth - puddleWidth) / 2,
+                            top: (tileHeight - puddleHeight) / 2,
+                          }}
+                        />
+                      );
+                    })()}
                     <div className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`} />
                     {showCastle && (
                       <>
@@ -923,11 +935,11 @@ export default function App() {
             <span className="summary-item summary-item-gold">
               🪙 {Math.floor(summary.gold)} <small>(+{summary.goldPerHour}/sa)</small>
             </span>
+            {/* Eren: "Toplam asker ve yanındaki saatlik üretimi birleştir
+                altın yeri gibi olsun" -- artık tek rozette, altınla aynı
+                "toplam (+üretim/sa)" biçiminde. */}
             <span className="summary-item summary-item-troops">
-              ⚔️ {totalTroops} <small>toplam asker</small>
-            </span>
-            <span className="summary-item summary-item-production">
-              🛡️ +{summary.troopsPerHour}/sa
+              ⚔️ {totalTroops} <small>(+{summary.troopsPerHour}/sa)</small>
             </span>
           </div>
         )}
@@ -989,76 +1001,89 @@ export default function App() {
         </div>
       )}
 
+      {/* Eren: "Liderlik panosu öne ayrı ekran olarak çıksın" / "Mesajlar
+          raporlar bölümü de öne ayrı ekran olarak açılsın... profesyonel
+          bir şekilde tasarla" -- bu iki panel artık haritanın üstüne
+          bağlı küçük bir açılır kutu değil, koyu bir arka plan üzerinde
+          ortalanan, kendi başına bir "ekran" gibi tam boy modal. */}
       {showLeaderboard && (
-        <div className="kingdom-dropdown">
-          <div className="tile-card-header">
-            <h2>Liderlik Panosu</h2>
-            <button className="icon-btn" onClick={() => setShowLeaderboard(false)}>✕</button>
-          </div>
-          {!leaderboard ? (
-            <p className="hint">Yükleniyor…</p>
-          ) : (
-            <div className="leaderboard-sections">
-              <div>
-                <h3 className="leaderboard-heading">⚔️ En Çok Askere Sahip</h3>
-                {leaderboard.topTroops.length === 0 && <p className="hint">Henüz veri yok.</p>}
-                <ol className="leaderboard-list">
-                  {leaderboard.topTroops.map((e, i) => (
-                    <li key={`troops-${e.username}-${i}`} className="leaderboard-row">
-                      <span className="leaderboard-rank">#{i + 1}</span>
-                      <span className="leaderboard-name">{e.username}</span>
-                      <span className="leaderboard-value">{e.value}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-              <div>
-                <h3 className="leaderboard-heading">🏰 En Çok Kaleye Sahip</h3>
-                {leaderboard.topCastles.length === 0 && <p className="hint">Henüz veri yok.</p>}
-                <ol className="leaderboard-list">
-                  {leaderboard.topCastles.map((e, i) => (
-                    <li key={`castles-${e.username}-${i}`} className="leaderboard-row">
-                      <span className="leaderboard-rank">#{i + 1}</span>
-                      <span className="leaderboard-name">{e.username}</span>
-                      <span className="leaderboard-value">{e.value}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
+        <div className="modal-overlay" onClick={() => setShowLeaderboard(false)}>
+          <div className="modal-screen modal-leaderboard" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>🏆 Liderlik Panosu</h2>
+              <button className="icon-btn" onClick={() => setShowLeaderboard(false)}>✕</button>
             </div>
-          )}
+            <div className="modal-body">
+              {!leaderboard ? (
+                <p className="hint">Yükleniyor…</p>
+              ) : (
+                <div className="leaderboard-sections">
+                  <div className="leaderboard-column">
+                    <h3 className="leaderboard-heading">⚔️ En Çok Askere Sahip</h3>
+                    {leaderboard.topTroops.length === 0 && <p className="hint">Henüz veri yok.</p>}
+                    <ol className="leaderboard-list">
+                      {leaderboard.topTroops.map((e, i) => (
+                        <li key={`troops-${e.username}-${i}`} className={`leaderboard-row ${i < 3 ? `leaderboard-top leaderboard-top-${i + 1}` : ""}`}>
+                          <span className="leaderboard-rank">#{i + 1}</span>
+                          <span className="leaderboard-name">{e.username}</span>
+                          <span className="leaderboard-value">{e.value}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                  <div className="leaderboard-column">
+                    <h3 className="leaderboard-heading">🏰 En Çok Kaleye Sahip</h3>
+                    {leaderboard.topCastles.length === 0 && <p className="hint">Henüz veri yok.</p>}
+                    <ol className="leaderboard-list">
+                      {leaderboard.topCastles.map((e, i) => (
+                        <li key={`castles-${e.username}-${i}`} className={`leaderboard-row ${i < 3 ? `leaderboard-top leaderboard-top-${i + 1}` : ""}`}>
+                          <span className="leaderboard-rank">#{i + 1}</span>
+                          <span className="leaderboard-name">{e.username}</span>
+                          <span className="leaderboard-value">{e.value}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
       {showReports && (
-        <div className="kingdom-dropdown">
-          <div className="tile-card-header">
-            <h2>Mesaj &amp; Raporlar</h2>
-            <button className="icon-btn" onClick={() => setShowReports(false)}>✕</button>
+        <div className="modal-overlay" onClick={() => setShowReports(false)}>
+          <div className="modal-screen modal-reports" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>📨 Mesaj &amp; Raporlar</h2>
+              <button className="icon-btn" onClick={() => setShowReports(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="filter-chip-row">
+                <button className={`filter-chip ${reportFilter === "all" ? "active" : ""}`} onClick={() => setReportFilter("all")}>
+                  Tümü
+                </button>
+                <button className={`filter-chip ${reportFilter === "attack" ? "active" : ""}`} onClick={() => setReportFilter("attack")}>
+                  ⚔️ Savaş
+                </button>
+                <button className={`filter-chip ${reportFilter === "scout" ? "active" : ""}`} onClick={() => setReportFilter("scout")}>
+                  🔭 Gözcü
+                </button>
+              </div>
+              {filteredReports.length === 0 && <p className="hint">Bu filtrede henüz bir mesaj yok.</p>}
+              <ul className="report-list">
+                {filteredReports.map((r) => (
+                  <li key={r.id} className={`report-row report-${r.type}`}>
+                    <div className="report-row-header">
+                      <span className="report-title">{r.title}</span>
+                      <span className="report-time">{timeAgo(r.createdAt)}</span>
+                    </div>
+                    <p className="report-body">{r.body}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <div className="filter-chip-row">
-            <button className={`filter-chip ${reportFilter === "all" ? "active" : ""}`} onClick={() => setReportFilter("all")}>
-              Tümü
-            </button>
-            <button className={`filter-chip ${reportFilter === "attack" ? "active" : ""}`} onClick={() => setReportFilter("attack")}>
-              ⚔️ Savaş
-            </button>
-            <button className={`filter-chip ${reportFilter === "scout" ? "active" : ""}`} onClick={() => setReportFilter("scout")}>
-              🔭 Gözcü
-            </button>
-          </div>
-          {filteredReports.length === 0 && <p className="hint">Bu filtrede henüz bir mesaj yok.</p>}
-          <ul className="report-list">
-            {filteredReports.map((r) => (
-              <li key={r.id} className={`report-row report-${r.type}`}>
-                <div className="report-row-header">
-                  <span className="report-title">{r.title}</span>
-                  <span className="report-time">{timeAgo(r.createdAt)}</span>
-                </div>
-                <p className="report-body">{r.body}</p>
-              </li>
-            ))}
-          </ul>
         </div>
       )}
 
