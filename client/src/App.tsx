@@ -2,13 +2,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import {
   attackTile,
+  createGuild,
   fetchMap,
+  fetchMyGuild,
   fetchMyTiles,
   fetchPlayerSummary,
+  joinGuild,
+  leaveGuild,
+  listGuilds,
   login,
+  recallReinforcement,
   register,
   reinforceTile,
   upgradeTile,
+  type Guild,
+  type GuildListEntry,
   type PlayerSummary,
   type Session,
   type Tile,
@@ -25,30 +33,29 @@ const VIEWPORT_MARGIN = 6;
 // tarzı haritalarda kullanılan oran).
 const TILE_WIDTHS = [16, 22, 32, 46, 64];
 const DEFAULT_TILE_WIDTH_INDEX = 2;
-// Oyuncu kalesi ve NPC kampı görselleri (tek dosya olduğu için tarayıcı
-// her ikisini de bir kez indirir, tüm ilgili karolarda paylaşılır).
-const CASTLE_ICON = "/buildings/player_castle.png";
-const NPC_ICON = "/buildings/npc_camp.png";
+// Oyuncu kalesi ve NPC kampı görselleri -- artık AI fotoğraf değil, kodda
+// elle çizilmiş düz renkli (flat) SVG'ler: hem tema açık/canlı çizgi film
+// stiline dönsün diye, hem de eskisi gibi "fazla dikine giden kule" hissi
+// olmasın diye bilerek geniş/basık oranlarda çizildi (bkz. viewBox'ları).
+const CASTLE_ICON = "/buildings/player_castle.svg";
+const NPC_ICON = "/buildings/npc_camp.svg";
 const ICON_MIN_WIDTH = 28;
 
-// Boş karolar için zemin dokusu + dekor görselleri. Hangi karonun hangi
-// dokuyu/dekoru aldığı (x,y) koordinatından deterministik olarak
-// hesaplanıyor (bkz. tileVariantHash) -- böylece harita her 3sn'de bir
-// yeniden çekilse bile karolar "titremiyor" / rastgele değişmiyor.
-const GRASS_VARIANTS = ["/terrain/grass_1.png", "/terrain/grass_2.png", "/terrain/grass_3.png"];
-// Çim varyantı artık TEK karo yerine GRASS_BLOCK_SIZE×GRASS_BLOCK_SIZE'lık
+// Boş karolar artık fotoğraf dokusu değil, düz (flat) canlı yeşil renk
+// kullanıyor -- hem yeni "çizgi film" temasına uyuyor hem de üç farklı
+// fotoğrafın kendi ton farkından kaynaklanan "kare kare" dikiş sorununu
+// baştan ortadan kaldırıyor. Hangi karonun hangi tonu aldığı (x,y)'den
+// deterministik olarak hesaplanıyor (bkz. tileVariantHash).
+const GRASS_COLOR_VARIANTS = ["#8bc34a", "#97cf57", "#7fb943"];
+// Çim tonu artık TEK karo yerine GRASS_BLOCK_SIZE×GRASS_BLOCK_SIZE'lık
 // bloklar halinde seçiliyor -- her karo bağımsız rastgele seçildiğinde harita
 // "kare kare" belli olan bir dama tahtası gibi görünüyordu; komşu karoların
-// aynı dokuyu paylaşması daha sakin/organik bölgeler oluşturuyor.
+// aynı tonu paylaşması daha sakin/organik bölgeler oluşturuyor.
 const GRASS_BLOCK_SIZE = 4;
-// Çim fotoğrafının üzerine uygulanan yarı saydam yeşil "yıkama" -- 3 farklı
-// dokunun kendi parlaklık/ton farkları birleşince karo sınırları belirgin
-// çiziliyordu, bu katman hepsini ortak bir tona çekip dikişleri yumuşatıyor.
-const GRASS_WASH_COLOR = "rgba(120, 178, 76, 0.5)";
-const TREE_DECOR = "/terrain/decor_trees.png";
+const TREE_DECOR = "/terrain/decor_trees.svg";
 // Tek tük (kümeye dahil olmayan) serpiştirilmiş dekorlar -- taş/kütük/kazıntı
 // artık daha seyrek (önceden %35'lik tek bir havuzun parçasıydı).
-const SCATTERED_DECOR_VARIANTS = ["/terrain/decor_ruins.png", "/terrain/decor_rocks.png", "/terrain/decor_stump.png"];
+const SCATTERED_DECOR_VARIANTS = ["/terrain/decor_ruins.svg", "/terrain/decor_rocks.svg", "/terrain/decor_stump.svg"];
 const DECOR_MIN_WIDTH = 28;
 const SCATTERED_DECOR_CHANCE = 0.14;
 // Kümeye dahil olmayan tekil (yalnız) ağaç ihtimali -- orman kümelerinden
@@ -73,11 +80,11 @@ function tileVariantHash(x: number, y: number) {
   return ((h >>> 0) % 100000) / 100000;
 }
 
-function grassVariantFor(tile: Tile) {
+function grassColorFor(tile: Tile) {
   const bx = Math.floor(tile.x / GRASS_BLOCK_SIZE);
   const by = Math.floor(tile.y / GRASS_BLOCK_SIZE);
-  const idx = Math.floor(tileVariantHash(bx, by) * GRASS_VARIANTS.length);
-  return GRASS_VARIANTS[Math.min(idx, GRASS_VARIANTS.length - 1)];
+  const idx = Math.floor(tileVariantHash(bx, by) * GRASS_COLOR_VARIANTS.length);
+  return GRASS_COLOR_VARIANTS[Math.min(idx, GRASS_COLOR_VARIANTS.length - 1)];
 }
 
 // Verilen (bx,by) bloğu için (varsa) orman kümesinin üye karolarını
@@ -159,17 +166,6 @@ function loadSession(): Session | null {
   }
 }
 
-function tileColor(tile: Tile, myId: string | undefined) {
-  if (tile.tileType === "NPC") return "#8d6e63";
-  if (tile.tileType === "EMPTY") return "#8bc34a";
-  if (tile.ownerId === myId) return "#4caf50";
-  return "#e53935";
-}
-
-function distance(a: Tile, b: Tile) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
 // Grid koordinatını (x,y) izometrik ekran merkezine çevirir. Standart 2:1
 // izometrik projeksiyon: sağa gitmek ekranda sağ-aşağı, aşağı gitmek
 // ekranda sol-aşağı hareket ettirir — bu da o klasik "baklava" ızgarayı
@@ -208,12 +204,24 @@ export default function App() {
   // bağımsız — "Krallığım" listesi haritada nerede olursan ol tam olmalı.
   const [myTiles, setMyTiles] = useState<Tile[]>([]);
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
-  const [attackFromId, setAttackFromId] = useState<number | null>(null);
-  const [troopsToSend, setTroopsToSend] = useState(10);
-  const [reinforceFromId, setReinforceFromId] = useState<number | null>(null);
-  const [troopsToReinforce, setTroopsToReinforce] = useState(10);
+  // Yeni akış: önce KENDİ kalene tıklarsın -> küçük bir menü (Saldır /
+  // Destek Gönder) açılır -> sonra haritada HEDEFİ seçersin -> asker sayısı
+  // sorulur. `actionMode` "hedef seçme" adımındayken aktif; geçerli bir
+  // hedefe tıklanınca `pendingTarget` dolar ve asker sayısı modalı açılır.
+  const [actionMode, setActionMode] = useState<{ type: "attack" | "reinforce"; fromTile: Tile } | null>(null);
+  const [pendingTarget, setPendingTarget] = useState<{
+    type: "attack" | "reinforce";
+    fromTile: Tile;
+    targetTile: Tile;
+  } | null>(null);
+  const [troopsInput, setTroopsInput] = useState(10);
   // Madde 1: tek yerde toplam altın/asker üretimi + ortak altın havuzu.
   const [summary, setSummary] = useState<PlayerSummary | null>(null);
+  // Lonca (klan) sistemi.
+  const [guild, setGuild] = useState<Guild | null>(null);
+  const [showGuildPanel, setShowGuildPanel] = useState(false);
+  const [availableGuilds, setAvailableGuilds] = useState<GuildListEntry[]>([]);
+  const [guildNameInput, setGuildNameInput] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Sağdaki/soldaki sabit barlar kaldırıldığı için "Seçili Kare" bilgi
@@ -330,6 +338,10 @@ export default function App() {
     fetchPlayerSummary(token).then(setSummary).catch(() => {});
   };
 
+  const refreshGuild = (token: string) => {
+    fetchMyGuild(token).then(setGuild).catch(() => {});
+  };
+
   function scrollToWorld(x: number, y: number, smooth: boolean) {
     const el = viewportRef.current;
     if (!el) return;
@@ -361,6 +373,25 @@ export default function App() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
+
+  useEffect(() => {
+    if (!session) return;
+    refreshGuild(session.token);
+    const interval = setInterval(() => refreshGuild(session.token), 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  // Hedef seçme modu ya da asker-sayısı modalı açıkken Esc ile iptal.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setPendingTarget(null);
+      setActionMode(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // İlk açılışta oyuncunun ilk şehri gelince oraya kaydır (aksi halde 200x80
   // dünyanın rastgele bir köşesinde, muhtemelen boş denizde kalırız).
@@ -407,24 +438,46 @@ export default function App() {
     [tiles]
   );
 
-  // Every owned tile is a *candidate* attack origin — same-island targets
-  // still need direct adjacency, but a different island only needs to be
-  // within naval range, which the client doesn't know exactly. The server
-  // is the source of truth; this list is sorted by distance so the most
-  // plausible origins show up first.
-  const attackCandidates = useMemo(() => {
-    if (!selectedTile) return [];
-    return myTiles
-      .map((t) => ({ tile: t, dist: distance(t, selectedTile), sameIsland: t.islandId === selectedTile.islandId }))
-      .sort((a, b) => a.dist - b.dist);
-  }, [selectedTile, myTiles]);
+  // Zemin artık HER karonun kendi ayrı arka plan rengini çizdiği bir "kare
+  // kare" ızgara değil -- aynı GRASS_BLOCK_SIZE bloğuna (ve dolayısıyla aynı
+  // yeşil tona) düşen komşu karolar TEK bir SVG <path> içinde birleştirilip
+  // tek seferde dolduruluyor. Aynı path üzerindeki bitişik baklavaların
+  // arasında stroke/kenar çizgisi olmadığı için görsel olarak "tek parça bir
+  // ada yaması" gibi görünüyor, ayrı karolar dizisi gibi değil. Karo türüne
+  // (NPC/oyuncu/boş) bakılmaksızın HER karo bu zemine dahil -- sahiplik artık
+  // zeminin renginden değil, binanın altındaki küçük rozetten anlaşılıyor
+  // (bkz. aşağıdaki "ownership-badge").
+  const terrainGroups = useMemo(() => {
+    const groups = new Map<string, { color: string; parts: string[] }>();
+    const half = tileWidth / 2;
+    const halfH = tileHeight / 2;
+    // Bitişik karo path'leri arasında olası kıl payı boşluk/dikiş kalmasın
+    // diye köşeleri çok hafif dışa taşırıyoruz.
+    const pad = 0.75;
+    for (const tile of tiles) {
+      const bx = Math.floor(tile.x / GRASS_BLOCK_SIZE);
+      const by = Math.floor(tile.y / GRASS_BLOCK_SIZE);
+      const groupKey = `${bx}:${by}`;
+      const color = grassColorFor(tile);
+      const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
+      const d = `M ${cx} ${cy - halfH - pad} L ${cx + half + pad} ${cy} L ${cx} ${cy + halfH + pad} L ${cx - half - pad} ${cy} Z `;
+      let group = groups.get(groupKey);
+      if (!group) {
+        group = { color, parts: [] };
+        groups.set(groupKey, group);
+      }
+      group.parts.push(d);
+    }
+    return Array.from(groups.entries()).map(([groupKey, group]) => ({
+      key: groupKey,
+      color: group.color,
+      d: group.parts.join(""),
+    }));
+  }, [tiles, tileWidth, tileHeight]);
 
-  // Madde 3: kendi kalelerin arasında asker takviyesi — anında, mesafe
-  // sınırı yok, bu yüzden basitçe seçili kale hariç tüm şehirlerim.
-  const reinforceCandidates = useMemo(() => {
-    if (!selectedTile) return [];
-    return myTiles.filter((t) => t.id !== selectedTile.id);
-  }, [selectedTile, myTiles]);
+  // Klan arkadaşlarımın oyuncu kimlikleri -- takviye hedefinin geçerli olup
+  // olmadığını (kendi kalem ya da klan arkadaşımın kalesi) anlamak için.
+  const guildMemberIds = useMemo(() => new Set((guild?.members ?? []).map((m) => m.playerId)), [guild]);
 
   async function handleAuthSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -449,6 +502,9 @@ export default function App() {
     setMyTiles([]);
     setSelectedTile(null);
     setSummary(null);
+    setGuild(null);
+    setActionMode(null);
+    setPendingTarget(null);
     hasCenteredRef.current = false;
   }
 
@@ -467,34 +523,134 @@ export default function App() {
     }
   }
 
-  async function handleAttack() {
-    if (!session || !selectedTile || attackFromId === null) return;
+  // Kendi kalemize tıklayınca açılan küçük menüden "Saldır" ya da "Destek
+  // Gönder" seçilince: bilgi kartını kapatıp "hedef seç" moduna geçiyoruz.
+  function startAction(type: "attack" | "reinforce", fromTile: Tile) {
+    setActionMode({ type, fromTile });
+    setPendingTarget(null);
+    setSelectedTile(null);
+    setSelectedScreenPos(null);
+    setMessage(null);
+    setError(null);
+  }
+
+  function cancelAction() {
+    setActionMode(null);
+    setPendingTarget(null);
+    setError(null);
+  }
+
+  // Hedef seçme modundayken haritada bir karoya tıklanınca çağrılır --
+  // hedef geçerliyse asker-sayısı modalını açar, değilse hatayı gösterip
+  // modda kalır (kullanıcı başka bir kareye tıklayıp tekrar deneyebilir).
+  function handleTargetPick(tile: Tile, screenX: number, screenY: number) {
+    if (!actionMode || !session) return;
+    const { type, fromTile } = actionMode;
+    if (tile.id === fromTile.id) {
+      setError(type === "attack" ? "Kendi kalene saldıramazsın." : "Aynı kaleye takviye gönderilemez.");
+      return;
+    }
+    if (type === "attack") {
+      if (tile.tileType === "EMPTY") {
+        setError("Boş kareye saldırılamaz. Sadece NPC kampına veya bir oyuncunun kalesine saldırabilirsin.");
+        return;
+      }
+      if (tile.ownerId === session.playerId) {
+        setError("Kendi karene saldıramazsın.");
+        return;
+      }
+    } else {
+      const isSelf = tile.ownerId === session.playerId;
+      const isGuildmate = !isSelf && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
+      if (!isSelf && !isGuildmate) {
+        setError("Sadece kendi kalene veya klan arkadaşının kalesine takviye gönderebilirsin.");
+        return;
+      }
+    }
+    setError(null);
+    setTroopsInput(10);
+    setPendingTarget({ type, fromTile, targetTile: tile });
+    setSelectedScreenPos({ x: screenX, y: screenY });
+  }
+
+  async function handleConfirmAction() {
+    if (!session || !pendingTarget) return;
     setError(null);
     setMessage(null);
+    const { type, fromTile, targetTile } = pendingTarget;
     try {
-      const result = await attackTile(session.token, selectedTile.id, attackFromId, troopsToSend);
-      setMessage(
-        result.result === "ATTACKER_WINS"
-          ? `Zafer! Kare ele geçirildi. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
-          : `Saldırı püskürtüldü. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
-      );
+      if (type === "attack") {
+        const result = await attackTile(session.token, targetTile.id, fromTile.id, troopsInput);
+        setMessage(
+          result.result === "ATTACKER_WINS"
+            ? `Zafer! Kare ele geçirildi. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
+            : `Saldırı püskürtüldü. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
+        );
+      } else {
+        await reinforceTile(session.token, targetTile.id, fromTile.id, troopsInput);
+        setMessage("Takviye gönderildi!");
+      }
       refresh();
       refreshMyTiles(session.token);
       refreshSummary(session.token);
+      setPendingTarget(null);
+      setActionMode(null);
+      setSelectedScreenPos(null);
     } catch (err) {
       setError((err as Error).message);
     }
   }
 
-  async function handleReinforce() {
-    if (!session || !selectedTile || reinforceFromId === null) return;
+  async function handleRecall(reinforcementId: number) {
+    if (!session) return;
     setError(null);
     setMessage(null);
     try {
-      await reinforceTile(session.token, selectedTile.id, reinforceFromId, troopsToReinforce);
-      setMessage("Takviye gönderildi!");
+      await recallReinforcement(session.token, reinforcementId);
+      setMessage("Askerler geri çağrıldı.");
       refresh();
       refreshMyTiles(session.token);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  function openGuildPanel() {
+    setShowGuildPanel((v) => !v);
+    if (!guild) listGuilds().then(setAvailableGuilds).catch(() => {});
+  }
+
+  async function handleCreateGuild(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session || !guildNameInput.trim()) return;
+    setError(null);
+    try {
+      const g = await createGuild(session.token, guildNameInput.trim());
+      setGuild(g);
+      setGuildNameInput("");
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleJoinGuild(guildId: number) {
+    if (!session) return;
+    setError(null);
+    try {
+      const g = await joinGuild(session.token, guildId);
+      setGuild(g);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleLeaveGuild() {
+    if (!session) return;
+    setError(null);
+    try {
+      await leaveGuild(session.token);
+      setGuild(null);
+      listGuilds().then(setAvailableGuilds).catch(() => {});
     } catch (err) {
       setError((err as Error).message);
     }
@@ -502,8 +658,8 @@ export default function App() {
 
   function goToTile(tile: Tile) {
     setSelectedTile(tile);
-    setAttackFromId(null);
-    setReinforceFromId(null);
+    setActionMode(null);
+    setPendingTarget(null);
     setMessage(null);
     setError(null);
     scrollToWorld(tile.x, tile.y, true);
@@ -579,20 +735,42 @@ export default function App() {
             height: WORLD_SIZE * tileHeight + tileHeight,
           }}
         >
+          {/* Tüm adaların zemini -- artık her karo kendi arka planını çizen
+              ayrı bir dikdörtgen değil, aynı renk bloğuna düşen komşu
+              karoların TEK bir SVG path'te birleştiği "tek parça yama"lar.
+              Bkz. terrainGroups memo'su: aradaki dikişler tamamen kayboluyor. */}
+          <svg
+            className="terrain-layer"
+            width={WORLD_SIZE * tileWidth}
+            height={WORLD_SIZE * tileHeight + tileHeight}
+          >
+            {terrainGroups.map((g) => (
+              <path key={g.key} d={g.d} fill={g.color} />
+            ))}
+          </svg>
           {sortedTiles.map((tile) => {
                 const showCastle = tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
                 const showNpc = tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
+                const isGuildmate = !isMine && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-                // Kale/NPC kampı tek karonun içine sığıyor. Kuleler çok uzun/baskın
-                // durduğu için boyut ve yukarı taşma payı küçültüldü -- NPC kampı
-                // haritada çok daha sık göründüğü için biraz daha küçük tutuluyor.
-                const castleSize = tileWidth * 0.8;
-                const npcSize = tileWidth * 0.72;
+                // Yeni SVG kale/NPC çizimleri bilerek geniş/basık oranlı (dikine
+                // gitmesinler diye) -- object-fit:contain + object-position:bottom
+                // ile kutunun tabanına yaslanıyor, bu yüzden kutu boyutu eskisi
+                // kadar büyük olmasa da okunaklı kalıyor.
+                const castleSize = tileWidth * 0.92;
+                const npcSize = tileWidth * 0.86;
+                const badgeSize = Math.max(8, castleSize * 0.24);
                 const isEmpty = tile.tileType === "EMPTY";
-                const grassImg = isEmpty ? grassVariantFor(tile) : null;
                 const decorImg = isEmpty && tileWidth >= DECOR_MIN_WIDTH ? decorVariantFor(tile) : null;
-                const decorSize = tileWidth * 0.85;
+                const decorSize = tileWidth * 0.8;
+                // NPC/dekor ikonlarına karo bazlı hafif döndürme+ölçek farkı --
+                // aynı ikon yüzlerce karoda birebir aynı dursa "fotokopi
+                // çekilmiş" gibi tekdüze/kare kare bir tekrar hissi veriyordu.
+                const npcRotation = (tileVariantHash(tile.x * 31 + 7, tile.y * 37 + 11) - 0.5) * 20;
+                const npcScale = 0.92 + tileVariantHash(tile.x * 41 + 13, tile.y * 43 + 17) * 0.18;
+                const decorRotation = (tileVariantHash(tile.x * 53 + 19, tile.y * 59 + 23) - 0.5) * 26;
+                const decorScale = 0.88 + tileVariantHash(tile.x * 61 + 29, tile.y * 67 + 31) * 0.3;
                 return (
                   <div
                     key={tile.id}
@@ -605,29 +783,18 @@ export default function App() {
                       height: tileHeight,
                     }}
                     onClick={(e) => {
+                      if (actionMode) {
+                        handleTargetPick(tile, e.clientX, e.clientY);
+                        return;
+                      }
                       setSelectedTile(tile);
-                      setAttackFromId(null);
-                      setReinforceFromId(null);
                       setMessage(null);
                       setError(null);
                       setSelectedScreenPos({ x: e.clientX, y: e.clientY });
                     }}
                     title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
-                    <div
-                      className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`}
-                      style={{
-                        backgroundColor: showCastle
-                          ? (isMine ? "#4caf50" : "#e53935")
-                          : tileColor(tile, session.playerId),
-                        // Yarı saydam yeşil "yıkama" katmanı, çim fotoğrafının üzerine
-                        // biner -- 3 farklı dokunun ton/parlaklık farkını yumuşatıp
-                        // karo sınırlarının "kare kare" belli olmasını azaltır.
-                        backgroundImage: grassImg ? `linear-gradient(${GRASS_WASH_COLOR}, ${GRASS_WASH_COLOR}), url(${grassImg})` : undefined,
-                        backgroundSize: grassImg ? "100% 100%, 100% 100%" : undefined,
-                        backgroundPosition: grassImg ? "center" : undefined,
-                      }}
-                    />
+                    <div className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`} />
                     {decorImg && (
                       <img
                         src={decorImg}
@@ -637,22 +804,41 @@ export default function App() {
                           width: decorSize,
                           height: decorSize,
                           left: (tileWidth - decorSize) / 2,
-                          top: (tileHeight - decorSize) / 2 - tileHeight * 0.18,
+                          top: (tileHeight - decorSize) / 2 - tileHeight * 0.05,
+                          transform: `rotate(${decorRotation}deg) scale(${decorScale})`,
                         }}
                       />
                     )}
                     {showCastle && (
-                      <img
-                        src={CASTLE_ICON}
-                        alt=""
-                        className="iso-castle"
-                        style={{
-                          width: castleSize,
-                          height: castleSize,
-                          left: (tileWidth - castleSize) / 2,
-                          top: (tileHeight - castleSize) / 2 - tileHeight * 0.1,
-                        }}
-                      />
+                      <>
+                        <img
+                          src={CASTLE_ICON}
+                          alt=""
+                          className="iso-castle"
+                          style={{
+                            width: castleSize,
+                            height: castleSize,
+                            left: (tileWidth - castleSize) / 2,
+                            top: (tileHeight - castleSize) / 2 - tileHeight * 0.05,
+                          }}
+                        />
+                        {/* Sahiplik artık zeminin renginden değil, kalenin
+                            yanındaki bu küçük rozetten anlaşılıyor (yeşil =
+                            benim, mavi = klan arkadaşım, kırmızı = düşman)
+                            -- zemin her yerde aynı sürekli çim olduğu için
+                            "kare kare" satranç tahtası etkisi tamamen
+                            ortadan kalkıyor. */}
+                        <div
+                          className="ownership-badge"
+                          style={{
+                            background: isMine ? "#4caf50" : isGuildmate ? "#2196f3" : "#e53935",
+                            width: badgeSize,
+                            height: badgeSize,
+                            left: (tileWidth - castleSize) / 2 + castleSize - badgeSize * 0.7,
+                            top: (tileHeight - castleSize) / 2 - tileHeight * 0.05 - badgeSize * 0.35,
+                          }}
+                        />
+                      </>
                     )}
                     {showNpc && (
                       <img
@@ -663,7 +849,8 @@ export default function App() {
                           width: npcSize,
                           height: npcSize,
                           left: (tileWidth - npcSize) / 2,
-                          top: (tileHeight - npcSize) / 2 - tileHeight * 0.1,
+                          top: (tileHeight - npcSize) / 2 - tileHeight * 0.05,
+                          transform: `rotate(${npcRotation}deg) scale(${npcScale})`,
                         }}
                       />
                     )}
@@ -683,10 +870,24 @@ export default function App() {
         )}
         <div className="player-info">
           <button
+            className="kingdom-toggle"
+            disabled={myTiles.length === 0}
+            onClick={() => myTiles[0] && goToTile(myTiles[0])}
+            title="Ana kalene git"
+          >
+            🧭 Krallığıma Git
+          </button>
+          <button
             className={`kingdom-toggle ${showKingdomList ? "active" : ""}`}
             onClick={() => setShowKingdomList((v) => !v)}
           >
             🏰 Krallığım ({myTiles.length})
+          </button>
+          <button
+            className={`kingdom-toggle ${showGuildPanel ? "active" : ""}`}
+            onClick={openGuildPanel}
+          >
+            🛡️ {guild ? guild.name : "Lonca"}
           </button>
           <span>{session.username}</span>
           <button onClick={handleLogout}>Çıkış</button>
@@ -697,6 +898,73 @@ export default function App() {
         <div className="hud-banners">
           {message && <div className="banner success">{message}</div>}
           {error && <div className="banner error">{error}</div>}
+        </div>
+      )}
+
+      {actionMode && !pendingTarget && (
+        <div className="action-hint">
+          <span>
+            {actionMode.type === "attack"
+              ? "Saldırmak istediğin kaleyi haritada seç"
+              : "Takviye göndermek istediğin kaleyi (kendi ya da klan arkadaşının) haritada seç"}
+          </span>
+          <button className="icon-btn" onClick={cancelAction}>✕ İptal</button>
+        </div>
+      )}
+
+      {showGuildPanel && (
+        <div className="kingdom-dropdown">
+          <div className="tile-card-header">
+            <h2>Lonca</h2>
+            <button className="icon-btn" onClick={() => setShowGuildPanel(false)}>✕</button>
+          </div>
+          {guild ? (
+            <div>
+              <p>
+                <strong>{guild.name}</strong> — {guild.memberCount} üye
+              </p>
+              <ul className="city-list">
+                {guild.members.map((m) => (
+                  <li key={m.playerId}>
+                    <div className="city-row">
+                      <div>{m.username}{m.playerId === guild.leaderId ? " 👑" : ""}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <button onClick={handleLeaveGuild}>Loncadan Ayrıl</button>
+            </div>
+          ) : (
+            <div>
+              <form onSubmit={handleCreateGuild} className="login-form">
+                <input
+                  placeholder="Yeni lonca adı"
+                  value={guildNameInput}
+                  onChange={(e) => setGuildNameInput(e.target.value)}
+                  minLength={3}
+                  maxLength={24}
+                />
+                <button type="submit">Lonca Kur</button>
+              </form>
+              <p className="hint">Ya da mevcut bir loncaya katıl:</p>
+              {availableGuilds.length === 0 && <p className="hint">Henüz hiç lonca yok.</p>}
+              <ul className="city-list">
+                {availableGuilds.map((g) => (
+                  <li key={g.id}>
+                    <div className="city-row">
+                      <div>
+                        <div>{g.name}</div>
+                        <div className="stats">👑 {g.leaderUsername} &nbsp; 👥 {g.memberCount}</div>
+                      </div>
+                    </div>
+                    <div className="row-actions">
+                      <button onClick={() => handleJoinGuild(g.id)}>Katıl</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -757,6 +1025,14 @@ export default function App() {
                 {selectedTile.level} — ada #{selectedTile.islandId}
               </p>
               <p>⚔️ {selectedTile.troops} asker &nbsp; 🪙 +{selectedTile.goldPerHour}/sa</p>
+              {selectedTile.reinforcementTroops > 0 && (
+                <p>🛡️ +{selectedTile.reinforcementTroops} takviye (klan)</p>
+              )}
+              {!selectedTile.ownerId
+                ? null
+                : selectedTile.ownerId === session.playerId
+                ? null
+                : guildMemberIds.has(selectedTile.ownerId) && <p className="hint">Bu bir klan arkadaşının kalesi.</p>}
 
               {selectedTile.tileType === "EMPTY" && (
                 <p className="hint">
@@ -766,82 +1042,70 @@ export default function App() {
               )}
 
               {selectedTile.tileType !== "EMPTY" && selectedTile.ownerId !== session.playerId && (
-                <div className="attack-form">
-                  {attackCandidates.length === 0 ? (
-                    <p className="hint">Önce bir şehrin olmalı.</p>
-                  ) : (
-                    <>
-                      <label>
-                        Nereden saldırılsın:
-                        <select
-                          value={attackFromId ?? ""}
-                          onChange={(e) => setAttackFromId(Number(e.target.value))}
-                        >
-                          <option value="" disabled>
-                            Şehir seç
-                          </option>
-                          {attackCandidates.map(({ tile: t, dist, sameIsland }) => (
-                            <option key={t.id} value={t.id}>
-                              ({t.x},{t.y}) — {t.troops} asker — {sameIsland ? "aynı ada" : `${Math.round(dist)} mesafe (deniz aşımı)`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Gönderilecek asker:
-                        <input
-                          type="number"
-                          min={1}
-                          value={troopsToSend}
-                          onChange={(e) => setTroopsToSend(Number(e.target.value))}
-                        />
-                      </label>
-                      <button disabled={attackFromId === null} onClick={handleAttack}>
-                        Saldır
-                      </button>
-                    </>
-                  )}
-                </div>
+                <p className="hint">
+                  Saldırmak için önce kendi kalene tıkla, açılan menüden "Saldır"ı seç, sonra bu kareyi hedef göster.
+                </p>
               )}
 
               {selectedTile.ownerId === session.playerId && (
-                <div className="attack-form">
-                  {reinforceCandidates.length === 0 ? (
-                    <p className="hint">Takviye göndermek için başka bir şehrin olmalı.</p>
-                  ) : (
-                    <>
-                      <label>
-                        Nereden takviye gönderilsin:
-                        <select
-                          value={reinforceFromId ?? ""}
-                          onChange={(e) => setReinforceFromId(Number(e.target.value))}
-                        >
-                          <option value="" disabled>
-                            Şehir seç
-                          </option>
-                          {reinforceCandidates.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              ({t.x},{t.y}) — {t.troops} asker
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Gönderilecek asker:
-                        <input
-                          type="number"
-                          min={1}
-                          value={troopsToReinforce}
-                          onChange={(e) => setTroopsToReinforce(Number(e.target.value))}
-                        />
-                      </label>
-                      <button disabled={reinforceFromId === null} onClick={handleReinforce}>
-                        Takviye Gönder
-                      </button>
-                    </>
-                  )}
+                <div className="castle-actions">
+                  <button onClick={() => startAction("attack", selectedTile)}>⚔️ Saldır</button>
+                  <button onClick={() => startAction("reinforce", selectedTile)}>🛡️ Destek Gönder</button>
+                  <button onClick={() => handleUpgrade(selectedTile.id)}>⬆️ Yükselt</button>
                 </div>
               )}
+
+              {selectedTile.reinforcements
+                .filter((r) => r.fromPlayerId === session.playerId)
+                .map((r) => (
+                  <div key={r.id} className="reinforcement-row">
+                    <span>{r.troops} asker gönderdin</span>
+                    <button onClick={() => handleRecall(r.id)}>Geri Çağır</button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        );
+      })()}
+
+      {pendingTarget && (() => {
+        const CARD_WIDTH = 300;
+        const margin = 12;
+        const pos = selectedScreenPos ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let left = pos.x + 18;
+        let top = pos.y - 20;
+        if (left + CARD_WIDTH > window.innerWidth - margin) left = pos.x - CARD_WIDTH - 18;
+        left = Math.max(margin, Math.min(left, window.innerWidth - CARD_WIDTH - margin));
+        top = Math.max(margin, Math.min(top, window.innerHeight - 260 - margin));
+        const maxTroops =
+          pendingTarget.type === "attack" ? pendingTarget.fromTile.troops : pendingTarget.fromTile.troops;
+        return (
+          <div className="tile-card" style={{ left, top }}>
+            <div className="tile-card-header">
+              <h2>{pendingTarget.type === "attack" ? "Saldır" : "Destek Gönder"}</h2>
+              <button className="icon-btn" onClick={cancelAction}>✕</button>
+            </div>
+            <div>
+              <p>
+                ({pendingTarget.fromTile.x},{pendingTarget.fromTile.y}) → ({pendingTarget.targetTile.x},{pendingTarget.targetTile.y})
+              </p>
+              <p className="hint">Elindeki asker: {maxTroops}</p>
+              <div className="attack-form">
+                <label>
+                  Gönderilecek asker:
+                  <input
+                    type="number"
+                    min={1}
+                    max={maxTroops}
+                    value={troopsInput}
+                    onChange={(e) => setTroopsInput(Number(e.target.value))}
+                    autoFocus
+                  />
+                </label>
+                <button disabled={troopsInput <= 0 || troopsInput > maxTroops} onClick={handleConfirmAction}>
+                  {pendingTarget.type === "attack" ? "Saldır" : "Gönder"}
+                </button>
+              </div>
             </div>
           </div>
         );

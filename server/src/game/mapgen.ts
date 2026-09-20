@@ -1,6 +1,7 @@
-import { pool } from "../db.js";
+import { pool, hasMigration, markMigration } from "../db.js";
 import { productionForLevel } from "./resources.js";
 import type { Settings } from "./settings.js";
+import type { TileType } from "../types.js";
 
 // Not: WORLD_SIZE burada ve client/src/App.tsx'te birebir aynı olmalı —
 // ikisi de izometrik/harita hesaplarında kullanıyor.
@@ -32,6 +33,7 @@ interface LandTile {
   x: number;
   y: number;
   islandId: number;
+  isCoastal: boolean;
 }
 
 interface CellBounds {
@@ -82,6 +84,48 @@ function neighbors8(x: number, y: number): [number, number][] {
 
 function inBounds(x: number, y: number) {
   return x >= 0 && x < WORLD_SIZE && y >= 0 && y < WORLD_SIZE;
+}
+
+function sameIslandNeighborCount(
+  occupied: Map<string, number>,
+  x: number,
+  y: number,
+  islandId: number
+) {
+  let count = 0;
+  for (const [nx, ny] of neighbors8(x, y)) {
+    if (occupied.get(key(nx, ny)) === islandId) count++;
+  }
+  return count;
+}
+
+// Büyümenin her adımında hangi mevcut karodan devam edileceğini seçer.
+// Eskiden tamamen rastgele bir üye karo seçiliyordu -- bu, her açık köşenin
+// birçok geçerli komşu yönü olduğu için zamanla dolup düzleşen, sonuçta
+// izometrik görünümde neredeyse düzgün bir baklava/dikdörtgene benzeyen
+// yuvarlak/dışbükey bir ada siluetine yol açıyordu. Bunun yerine birkaç
+// rastgele aday arasından "en az aynı-ada komşusu olanı" (yani ucu/kenarı en
+// açık, en 'ince' olanı) seçiyoruz -- bu, dolgun köşeleri doldurmak yerine
+// ince çıkıntıların/yarımadaların uzamasını teşvik ediyor, sonuçta koylu-
+// körfezli, çok daha organik bir kıyı şeridi oluşuyor.
+const FRONTIER_TOURNAMENT_SIZE = 5;
+
+function pickGrowthOrigin(
+  tiles: [number, number][],
+  occupied: Map<string, number>,
+  islandId: number
+): [number, number] {
+  let best: [number, number] = tiles[Math.floor(Math.random() * tiles.length)];
+  let bestCount = sameIslandNeighborCount(occupied, best[0], best[1], islandId);
+  for (let t = 1; t < FRONTIER_TOURNAMENT_SIZE; t++) {
+    const candidate = tiles[Math.floor(Math.random() * tiles.length)];
+    const count = sameIslandNeighborCount(occupied, candidate[0], candidate[1], islandId);
+    if (count < bestCount) {
+      best = candidate;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 /**
@@ -143,7 +187,7 @@ function generateIslandLayout(): LandTile[] {
 
     let stalls = 0;
     while (islandTiles.length < targetSize && stalls < MAX_GROWTH_STALLS) {
-      const [bx, by] = islandTiles[Math.floor(Math.random() * islandTiles.length)];
+      const [bx, by] = pickGrowthOrigin(islandTiles, occupied, islandId);
       const candidates = neighbors8(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId, allowed));
       if (candidates.length === 0) {
         stalls++;
@@ -156,9 +200,21 @@ function generateIslandLayout(): LandTile[] {
     }
 
     for (const [x, y] of islandTiles) {
-      allTiles.push({ x, y, islandId });
+      allTiles.push({ x, y, islandId, isCoastal: false });
     }
   });
+
+  // Kıyı hesaplama: bir karo, aynı adaya ait OLMAYAN (farklı ada ya da boş
+  // deniz) en az bir komşusu varsa kıyı sayılır. Kale/NPC bu karolarda asla
+  // yerleşmemeli (Eren'in isteği) -- sadece adanın iç kısmı yerleşime açık.
+  for (const tile of allTiles) {
+    for (const [nx, ny] of neighbors8(tile.x, tile.y)) {
+      if (occupied.get(key(nx, ny)) !== tile.islandId) {
+        tile.isCoastal = true;
+        break;
+      }
+    }
+  }
 
   return allTiles;
 }
@@ -183,12 +239,14 @@ export async function ensureMapGenerated(settings: Settings) {
       let p = 1;
 
       for (const tile of chunk) {
-        const isNpc = Math.random() < settings.npc_spawn_chance;
+        // Kıyı karolarında (adanın dış sınırından 1 kare) asla NPC kampı
+        // oluşmaz -- sadece adanın iç kısmı NPC'ye açık (Eren'in isteği).
+        const isNpc = !tile.isCoastal && Math.random() < settings.npc_spawn_chance;
         const level = isNpc ? 1 + Math.floor(Math.random() * 3) : 1;
         const production = productionForLevel(level, settings);
 
         values.push(
-          `($${p++}, $${p++}, NULL, $${p++}, $${p++}, $${p++}, $${p++}, 0, 0, $${p++}, $${p++})`
+          `($${p++}, $${p++}, NULL, $${p++}, $${p++}, $${p++}, $${p++}, 0, 0, $${p++}, $${p++}, $${p++})`
         );
         params.push(
           tile.x,
@@ -198,13 +256,14 @@ export async function ensureMapGenerated(settings: Settings) {
           level,
           production.gold_per_hour,
           isNpc ? level * 20 : 0, // NPC garrison, static
-          now
+          now,
+          tile.isCoastal
         );
       }
 
       await client.query(
         `INSERT INTO tiles (x, y, owner_id, island_id, tile_type, level, gold_per_hour,
-                            troops_per_hour, stored_gold, stored_troops, last_collected_at)
+                            troops_per_hour, stored_gold, stored_troops, last_collected_at, is_coastal)
          VALUES ${values.join(", ")}`,
         params
       );
@@ -219,9 +278,87 @@ export async function ensureMapGenerated(settings: Settings) {
   }
 }
 
+// Yeni oyuncunun başlangıç şehri de bir "kale" olduğu için aynı kıyı
+// tamponu kuralına tabi -- ORDER BY is_coastal ASC önce iç karoları dener,
+// hiç kalmadıysa (küçük bir adada iç karo tükenmiş olabilir) otomatik
+// olarak kıyı karolarına düşer.
 export async function pickRandomEmptyTile(): Promise<number | null> {
   const { rows } = await pool.query<{ id: number }>(
-    "SELECT id FROM tiles WHERE tile_type = 'EMPTY' ORDER BY RANDOM() LIMIT 1"
+    "SELECT id FROM tiles WHERE tile_type = 'EMPTY' ORDER BY is_coastal ASC, RANDOM() LIMIT 1"
   );
   return rows[0]?.id ?? null;
+}
+
+// Zaten canlı olan bir haritaya geriye dönük olarak uygulanan, TEK SEFERLİK
+// (schema_migrations ile korunan) geçiş: hiçbir oyuncu verisini silmez,
+// sadece henüz kimsenin fethetmediği (owner_id NULL) NPC kamplarını
+// düzenler -- kıyıdakileri boşaltır (yeni kural: kıyıda asla NPC olmaz) ve
+// iç kısımdakilerin bir kısmını da seyrekleştirir (Eren'in "NPC'ler
+// azalsın" isteği). Oyuncuların zaten sahip olduğu hiçbir kareye dokunmaz.
+export async function applyNpcBorderMigration(settings: Settings) {
+  const MIGRATION_NAME = "npc_border_buffer_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  const { rows } = await pool.query<{
+    id: number;
+    x: number;
+    y: number;
+    island_id: number;
+    tile_type: TileType;
+    owner_id: string | null;
+  }>("SELECT id, x, y, island_id, tile_type, owner_id FROM tiles");
+
+  if (rows.length === 0) {
+    await markMigration(MIGRATION_NAME);
+    return;
+  }
+
+  console.log(`[migration] ${MIGRATION_NAME}: ${rows.length} karo işlenecek...`);
+
+  const occupied = new Map<string, number>();
+  for (const t of rows) occupied.set(key(t.x, t.y), t.island_id);
+
+  function isCoastalRow(t: { x: number; y: number; island_id: number }) {
+    for (const [nx, ny] of neighbors8(t.x, t.y)) {
+      if (occupied.get(key(nx, ny)) !== t.island_id) return true;
+    }
+    return false;
+  }
+
+  const production = productionForLevel(1, settings);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    for (const t of rows) {
+      const coastal = isCoastalRow(t);
+      if (coastal) {
+        await client.query("UPDATE tiles SET is_coastal = true WHERE id = $1", [t.id]);
+      }
+
+      if (t.tile_type !== "NPC" || t.owner_id) continue; // sadece fethedilmemiş NPC kampları
+
+      // Kıyıdaki her fethedilmemiş NPC kampı boşaltılır (yeni kural).
+      // İç kısımdakilerin de yarısı boşaltılır (yoğunluk azaltma).
+      const shouldClear = coastal || Math.random() < 0.5;
+      if (shouldClear) {
+        await client.query(
+          `UPDATE tiles
+           SET tile_type = 'EMPTY', level = 1, gold_per_hour = $1, troops_per_hour = 0, stored_troops = 0
+           WHERE id = $2`,
+          [production.gold_per_hour, t.id]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı.`);
 }

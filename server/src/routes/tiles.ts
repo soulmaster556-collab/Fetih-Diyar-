@@ -10,11 +10,62 @@ import type { Player, TileRow } from "../types.js";
 
 export const tilesRouter = Router();
 
+interface ReinforcementInfo {
+  id: number;
+  fromPlayerId: string;
+  fromUsername: string;
+  troops: number;
+}
+
+// Bir veya birden fazla karo için klan takviyesi kayıtlarını TEK sorguda
+// toplu çeker (N+1 sorgu olmasın diye) -- tile_id -> takviye listesi.
+async function fetchReinforcementsMap(tileIds: number[]): Promise<Map<number, ReinforcementInfo[]>> {
+  const map = new Map<number, ReinforcementInfo[]>();
+  if (tileIds.length === 0) return map;
+  const { rows } = await pool.query<{
+    id: number;
+    tile_id: number;
+    from_player_id: string;
+    from_username: string;
+    troops: number;
+  }>(
+    `SELECT tr.id, tr.tile_id, tr.from_player_id, p.username as from_username, tr.troops
+     FROM tile_reinforcements tr
+     JOIN players p ON p.id = tr.from_player_id
+     WHERE tr.tile_id = ANY($1)`,
+    [tileIds]
+  );
+  for (const r of rows) {
+    const list = map.get(r.tile_id) ?? [];
+    list.push({ id: r.id, fromPlayerId: r.from_player_id, fromUsername: r.from_username, troops: Number(r.troops) });
+    map.set(r.tile_id, list);
+  }
+  return map;
+}
+
+async function sameGuild(playerIdA: string, playerIdB: string): Promise<boolean> {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM guild_members gm1
+     JOIN guild_members gm2 ON gm1.guild_id = gm2.guild_id
+     WHERE gm1.player_id = $1 AND gm2.player_id = $2`,
+    [playerIdA, playerIdB]
+  );
+  return rows.length > 0;
+}
+
 // Altın artık kale başına değil, oyuncunun ortak havuzunda tutulduğu için
 // bir karonun kendi "gold" alanı yok — sadece üretim hızı (goldPerHour) ve
-// (kale ise) canlı asker sayısı gösterilir.
-function serializeTile(tile: TileRow, settings: Settings, now: number) {
+// (kale ise) canlı asker sayısı gösterilir. `reinforcements`: klan
+// arkadaşlarından gelen, sahiplenilemeyen (sadece savunma için) takviye
+// askerleri -- bu askerler `troops` alanına dahil DEĞİL, ayrı gösteriliyor.
+function serializeTile(
+  tile: TileRow,
+  settings: Settings,
+  now: number,
+  reinforcements: ReinforcementInfo[] = []
+) {
   const troops = computeLiveTroops(tile, settings, now);
+  const reinforcementTroops = reinforcements.reduce((sum, r) => sum + r.troops, 0);
   return {
     id: tile.id,
     x: tile.x,
@@ -26,6 +77,8 @@ function serializeTile(tile: TileRow, settings: Settings, now: number) {
     goldPerHour: tile.gold_per_hour,
     troopsPerHour: tile.troops_per_hour,
     troops: Math.floor(troops),
+    reinforcementTroops: Math.floor(reinforcementTroops),
+    reinforcements: reinforcements.map((r) => ({ ...r, troops: Math.floor(r.troops) })),
   };
 }
 
@@ -67,7 +120,8 @@ tilesRouter.get("/", async (req, res) => {
           [bbox.minX, bbox.maxX, bbox.minY, bbox.maxY]
         )
       : await pool.query<TileRow>("SELECT * FROM tiles");
-    res.json(rows.map((t) => serializeTile(t, settings, now)));
+    const reinforcementMap = await fetchReinforcementsMap(rows.map((t) => t.id));
+    res.json(rows.map((t) => serializeTile(t, settings, now, reinforcementMap.get(t.id))));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -82,7 +136,8 @@ tilesRouter.get("/me", authenticate, async (req: any, res) => {
     const { rows } = await pool.query<TileRow>("SELECT * FROM tiles WHERE owner_id = $1", [
       player.id,
     ]);
-    res.json(rows.map((t) => serializeTile(t, settings, now)));
+    const reinforcementMap = await fetchReinforcementsMap(rows.map((t) => t.id));
+    res.json(rows.map((t) => serializeTile(t, settings, now, reinforcementMap.get(t.id))));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -132,7 +187,8 @@ tilesRouter.post("/:id/upgrade", authenticate, async (req: any, res) => {
         [newLevel, production.gold_per_hour, production.troops_per_hour, liveTroops, now, tileId]
       );
       await client.query("COMMIT");
-      res.json(serializeTile(updatedRows[0], settings, now));
+      const reinforcements = (await fetchReinforcementsMap([tileId])).get(tileId);
+      res.json(serializeTile(updatedRows[0], settings, now, reinforcements));
     } catch (err) {
       await client.query("ROLLBACK");
       throw err;
@@ -145,11 +201,15 @@ tilesRouter.post("/:id/upgrade", authenticate, async (req: any, res) => {
   }
 });
 
-// Kendi kaleleri arasında asker takviyesi (Madde 3). Asker üretimi kaleye
-// özel kaldığı için oyuncu kendi kaleleri arasında serbestçe asker
-// aktarabilmeli. Şimdilik anında ve mesafe sınırı yok — mesafeye bağlı
-// süre/menzil kısıtı ileride saldırı/casusluk gibi özelliklerle birlikte
-// eklenecek.
+// Asker takviyesi (Madde: klan arkadaşlarına destek). İki durum var:
+//  1) Hedef KENDİ kalen -> askerler doğrudan hedefin stored_troops'una
+//     karışır (zaten senin ordun, aynı krallık içi yeniden konuşlanma).
+//  2) Hedef bir KLAN ARKADAŞININ kalesi -> askerler hedefin stored_troops'una
+//     KARIŞMAZ (Eren'in isteği: "sahiplenemezler, sadece savunma için") --
+//     ayrı bir tile_reinforcements satırı olarak tutulur, savunma gücüne
+//     eklenir ve gönderen istediği an geri çağırabilir (bkz. /recall).
+// Şimdilik anında ve mesafe sınırı yok — mesafeye bağlı süre/menzil kısıtı
+// ileride saldırı/casusluk gibi özelliklerle birlikte eklenecek.
 tilesRouter.post("/:id/reinforce", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
@@ -173,15 +233,23 @@ tilesRouter.post("/:id/reinforce", authenticate, async (req: any, res) => {
     if (!fromTile || !targetTile) return res.status(404).json({ error: "Kare bulunamadı." });
     if (fromTile.owner_id !== player.id)
       return res.status(403).json({ error: "Gönderen kale sana ait değil." });
-    if (targetTile.owner_id !== player.id)
-      return res.status(403).json({ error: "Sadece kendi kalelerin arasında takviye yapabilirsin." });
+    if (!targetTile.owner_id) {
+      return res.status(400).json({ error: "Sahipsiz bir kareye takviye gönderilemez." });
+    }
+
+    const isSelf = targetTile.owner_id === player.id;
+    const isGuildmate = !isSelf && (await sameGuild(player.id, targetTile.owner_id));
+    if (!isSelf && !isGuildmate) {
+      return res
+        .status(403)
+        .json({ error: "Sadece kendi kalelerine veya klan arkadaşlarının kalelerine takviye gönderebilirsin." });
+    }
 
     const fromLiveTroops = computeLiveTroops(fromTile, settings, now);
     const troopsSent = Math.floor(troopsSentRaw);
     if (!troopsSent || troopsSent <= 0 || troopsSent > fromLiveTroops) {
       return res.status(400).json({ error: "Geçersiz asker sayısı." });
     }
-    const targetLiveTroops = computeLiveTroops(targetTile, settings, now);
 
     const client = await pool.connect();
     try {
@@ -190,10 +258,20 @@ tilesRouter.post("/:id/reinforce", authenticate, async (req: any, res) => {
         "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
         [fromLiveTroops - troopsSent, now, fromTile.id]
       );
-      await client.query(
-        "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
-        [targetLiveTroops + troopsSent, now, targetTile.id]
-      );
+
+      if (isSelf) {
+        const targetLiveTroops = computeLiveTroops(targetTile, settings, now);
+        await client.query(
+          "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
+          [targetLiveTroops + troopsSent, now, targetTile.id]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO tile_reinforcements (tile_id, from_player_id, from_tile_id, troops, sent_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [targetTile.id, player.id, fromTile.id, troopsSent, now]
+        );
+      }
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
@@ -202,7 +280,74 @@ tilesRouter.post("/:id/reinforce", authenticate, async (req: any, res) => {
       client.release();
     }
 
-    res.json(serializeTile({ ...targetTile, stored_troops: targetLiveTroops + troopsSent, last_collected_at: now }, settings, now));
+    const { rows: freshTargetRows } = await pool.query<TileRow>("SELECT * FROM tiles WHERE id = $1", [targetTile.id]);
+    const reinforcements = (await fetchReinforcementsMap([targetTile.id])).get(targetTile.id);
+    res.json(serializeTile(freshTargetRows[0], settings, now, reinforcements));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
+// Klan arkadaşına gönderilen (henüz savaşta kaybedilmemiş) takviyeyi geri
+// çağırma. Sadece gönderen kişi çağırabilir. Askerler, gönderildiği kale
+// hâlâ gönderenin ise oraya, değilse gönderenin herhangi bir kalesine döner.
+tilesRouter.post("/reinforcements/:id/recall", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    const reinforcementId = Number(req.params.id);
+    const now = Date.now();
+    const settings = await loadSettings();
+
+    const { rows } = await pool.query<{
+      id: number;
+      tile_id: number;
+      from_player_id: string;
+      from_tile_id: number;
+      troops: number;
+    }>("SELECT * FROM tile_reinforcements WHERE id = $1", [reinforcementId]);
+    const reinforcement = rows[0];
+    if (!reinforcement) return res.status(404).json({ error: "Takviye bulunamadı (belki zaten geri çağrıldı ya da savaşta kaybedildi)." });
+    if (reinforcement.from_player_id !== player.id) {
+      return res.status(403).json({ error: "Sadece kendi gönderdiğin takviyeyi geri çağırabilirsin." });
+    }
+
+    let destTileId = reinforcement.from_tile_id;
+    const { rows: destRows } = await pool.query<TileRow>(
+      "SELECT * FROM tiles WHERE id = $1 AND owner_id = $2",
+      [destTileId, player.id]
+    );
+    let destTile = destRows[0];
+    if (!destTile) {
+      const { rows: anyOwnedRows } = await pool.query<TileRow>(
+        "SELECT * FROM tiles WHERE owner_id = $1 LIMIT 1",
+        [player.id]
+      );
+      destTile = anyOwnedRows[0];
+      if (!destTile) {
+        return res.status(400).json({ error: "Askerlerini geri çağırmak için en az bir kalen olmalı." });
+      }
+      destTileId = destTile.id;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const destLiveTroops = computeLiveTroops(destTile, settings, now);
+      await client.query(
+        "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
+        [destLiveTroops + Number(reinforcement.troops), now, destTileId]
+      );
+      await client.query("DELETE FROM tile_reinforcements WHERE id = $1", [reinforcementId]);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({ ok: true, returnedTo: destTileId, troops: Math.floor(Number(reinforcement.troops)) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -263,8 +408,17 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
       return res.status(400).json({ error: "Geçersiz asker sayısı." });
     }
 
-    const targetLiveTroops = computeLiveTroops(targetTile, settings, now);
-    const combat = resolveCombat(troopsSent, targetLiveTroops, settings);
+    // Savunma gücü artık sadece kalenin kendi garnizonu değil, klan
+    // arkadaşlarının o kaleye gönderdiği (sahiplenilemeyen) takviyeleri de
+    // içeriyor (Eren'in isteği: takviyeler savunmaya katkı sağlamalı).
+    const targetHomeLiveTroops = computeLiveTroops(targetTile, settings, now);
+    const { rows: reinforcementRows } = await pool.query<{ id: number; troops: number }>(
+      "SELECT id, troops FROM tile_reinforcements WHERE tile_id = $1",
+      [targetTile.id]
+    );
+    const reinforcementTotal = reinforcementRows.reduce((sum, r) => sum + Number(r.troops), 0);
+    const targetTotalTroops = targetHomeLiveTroops + reinforcementTotal;
+    const combat = resolveCombat(troopsSent, targetTotalTroops, settings);
 
     const client = await pool.connect();
     try {
@@ -299,11 +453,26 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
            WHERE id = $6`,
           [player.id, production.gold_per_hour, production.troops_per_hour, combat.survivingAttackerTroops, now, targetTile.id]
         );
+        // Kale el değiştirince orada konuşlanmış klan takviyeleri de kaybedilir.
+        await client.query("DELETE FROM tile_reinforcements WHERE tile_id = $1", [targetTile.id]);
       } else {
+        // Savunan kazandı: hayatta kalan asker sayısını, savaş öncesi ev
+        // garnizonu ile takviyeler arasındaki orana göre paylaştırıyoruz --
+        // takviyeler tamamen dokunulmaz kalmıyor ama ayrıca "sahiplenilmiş"
+        // de olmuyor, sadece orantılı kayıp alıyor.
+        const ratio = targetTotalTroops > 0 ? combat.survivingDefenderTroops / targetTotalTroops : 0;
         await client.query(
           "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
-          [combat.survivingDefenderTroops, now, targetTile.id]
+          [targetHomeLiveTroops * ratio, now, targetTile.id]
         );
+        for (const r of reinforcementRows) {
+          const survivingTroops = Number(r.troops) * ratio;
+          if (survivingTroops < 1) {
+            await client.query("DELETE FROM tile_reinforcements WHERE id = $1", [r.id]);
+          } else {
+            await client.query("UPDATE tile_reinforcements SET troops = $1 WHERE id = $2", [survivingTroops, r.id]);
+          }
+        }
       }
 
       await client.query(

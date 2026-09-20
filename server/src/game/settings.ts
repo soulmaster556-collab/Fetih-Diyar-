@@ -43,10 +43,10 @@ export const SETTING_DEFS = [
     key: "npc_spawn_chance",
     label: "NPC kampı oluşma olasılığı",
     description:
-      "Yeni harita üretildiğinde her karenin NPC kampı olma ihtimali (0-1); geri kalanı boş kare olur (oyuncu başlangıç noktaları). Boş karelere saldırı olmadığı için ilerleme büyük ölçüde NPC fethine dayanır. Mevcut haritayı etkilemez.",
-    // Önceden 0.6 idi -- adaların ~%60'ı NPC kampıydı, bu da boş/genişleme
-    // alanını çok daraltıyordu. 0.3'e düşürüldü (Eren'in isteği).
-    default: 0.3,
+      "Yeni harita üretildiğinde adanın İÇ kısmındaki (kıyı hariç) her karenin NPC kampı olma ihtimali (0-1); geri kalanı boş kare olur (oyuncu başlangıç noktaları). Kıyı karolarında hiçbir zaman NPC/kale olmaz. Boş karelere saldırı olmadığı için ilerleme büyük ölçüde NPC fethine dayanır. Mevcut haritayı etkilemez (bkz. applyNpcBorderMigration canlı haritayı bir kereliğine seyrekleştirir).",
+    // Önce 0.6, sonra 0.3 idi -- NPC'ler hâlâ fazla yoğundu, 0.15'e
+    // düşürüldü (Eren'in isteği: "NPC'ler azalıcak").
+    default: 0.15,
   },
   {
     key: "starting_troops",

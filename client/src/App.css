@@ -2,11 +2,15 @@
   box-sizing: border-box;
 }
 
+/* Koyu/gece temasından, canlı ve açık bir "çizgi film" temasına geçildi --
+   gökyüzü mavisi arka plan, beyaza yakın panel/kart yüzeyleri, koyu lacivert
+   metin. Kaleler/NPC/dekor artık foto değil düz renkli (flat) SVG çizimler
+   (bkz. client/public/buildings, client/public/terrain). */
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
-  background: #1b1f24;
-  color: #eee;
+  background: #cdeeff;
+  color: #1f2d3a;
 }
 
 .login-screen {
@@ -17,24 +21,25 @@ body {
   justify-content: center;
   gap: 12px;
   text-align: center;
+  background: linear-gradient(180deg, #bfe8ff 0%, #d7f3d0 100%);
 }
 
 .subtitle {
-  color: #9aa4af;
+  color: #4d6373;
   margin-top: -8px;
 }
 
 .auth-tabs {
   display: flex;
   gap: 4px;
-  background: #21262d;
+  background: #e4f1fb;
   border-radius: 8px;
   padding: 4px;
 }
 
 .auth-tabs button {
   background: transparent;
-  color: #9aa4af;
+  color: #4d6373;
 }
 
 .auth-tabs button.active {
@@ -52,9 +57,9 @@ body {
 .login-form input {
   padding: 10px 14px;
   border-radius: 6px;
-  border: 1px solid #444;
-  background: #2a2f36;
-  color: #eee;
+  border: 1px solid #bcd3e0;
+  background: #fff;
+  color: #1f2d3a;
 }
 
 button {
@@ -72,12 +77,13 @@ button:hover {
 }
 
 button:disabled {
-  background: #555;
+  background: #c3d0da;
+  color: #7c8b96;
   cursor: not-allowed;
 }
 
 .error {
-  color: #ff6b6b;
+  color: #d3392f;
 }
 
 /* Oyun artık tek bütün bir pencere: harita tüm ekranı kaplıyor, üst menü/
@@ -101,7 +107,7 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px 32px;
-  background: linear-gradient(to bottom, rgba(10, 14, 18, 0.94) 0%, rgba(10, 14, 18, 0.75) 65%, rgba(10, 14, 18, 0) 100%);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.8) 65%, rgba(255, 255, 255, 0) 100%);
   pointer-events: none;
 }
 
@@ -114,6 +120,7 @@ button:disabled {
 .topbar h1 {
   font-size: 18px;
   margin: 0;
+  color: #1f2d3a;
 }
 
 .player-info {
@@ -123,11 +130,18 @@ button:disabled {
 }
 
 .kingdom-toggle {
-  background: rgba(255, 255, 255, 0.08);
+  background: #fff;
+  color: #1f2d3a;
+  box-shadow: 0 2px 8px rgba(31, 45, 58, 0.15);
+}
+
+.kingdom-toggle:hover {
+  background: #eef5fb;
 }
 
 .kingdom-toggle.active {
   background: #3f8cff;
+  color: #fff;
 }
 
 /* Madde 1: tek yerde toplam altın/asker üretimi + ortak altın havuzu. */
@@ -141,12 +155,14 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: #eee;
+  color: #1f2d3a;
+  font-weight: 600;
 }
 
 .summary-item small {
-  color: #8fe39a;
+  color: #2f9e4f;
   font-size: 11px;
+  font-weight: 600;
 }
 
 /* Bildirim/hata banner'ları artık üst menünün altında, ortada yüzen bir
@@ -166,19 +182,20 @@ button:disabled {
 .banner {
   padding: 8px 16px;
   font-size: 14px;
+  font-weight: 600;
   border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 14px rgba(31, 45, 58, 0.25);
   white-space: nowrap;
 }
 
 .banner.success {
-  background: #1e3a25;
-  color: #8fe39a;
+  background: #e1f7e6;
+  color: #1e7a35;
 }
 
 .banner.error {
-  background: #3a1e1e;
-  color: #ff9d9d;
+  background: #fde7e5;
+  color: #b3261e;
 }
 
 .map-viewport {
@@ -193,8 +210,9 @@ button:disabled {
   z-index: 0;
   cursor: grab;
   user-select: none;
-  /* Adalar arasındaki deniz — izometrik karolar bunun üzerine "yüzer". */
-  background: radial-gradient(ellipse at center, #123a52 0%, #0a1d2c 70%, #071420 100%);
+  /* Adalar arasındaki deniz — artık koyu gece değil, açık/canlı bir gökyüzü-
+     deniz mavisi (izometrik karolar bunun üzerine "yüzer"). */
+  background: radial-gradient(ellipse at center, #a6ddff 0%, #6fc0f2 55%, #4aa3de 100%);
 }
 
 .map-viewport:active {
@@ -208,33 +226,67 @@ button:disabled {
   position: relative;
 }
 
+/* Bütün adaların zemini -- artık karo başına ayrı renkli dikdörtgenler değil,
+   App.tsx'teki terrainGroups'un ürettiği, aynı renk bloğundaki komşu
+   karoları TEK bir <path> içinde birleştiren "yama"lar (bkz. oradaki yorum).
+   Bina/dekor katmanlarının ALTINDA kalsın diye DOM'da ilk sırada. */
+.terrain-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
 .iso-tile-group {
   position: absolute;
   cursor: pointer;
+  z-index: 1;
   /* Kale görseli karo sınırlarının dışına taşabiliyor (bilerek — Travian
      tarzı oyunlarda köy ikonları da altındaki tek bir karodan büyük çizilir). */
   overflow: visible;
 }
 
+/* Artık zemin rengini TAŞIMIYOR (o iş terrain-layer'da) -- sadece hover/seçili
+   durumunda karonun tam baklava sınırını gösteren, yarı saydam bir vurgu
+   katmanı. Varsayılanda tamamen şeffaf olduğu için altındaki tek-parça zemin
+   dokusu hiç kesintiye uğramadan görünüyor. */
 .iso-diamond {
   position: absolute;
   inset: 0;
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
-  transition: filter 0.1s ease;
+  background: transparent;
+  transition: background-color 0.1s ease;
 }
 
 .iso-tile-group:hover .iso-diamond {
-  filter: brightness(1.2);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .iso-diamond.selected {
-  filter: drop-shadow(0 0 3px #ffd54f) drop-shadow(0 0 3px #ffd54f);
+  background: rgba(255, 213, 79, 0.45);
 }
 
 .iso-castle {
   position: absolute;
   pointer-events: none;
   z-index: 1;
+  /* Yeni kale/NPC SVG'leri kareden geniş (basık) çizildiği için, kare bir
+     kutu içine object-fit:contain ile ortalanıyor -- eskisi gibi kutuyu
+     dikine doldurmaya çalışıp "uzun kule" hissi vermiyor. */
+  object-fit: contain;
+  object-position: bottom center;
+}
+
+/* Sahiplik artık zeminin renginden değil, kalenin yanındaki bu küçük yuvarlak
+   rozetten anlaşılıyor (yeşil = benim, kırmızı = düşman) -- bkz. App.tsx. */
+.ownership-badge {
+  position: absolute;
+  z-index: 2;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(31, 45, 58, 0.45);
+  pointer-events: none;
 }
 
 /* Boş karolardaki dekor öğeleri (ağaç, kaya, kazı alanı vb.) -- zemin
@@ -244,6 +296,7 @@ button:disabled {
   pointer-events: none;
   z-index: 1;
   object-fit: contain;
+  object-position: bottom center;
 }
 
 /* Sağdaki/soldaki kalıcı barlar kalktı -- "Krallığım" listesi ve "Seçili
@@ -253,14 +306,15 @@ button:disabled {
 .tile-card {
   position: fixed;
   width: 300px;
-  background: rgba(20, 23, 27, 0.92);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(31, 45, 58, 0.08);
   border-radius: 12px;
   padding: 14px 16px;
   overflow-y: auto;
   z-index: 25;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  color: #1f2d3a;
+  box-shadow: 0 10px 30px rgba(31, 45, 58, 0.25);
 }
 
 .kingdom-dropdown {
@@ -285,19 +339,19 @@ button:disabled {
   background: transparent;
   padding: 2px 8px;
   font-weight: 400;
-  color: #9aa4af;
+  color: #6b7d8c;
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #eee;
+  background: rgba(31, 45, 58, 0.08);
+  color: #1f2d3a;
 }
 
 .kingdom-dropdown h2,
 .tile-card h2 {
   font-size: 14px;
   text-transform: uppercase;
-  color: #9aa4af;
+  color: #6b7d8c;
   margin-bottom: 8px;
 }
 
@@ -311,7 +365,7 @@ button:disabled {
 }
 
 .city-list li {
-  background: #21262d;
+  background: #eef5fb;
   border-radius: 6px;
   padding: 10px;
 }
@@ -340,12 +394,12 @@ button:disabled {
 }
 
 .stats {
-  color: #cfd8e3;
+  color: #46596a;
   margin: 4px 0 8px;
 }
 
 .hint {
-  color: #6b7280;
+  color: #7c8b96;
   font-size: 13px;
 }
 
@@ -361,16 +415,77 @@ button:disabled {
   flex-direction: column;
   gap: 4px;
   font-size: 13px;
-  color: #9aa4af;
+  color: #46596a;
 }
 
 .attack-form select,
 .attack-form input {
   padding: 6px 8px;
   border-radius: 4px;
-  border: 1px solid #444;
-  background: #2a2f36;
-  color: #eee;
+  border: 1px solid #bcd3e0;
+  background: #fff;
+  color: #1f2d3a;
+}
+
+/* Kendi kalene tıklayınca çıkan küçük eylem menüsü: Saldır / Destek
+   Gönder / Yükselt. Haritada hedef seçme akışı buradan başlar. */
+.castle-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.castle-actions button {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #bcd3e0;
+  background: #eaf4ff;
+  color: #1f2d3a;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.castle-actions button:hover {
+  background: #d7ecff;
+}
+
+.reinforcement-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #46596a;
+}
+
+/* Hedef seçme modundayken haritanın üstünde beliren talimat şeridi. */
+.action-hint {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(31, 45, 58, 0.92);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  font-size: 14px;
+}
+
+.action-hint button {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  cursor: pointer;
 }
 
 .admin-login {
@@ -380,6 +495,8 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 12px;
+  background: #eaf4ff;
+  color: #1f2d3a;
 }
 
 .admin-login form {
@@ -390,9 +507,9 @@ button:disabled {
 .admin-login input {
   padding: 10px 14px;
   border-radius: 6px;
-  border: 1px solid #444;
-  background: #2a2f36;
-  color: #eee;
+  border: 1px solid #bcd3e0;
+  background: #fff;
+  color: #1f2d3a;
   min-width: 220px;
 }
 
@@ -400,6 +517,9 @@ button:disabled {
   max-width: 720px;
   margin: 0 auto;
   padding: 24px 16px 60px;
+  background: #eaf4ff;
+  min-height: 100vh;
+  color: #1f2d3a;
 }
 
 .admin-panel header {
@@ -410,13 +530,13 @@ button:disabled {
 }
 
 .admin-panel header a {
-  color: #9aa4af;
+  color: #4d6373;
   text-decoration: none;
   font-size: 14px;
 }
 
 .admin-panel header a:hover {
-  color: #eee;
+  color: #1f2d3a;
 }
 
 .settings-list {
@@ -431,9 +551,10 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  background: #21262d;
+  background: #fff;
   border-radius: 8px;
   padding: 14px 16px;
+  box-shadow: 0 2px 8px rgba(31, 45, 58, 0.08);
 }
 
 .setting-row label {
@@ -446,9 +567,9 @@ button:disabled {
   width: 110px;
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid #444;
-  background: #2a2f36;
-  color: #eee;
+  border: 1px solid #bcd3e0;
+  background: #fff;
+  color: #1f2d3a;
   text-align: right;
   flex-shrink: 0;
 }

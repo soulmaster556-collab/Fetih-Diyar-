@@ -67,4 +67,65 @@ export async function initSchema() {
       value DOUBLE PRECISION NOT NULL
     );
   `);
+
+  // Kare, adasının dış kıyısında mı (en az bir komşusu farklı bir adaya ya
+  // da haritanın dışına düşüyor mu)? Kale/NPC yerleşimi bu karolarda asla
+  // olmamalı (Eren'in isteği) -- hem yeni harita üretiminde hem de mevcut
+  // canlı haritaya uygulanan tek seferlik göç (migration) bu alanı kullanır.
+  await pool.query(`ALTER TABLE tiles ADD COLUMN IF NOT EXISTS is_coastal BOOLEAN NOT NULL DEFAULT false;`);
+
+  // Lonca (klan) sistemi -- basit: bir oyuncu en fazla bir loncaya üye olur.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS guilds (
+      id SERIAL PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      leader_id TEXT NOT NULL REFERENCES players(id),
+      created_at BIGINT NOT NULL
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS guild_members (
+      player_id TEXT PRIMARY KEY REFERENCES players(id),
+      guild_id INTEGER NOT NULL REFERENCES guilds(id),
+      joined_at BIGINT NOT NULL
+    );
+  `);
+
+  // Klan arkadaşına gönderilen asker takviyesi kendi kalelerin arasındaki
+  // takviyeden farklı: bu askerler hedef karonun stored_troops'una
+  // KARIŞMAZ (sahiplenilemez), sadece savunma gücüne eklenir ve gönderen
+  // istediği zaman geri çağırabilir (bkz. tiles.ts /reinforce ve /recall).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tile_reinforcements (
+      id SERIAL PRIMARY KEY,
+      tile_id INTEGER NOT NULL REFERENCES tiles(id),
+      from_player_id TEXT NOT NULL REFERENCES players(id),
+      from_tile_id INTEGER NOT NULL REFERENCES tiles(id),
+      troops DOUBLE PRECISION NOT NULL,
+      sent_at BIGINT NOT NULL
+    );
+  `);
+
+  // Zaten canlı/dolu bir haritada geriye dönük olarak tek seferlik
+  // uygulanması gereken değişiklikler için (ör. kıyı tamponu + NPC
+  // yoğunluğu azaltma) -- her migration adı bir kez çalışır.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name TEXT PRIMARY KEY,
+      applied_at BIGINT NOT NULL
+    );
+  `);
+}
+
+export async function hasMigration(name: string): Promise<boolean> {
+  const { rows } = await pool.query("SELECT 1 FROM schema_migrations WHERE name = $1", [name]);
+  return rows.length > 0;
+}
+
+export async function markMigration(name: string) {
+  await pool.query(
+    "INSERT INTO schema_migrations (name, applied_at) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING",
+    [name, Date.now()]
+  );
 }

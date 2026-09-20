@@ -1,3 +1,10 @@
+export interface ReinforcementInfo {
+  id: number;
+  fromPlayerId: string;
+  fromUsername: string;
+  troops: number;
+}
+
 export interface Tile {
   id: number;
   x: number;
@@ -11,6 +18,10 @@ export interface Tile {
   // Not: altın artık kale başına değil, krallık genelinde ortak bir havuzda
   // tutuluyor (bkz. PlayerSummary) — bu yüzden karo başına "gold" alanı yok.
   troops: number;
+  // Klan arkadaşlarından gelen, sahiplenilemeyen (sadece savunma için)
+  // takviye askerleri -- `troops` alanına dahil değil.
+  reinforcementTroops: number;
+  reinforcements: ReinforcementInfo[];
 }
 
 export interface PlayerSummary {
@@ -128,7 +139,9 @@ export function attackTile(
   }).then((r) => handle<{ result: string; attackerPower: number; defenderPower: number }>(r));
 }
 
-// Kendi kaleleri arasında asker takviyesi — anında, mesafe sınırı yok.
+// Asker takviyesi -- hedef kendi kalenmiş gibi (askerler doğrudan
+// karışır) ya da bir klan arkadaşınınmış gibi (askerler ayrı, sadece
+// savunma için, geri çağrılabilir -- bkz. recallReinforcement) çalışır.
 export function reinforceTile(
   token: string,
   targetTileId: number,
@@ -140,4 +153,66 @@ export function reinforceTile(
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ fromTileId, troopsSent }),
   }).then((r) => handle<Tile>(r));
+}
+
+// Bir klan arkadaşına gönderilmiş takviyeyi geri çağırır (sadece gönderen
+// yapabilir) -- askerler gönderenin bir kalesine döner.
+export function recallReinforcement(token: string, reinforcementId: number) {
+  return fetch(`${BASE}/tiles/reinforcements/${reinforcementId}/recall`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<{ ok: true; returnedTo: number; troops: number }>(r));
+}
+
+export interface GuildMember {
+  playerId: string;
+  username: string;
+  joinedAt: number;
+}
+
+export interface Guild {
+  id: number;
+  name: string;
+  leaderId: string;
+  memberCount: number;
+  members: GuildMember[];
+}
+
+export interface GuildListEntry {
+  id: number;
+  name: string;
+  leaderUsername: string;
+  memberCount: number;
+}
+
+export function listGuilds() {
+  return fetch(`${BASE}/guilds`).then((r) => handle<GuildListEntry[]>(r));
+}
+
+export function fetchMyGuild(token: string) {
+  return fetch(`${BASE}/guilds/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<Guild | null>(r));
+}
+
+export function createGuild(token: string, name: string) {
+  return fetch(`${BASE}/guilds`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ name }),
+  }).then((r) => handle<Guild>(r));
+}
+
+export function joinGuild(token: string, guildId: number) {
+  return fetch(`${BASE}/guilds/${guildId}/join`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<Guild>(r));
+}
+
+export function leaveGuild(token: string) {
+  return fetch(`${BASE}/guilds/leave`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<{ ok: true }>(r));
 }
