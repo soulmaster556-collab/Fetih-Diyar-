@@ -97,6 +97,9 @@ button:disabled {
   overflow: hidden;
 }
 
+/* Eren: "üstteki bölümüde daha efektif daha 3D havasında düzenle" -- üst
+   menü artık düz beyaz bir bant değil, hafif cilalı/kabartma ("HUD")
+   hissi veren gradyan + gölye katmanlı bir şerit. */
 .topbar {
   position: absolute;
   top: 0;
@@ -107,7 +110,7 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px 32px;
-  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.96) 0%, rgba(255, 255, 255, 0.8) 65%, rgba(255, 255, 255, 0) 100%);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.97) 0%, rgba(255, 255, 255, 0.82) 65%, rgba(255, 255, 255, 0) 100%);
   pointer-events: none;
 }
 
@@ -121,48 +124,93 @@ button:disabled {
   font-size: 18px;
   margin: 0;
   color: #1f2d3a;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .player-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
+/* Kabartma/cilalı buton hissi: üstte parlak vurgu, altta koyu "kenar"
+   gölgesi -- basılınca (active/tıklama) o kenar payı azalıp buton bir
+   tık aşağı iner, gerçek bir fiziksel düğmeye basılmış gibi. */
 .kingdom-toggle {
-  background: #fff;
+  background: linear-gradient(180deg, #ffffff 0%, #eef5fb 100%);
   color: #1f2d3a;
-  box-shadow: 0 2px 8px rgba(31, 45, 58, 0.15);
+  border: 1px solid rgba(31, 45, 58, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 0 rgba(31, 45, 58, 0.14),
+    0 4px 8px rgba(31, 45, 58, 0.18);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
 }
 
 .kingdom-toggle:hover {
-  background: #eef5fb;
+  background: linear-gradient(180deg, #ffffff 0%, #e2eefb 100%);
+}
+
+.kingdom-toggle:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 rgba(31, 45, 58, 0.14),
+    0 1px 3px rgba(31, 45, 58, 0.18);
 }
 
 .kingdom-toggle.active {
-  background: #3f8cff;
+  background: linear-gradient(180deg, #5aa4ff 0%, #3f8cff 100%);
   color: #fff;
+  border-color: rgba(20, 60, 130, 0.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 2px 0 rgba(20, 60, 130, 0.45),
+    0 4px 10px rgba(31, 45, 58, 0.25);
 }
 
-/* Madde 1: tek yerde toplam altın/asker üretimi + ortak altın havuzu. */
+/* Madde 1: tek yerde toplam altın/asker üretimi + ortak altın havuzu.
+   Her rakam artık kendi "kristal/rozet" kutucuğunda -- cilalı kabartma
+   hissi veren iç/dış gölgelerle (Eren: "daha 3D havasında"). */
 .summary-bar {
   display: flex;
-  gap: 18px;
+  gap: 8px;
   font-size: 14px;
 }
 
 .summary-item {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 999px;
   color: #1f2d3a;
-  font-weight: 600;
+  font-weight: 700;
+  background: linear-gradient(180deg, #ffffff 0%, #eaf3fb 100%);
+  border: 1px solid rgba(31, 45, 58, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -3px 4px rgba(31, 45, 58, 0.06),
+    0 3px 6px rgba(31, 45, 58, 0.16);
 }
 
 .summary-item small {
   color: #2f9e4f;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.summary-item-gold {
+  background: linear-gradient(180deg, #fffdf5 0%, #fdf3d8 100%);
+}
+
+.summary-item-troops {
+  background: linear-gradient(180deg, #fff6f4 0%, #fdeee9 100%);
+}
+
+.summary-item-production {
+  background: linear-gradient(180deg, #fffdf5 0%, #fdf3d8 100%);
+  color: #7a5c05;
 }
 
 /* Bildirim/hata banner'ları artık üst menünün altında, ortada yüzen bir
@@ -293,10 +341,23 @@ button:disabled {
   clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
 }
 
+/* Eren'in verdiği "su birikintisi" görseli -- sadece boş karelerin küçük
+   bir kısmına serpiştiriliyor (bkz. App.tsx PUDDLE_CHANCE), zeminin hemen
+   üstünde ama karonun baklava sınırını aşmayacak şekilde. */
+.iso-puddle {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  object-fit: contain;
+}
+
 /* Kale/NPC'nin üstündeki "orada" (haritada, tıklamadan görünen) küçük
    üretim/asker etiketi. Karonun üst ucunun biraz üstünde, ortalanmış. Artık
    sadece gözcülenmiş (ya da kendi/klan) kalelerde görünüyor -- bkz. App.tsx
-   hasIntel/showInfoLabel. */
+   hasIntel/showInfoLabel. Eren: "üretim bilgileri sabit olmamalı, mouse ile
+   üzerine gelince görünebilir" -- bu yüzden varsayılan gizli, sadece karo
+   üzerine gelince (hover) beliriyor. Seviye rozeti bundan ayrı ve her zaman
+   görünür kalıyor (aşağıdaki .level-badge). */
 .tile-info-label {
   position: absolute;
   top: -18px;
@@ -315,11 +376,19 @@ button:disabled {
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 1px 4px rgba(31, 45, 58, 0.35);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.iso-tile-group:hover .tile-info-label {
+  opacity: 1;
 }
 
 /* Seviye rozeti -- gözcüye bağlı değil, her zaman görünür (Eren: "Haritada
    kalelerin üzerine levellerini yazalım"). Bilgi etiketinin biraz üstünde
-   durur ki ikisi de görünürken üst üste binmesin. */
+   durur ki ikisi de görünürken üst üste binmesin. Sarı/altın = oyuncu
+   kalesi (kendi/klan/düşman fark etmez), gri = NPC kampı (Eren: "npc
+   ninkiler gri olabilir level tabelaları"). */
 .level-badge {
   position: absolute;
   top: -34px;
@@ -335,6 +404,11 @@ button:disabled {
   white-space: nowrap;
   pointer-events: none;
   box-shadow: 0 1px 4px rgba(31, 45, 58, 0.3);
+}
+
+.level-badge.level-badge-npc {
+  background: rgba(158, 165, 173, 0.95);
+  color: #2c3238;
 }
 
 /* Sağdaki/soldaki kalıcı barlar kalktı -- "Krallığım" listesi ve "Seçili
@@ -359,6 +433,157 @@ button:disabled {
   top: 64px;
   right: 20px;
   max-height: min(70vh, 560px);
+}
+
+/* Eren: "belkide oyuncu 100'lerce kale sahibi olucak" -- Krallığım listesi
+   bir tablo görünümüne geçtiği için (arama/sıralama/sayfalama sığsın diye)
+   normal 300px yerine biraz daha geniş bir panel kullanıyor. */
+.kingdom-dropdown-wide {
+  width: 420px;
+}
+
+/* Krallığım panelindeki arama + sıralama şeridi. */
+.kingdom-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.kingdom-search {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid #bcd3e0;
+  background: #fff;
+  color: #1f2d3a;
+  font-size: 13px;
+}
+
+.kingdom-sort {
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid #bcd3e0;
+  background: #fff;
+  color: #1f2d3a;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* Yüzlerce kale olabileceği için kart yerine yoğun bir tablo satırı --
+   her satır tek satır yükseklikte, taranabilir kolonlar hâlinde. */
+.kingdom-table-head {
+  display: grid;
+  grid-template-columns: 1.6fr 0.6fr 0.7fr 0.8fr auto;
+  gap: 6px;
+  padding: 0 8px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #7c8b96;
+  font-weight: 700;
+}
+
+.kingdom-table {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.kingdom-table-row {
+  display: grid;
+  grid-template-columns: 1.6fr 0.6fr 0.7fr 0.8fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #1f2d3a;
+}
+
+.kingdom-table-row:nth-child(odd) {
+  background: #eef5fb;
+}
+
+.kingdom-table-coords {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kingdom-table-coords small {
+  font-weight: 500;
+  color: #7c8b96;
+}
+
+.kingdom-table-level {
+  font-weight: 700;
+  color: #916b06;
+}
+
+.kingdom-table-troops {
+  font-weight: 700;
+  color: #b3441f;
+}
+
+.kingdom-table-gold {
+  font-weight: 700;
+  color: #916b06;
+}
+
+.kingdom-table-actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+.kingdom-table-actions .icon-btn {
+  padding: 2px 6px;
+  font-size: 14px;
+}
+
+.kingdom-load-more {
+  width: 100%;
+  margin-top: 8px;
+  background: #eef5fb;
+  color: #1f2d3a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kingdom-load-more:hover {
+  background: #dcebf7;
+}
+
+/* Raporlar panelindeki tür filtre çipleri. */
+.filter-chip-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.filter-chip {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #eef5fb;
+  color: #46596a;
+  border: 1px solid transparent;
+}
+
+.filter-chip:hover {
+  background: #dcebf7;
+}
+
+.filter-chip.active {
+  background: #3f8cff;
+  color: #fff;
 }
 
 .tile-card-header {
