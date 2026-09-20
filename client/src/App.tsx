@@ -36,6 +36,15 @@ const ICON_MIN_WIDTH = 28;
 // hesaplanıyor (bkz. tileVariantHash) -- böylece harita her 3sn'de bir
 // yeniden çekilse bile karolar "titremiyor" / rastgele değişmiyor.
 const GRASS_VARIANTS = ["/terrain/grass_1.png", "/terrain/grass_2.png", "/terrain/grass_3.png"];
+// Çim varyantı artık TEK karo yerine GRASS_BLOCK_SIZE×GRASS_BLOCK_SIZE'lık
+// bloklar halinde seçiliyor -- her karo bağımsız rastgele seçildiğinde harita
+// "kare kare" belli olan bir dama tahtası gibi görünüyordu; komşu karoların
+// aynı dokuyu paylaşması daha sakin/organik bölgeler oluşturuyor.
+const GRASS_BLOCK_SIZE = 4;
+// Çim fotoğrafının üzerine uygulanan yarı saydam yeşil "yıkama" -- 3 farklı
+// dokunun kendi parlaklık/ton farkları birleşince karo sınırları belirgin
+// çiziliyordu, bu katman hepsini ortak bir tona çekip dikişleri yumuşatıyor.
+const GRASS_WASH_COLOR = "rgba(120, 178, 76, 0.5)";
 const TREE_DECOR = "/terrain/decor_trees.png";
 // Tek tük (kümeye dahil olmayan) serpiştirilmiş dekorlar -- taş/kütük/kazıntı
 // artık daha seyrek (önceden %35'lik tek bir havuzun parçasıydı).
@@ -65,7 +74,9 @@ function tileVariantHash(x: number, y: number) {
 }
 
 function grassVariantFor(tile: Tile) {
-  const idx = Math.floor(tileVariantHash(tile.x, tile.y) * GRASS_VARIANTS.length);
+  const bx = Math.floor(tile.x / GRASS_BLOCK_SIZE);
+  const by = Math.floor(tile.y / GRASS_BLOCK_SIZE);
+  const idx = Math.floor(tileVariantHash(bx, by) * GRASS_VARIANTS.length);
   return GRASS_VARIANTS[Math.min(idx, GRASS_VARIANTS.length - 1)];
 }
 
@@ -542,10 +553,11 @@ export default function App() {
                 const showNpc = tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-                // Kale/NPC kampı artık tek karonun içine sığıyor (önceden kale
-                // 1.3x + büyük bir yukarı taşma vardı, komşu karolara taşıyordu).
-                const castleSize = tileWidth * 0.92;
-                const npcSize = tileWidth * 0.92;
+                // Kale/NPC kampı tek karonun içine sığıyor. Kuleler çok uzun/baskın
+                // durduğu için boyut ve yukarı taşma payı küçültüldü -- NPC kampı
+                // haritada çok daha sık göründüğü için biraz daha küçük tutuluyor.
+                const castleSize = tileWidth * 0.8;
+                const npcSize = tileWidth * 0.72;
                 const isEmpty = tile.tileType === "EMPTY";
                 const grassImg = isEmpty ? grassVariantFor(tile) : null;
                 const decorImg = isEmpty && tileWidth >= DECOR_MIN_WIDTH ? decorVariantFor(tile) : null;
@@ -576,8 +588,11 @@ export default function App() {
                         backgroundColor: showCastle
                           ? (isMine ? "#4caf50" : "#e53935")
                           : tileColor(tile, session.playerId),
-                        backgroundImage: grassImg ? `url(${grassImg})` : undefined,
-                        backgroundSize: grassImg ? "100% 100%" : undefined,
+                        // Yarı saydam yeşil "yıkama" katmanı, çim fotoğrafının üzerine
+                        // biner -- 3 farklı dokunun ton/parlaklık farkını yumuşatıp
+                        // karo sınırlarının "kare kare" belli olmasını azaltır.
+                        backgroundImage: grassImg ? `linear-gradient(${GRASS_WASH_COLOR}, ${GRASS_WASH_COLOR}), url(${grassImg})` : undefined,
+                        backgroundSize: grassImg ? "100% 100%, 100% 100%" : undefined,
                         backgroundPosition: grassImg ? "center" : undefined,
                       }}
                     />
@@ -603,7 +618,7 @@ export default function App() {
                           width: castleSize,
                           height: castleSize,
                           left: (tileWidth - castleSize) / 2,
-                          top: (tileHeight - castleSize) / 2 - tileHeight * 0.2,
+                          top: (tileHeight - castleSize) / 2 - tileHeight * 0.1,
                         }}
                       />
                     )}
@@ -616,7 +631,7 @@ export default function App() {
                           width: npcSize,
                           height: npcSize,
                           left: (tileWidth - npcSize) / 2,
-                          top: (tileHeight - npcSize) / 2 - tileHeight * 0.2,
+                          top: (tileHeight - npcSize) / 2 - tileHeight * 0.1,
                         }}
                       />
                     )}
