@@ -30,6 +30,44 @@ const DEFAULT_TILE_WIDTH_INDEX = 2;
 const CASTLE_ICON = "/buildings/Kale_Assest_256.png";
 const CASTLE_ICON_MIN_WIDTH = 28;
 
+// Boş karolar için zemin dokusu + dekor görselleri. Hangi karonun hangi
+// dokuyu/dekoru aldığı (x,y) koordinatından deterministik olarak
+// hesaplanıyor (bkz. tileVariantHash) -- böylece harita her 3sn'de bir
+// yeniden çekilse bile karolar "titremiyor" / rastgele değişmiyor.
+const GRASS_VARIANTS = ["/terrain/grass_1.png", "/terrain/grass_2.png", "/terrain/grass_3.png"];
+const DECOR_VARIANTS = [
+  "/terrain/decor_ruins.png",
+  "/terrain/decor_trees.png",
+  "/terrain/decor_rocks.png",
+  "/terrain/decor_stump.png",
+];
+const DECOR_MIN_WIDTH = 28;
+// Boş karoların yaklaşık bu oranı bir dekor öğesi (ağaç, kaya, kazı vb.) alır.
+const DECOR_CHANCE = 0.35;
+
+// (x,y) tam sayı çiftinden [0,1) aralığında deterministik bir sayı üretir
+// (basit bir integer hash -- Math.random YOK, aynı karo hep aynı sonucu verir).
+function tileVariantHash(x: number, y: number) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return ((h >>> 0) % 100000) / 100000;
+}
+
+function grassVariantFor(tile: Tile) {
+  const idx = Math.floor(tileVariantHash(tile.x, tile.y) * GRASS_VARIANTS.length);
+  return GRASS_VARIANTS[Math.min(idx, GRASS_VARIANTS.length - 1)];
+}
+
+function decorVariantFor(tile: Tile) {
+  // Farklı bir hash "tuzu" kullanarak dekor var/yok kararını, zemin dokusu
+  // seçiminden bağımsız kılıyoruz.
+  const roll = tileVariantHash(tile.x + 9973, tile.y + 9973);
+  if (roll >= DECOR_CHANCE) return null;
+  const idx = Math.floor(tileVariantHash(tile.x - 9973, tile.y - 9973) * DECOR_VARIANTS.length);
+  return DECOR_VARIANTS[Math.min(idx, DECOR_VARIANTS.length - 1)];
+}
+
 function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -432,7 +470,13 @@ export default function App() {
                 const showCastle = tile.tileType === "PLAYER" && tileWidth >= CASTLE_ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-                const castleSize = tileWidth * 1.3;
+                // Kale artık tek karonun içine sığıyor (önceden 1.3x + büyük
+                // bir yukarı taşma vardı, komşu karolara taşıyordu).
+                const castleSize = tileWidth * 0.92;
+                const isEmpty = tile.tileType === "EMPTY";
+                const grassImg = isEmpty ? grassVariantFor(tile) : null;
+                const decorImg = isEmpty && tileWidth >= DECOR_MIN_WIDTH ? decorVariantFor(tile) : null;
+                const decorSize = tileWidth * 0.85;
                 return (
                   <div
                     key={tile.id}
@@ -455,8 +499,28 @@ export default function App() {
                   >
                     <div
                       className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`}
-                      style={{ backgroundColor: showCastle ? (isMine ? "#4caf50" : "#e53935") : tileColor(tile, session.playerId) }}
+                      style={{
+                        backgroundColor: showCastle
+                          ? (isMine ? "#4caf50" : "#e53935")
+                          : tileColor(tile, session.playerId),
+                        backgroundImage: grassImg ? `url(${grassImg})` : undefined,
+                        backgroundSize: grassImg ? "100% 100%" : undefined,
+                        backgroundPosition: grassImg ? "center" : undefined,
+                      }}
                     />
+                    {decorImg && (
+                      <img
+                        src={decorImg}
+                        alt=""
+                        className="iso-decor"
+                        style={{
+                          width: decorSize,
+                          height: decorSize,
+                          left: (tileWidth - decorSize) / 2,
+                          top: (tileHeight - decorSize) / 2 - tileHeight * 0.18,
+                        }}
+                      />
+                    )}
                     {showCastle && (
                       <img
                         src={CASTLE_ICON}
@@ -466,7 +530,7 @@ export default function App() {
                           width: castleSize,
                           height: castleSize,
                           left: (tileWidth - castleSize) / 2,
-                          top: (tileHeight - castleSize) / 2 - tileHeight * 0.35,
+                          top: (tileHeight - castleSize) / 2 - tileHeight * 0.2,
                         }}
                       />
                     )}

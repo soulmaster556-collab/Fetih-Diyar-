@@ -211,6 +211,15 @@ button:disabled {
   z-index: 1;
 }
 
+/* Boş karolardaki dekor öğeleri (ağaç, kaya, kazı alanı vb.) -- zemin
+   dokusunun (iso-diamond'ın background-image'i) üzerine biner. */
+.iso-decor {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+  object-fit: contain;
+}
+
 .legend {
   display: flex;
   gap: 16px;
