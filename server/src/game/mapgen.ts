@@ -325,32 +325,38 @@ export async function applyNpcBorderMigration(settings: Settings) {
     return false;
   }
 
+  // Önce hepsini BELLEKTE hesaplayıp, veritabanına binlerce ayrı sorgu
+  // yerine sadece birkaç TOPLU (bulk, "= ANY($1)") sorgu atıyoruz --
+  // aksi halde canlı bir haritada on binlerce satır için tek tek gidip
+  // gelen sorgular, Render'ın "portu aç" beklediği süreyi (deploy zaman
+  // aşımı) kolayca aşabilir.
+  const coastalIds: number[] = [];
+  const clearIds: number[] = [];
+  for (const t of rows) {
+    const coastal = isCoastalRow(t);
+    if (coastal) coastalIds.push(t.id);
+
+    if (t.tile_type !== "NPC" || t.owner_id) continue; // sadece fethedilmemiş NPC kampları
+    // Kıyıdaki her fethedilmemiş NPC kampı boşaltılır (yeni kural).
+    // İç kısımdakilerin de yarısı boşaltılır (yoğunluk azaltma).
+    if (coastal || Math.random() < 0.5) clearIds.push(t.id);
+  }
+
   const production = productionForLevel(1, settings);
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-
-    for (const t of rows) {
-      const coastal = isCoastalRow(t);
-      if (coastal) {
-        await client.query("UPDATE tiles SET is_coastal = true WHERE id = $1", [t.id]);
-      }
-
-      if (t.tile_type !== "NPC" || t.owner_id) continue; // sadece fethedilmemiş NPC kampları
-
-      // Kıyıdaki her fethedilmemiş NPC kampı boşaltılır (yeni kural).
-      // İç kısımdakilerin de yarısı boşaltılır (yoğunluk azaltma).
-      const shouldClear = coastal || Math.random() < 0.5;
-      if (shouldClear) {
-        await client.query(
-          `UPDATE tiles
-           SET tile_type = 'EMPTY', level = 1, gold_per_hour = $1, troops_per_hour = 0, stored_troops = 0
-           WHERE id = $2`,
-          [production.gold_per_hour, t.id]
-        );
-      }
+    if (coastalIds.length > 0) {
+      await client.query("UPDATE tiles SET is_coastal = true WHERE id = ANY($1)", [coastalIds]);
     }
-
+    if (clearIds.length > 0) {
+      await client.query(
+        `UPDATE tiles
+         SET tile_type = 'EMPTY', level = 1, gold_per_hour = $1, troops_per_hour = 0, stored_troops = 0
+         WHERE id = ANY($2)`,
+        [production.gold_per_hour, clearIds]
+      );
+    }
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");
@@ -360,5 +366,7 @@ export async function applyNpcBorderMigration(settings: Settings) {
   }
 
   await markMigration(MIGRATION_NAME);
-  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı.`);
+  console.log(
+    `[migration] ${MIGRATION_NAME}: tamamlandı (${coastalIds.length} kıyı karosu işaretlendi, ${clearIds.length} NPC kampı boşaltıldı).`
+  );
 }
