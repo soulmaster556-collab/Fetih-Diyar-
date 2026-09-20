@@ -370,3 +370,40 @@ export async function applyNpcBorderMigration(settings: Settings) {
     `[migration] ${MIGRATION_NAME}: tamamlandı (${coastalIds.length} kıyı karosu işaretlendi, ${clearIds.length} NPC kampı boşaltıldı).`
   );
 }
+
+// İkinci seyreltme turu: Eren "NPC'ler azalıcak" isteğini tekrarladı --
+// applyNpcBorderMigration zaten kıyıdakileri ve iç kısmın yarısını
+// boşaltmıştı, bu geçiş kalan (fethedilmemiş) NPC kamplarının bir kısmını
+// daha kaldırıp npc_spawn_chance ayarını da (hâlâ eski varsayılandaysa)
+// düşürüyor. Aynı şekilde TEK SEFERLİK, oyuncu verisine dokunmuyor.
+export async function applyNpcDensityReductionMigration(settings: Settings) {
+  const MIGRATION_NAME = "npc_density_reduction_v2";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  const { rows } = await pool.query<{ id: number }>(
+    "SELECT id FROM tiles WHERE tile_type = 'NPC' AND owner_id IS NULL"
+  );
+
+  const clearIds = rows.filter(() => Math.random() < 0.4).map((r) => r.id);
+
+  if (clearIds.length > 0) {
+    const production = productionForLevel(1, settings);
+    await pool.query(
+      `UPDATE tiles
+       SET tile_type = 'EMPTY', level = 1, gold_per_hour = $1, troops_per_hour = 0, stored_troops = 0
+       WHERE id = ANY($2)`,
+      [production.gold_per_hour, clearIds]
+    );
+  }
+
+  // Eski varsayılan (0.15) hâlâ ayarlıysa yeni varsayılana (0.08) taşı --
+  // admin panelinden elle değiştirilmişse dokunma.
+  await pool.query(
+    "UPDATE game_settings SET value = 0.08 WHERE key = 'npc_spawn_chance' AND value = 0.15"
+  );
+
+  await markMigration(MIGRATION_NAME);
+  console.log(
+    `[migration] ${MIGRATION_NAME}: tamamlandı (${rows.length} fethedilmemiş NPC kampından ${clearIds.length} tanesi daha boşaltıldı).`
+  );
+}

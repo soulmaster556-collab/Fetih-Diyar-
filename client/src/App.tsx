@@ -33,129 +33,26 @@ const VIEWPORT_MARGIN = 6;
 // tarzı haritalarda kullanılan oran).
 const TILE_WIDTHS = [16, 22, 32, 46, 64];
 const DEFAULT_TILE_WIDTH_INDEX = 2;
-// Oyuncu kalesi ve NPC kampı görselleri -- artık AI fotoğraf değil, kodda
-// elle çizilmiş düz renkli (flat) SVG'ler: hem tema açık/canlı çizgi film
-// stiline dönsün diye, hem de eskisi gibi "fazla dikine giden kule" hissi
-// olmasın diye bilerek geniş/basık oranlarda çizildi (bkz. viewBox'ları).
-const CASTLE_ICON = "/buildings/player_castle.svg";
-const NPC_ICON = "/buildings/npc_camp.svg";
+// Oyuncu kalesi ve NPC kalesi görselleri -- Eren'in verdiği iki fotoğraf
+// (kırmızı sancak = oyuncu, mavi sancak = NPC), beyaz arka planları
+// kaldırılıp (alfa şeffaflık) kırpılmış PNG olarak public/buildings altına
+// kondu (bkz. sohbetteki görsel işleme adımları).
+const CASTLE_ICON = "/buildings/player_castle_new.png";
+const NPC_ICON = "/buildings/npc_castle_new.png";
+// Yeni kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın
+// diye kale/NPC boyutu bu orana göre hesaplanıyor (bkz. aşağıdaki
+// castleBoxWidth/Height).
+const CASTLE_IMAGE_ASPECT = 700 / 512;
 const ICON_MIN_WIDTH = 28;
+// Üretim/asker etiketi çok küçük karolarda okunaksız kalacağı için sadece
+// yeterince yakınlaştırılmışken gösteriliyor.
+const LABEL_MIN_WIDTH = 40;
 
-// Boş karolar artık fotoğraf dokusu değil, düz (flat) canlı yeşil renk
-// kullanıyor -- hem yeni "çizgi film" temasına uyuyor hem de üç farklı
-// fotoğrafın kendi ton farkından kaynaklanan "kare kare" dikiş sorununu
-// baştan ortadan kaldırıyor. Hangi karonun hangi tonu aldığı (x,y)'den
-// deterministik olarak hesaplanıyor (bkz. tileVariantHash).
-const GRASS_COLOR_VARIANTS = ["#8bc34a", "#97cf57", "#7fb943"];
-// Çim tonu artık TEK karo yerine GRASS_BLOCK_SIZE×GRASS_BLOCK_SIZE'lık
-// bloklar halinde seçiliyor -- her karo bağımsız rastgele seçildiğinde harita
-// "kare kare" belli olan bir dama tahtası gibi görünüyordu; komşu karoların
-// aynı tonu paylaşması daha sakin/organik bölgeler oluşturuyor.
-const GRASS_BLOCK_SIZE = 4;
-const TREE_DECOR = "/terrain/decor_trees.svg";
-// Tek tük (kümeye dahil olmayan) serpiştirilmiş dekorlar -- taş/kütük/kazıntı
-// artık daha seyrek (önceden %35'lik tek bir havuzun parçasıydı).
-const SCATTERED_DECOR_VARIANTS = ["/terrain/decor_ruins.svg", "/terrain/decor_rocks.svg", "/terrain/decor_stump.svg"];
-const DECOR_MIN_WIDTH = 28;
-const SCATTERED_DECOR_CHANCE = 0.14;
-// Kümeye dahil olmayan tekil (yalnız) ağaç ihtimali -- orman kümelerinden
-// bağımsız, seyrek bir "tek ağaç" hissi için. Artık ağaçların çoğu kümeler
-// üzerinden geliyor, bu yüzden düşük tutuluyor.
-const LONE_TREE_CHANCE = 0.04;
-
-// Ağaç kümeleri: harita (x,y) uzayı FOREST_BLOCK_SIZE×FOREST_BLOCK_SIZE'lık
-// bloklara bölünür, her blok bağımsız ve deterministik olarak "bu blokta
-// nadir bir orman kümesi var mı" diye zar atar -- varsa 3-4 (sık) veya 6-7
-// (nadir) bitişik kareden oluşan organik bir küme büyütülür (mapgen.ts'teki
-// ada büyütme mantığına benzer, sadece küçük ölçekte ve tamamen client-side).
-const FOREST_BLOCK_SIZE = 8;
-const FOREST_CLUSTER_CHANCE = 0.12;
-
-// (x,y) tam sayı çiftinden [0,1) aralığında deterministik bir sayı üretir
-// (basit bir integer hash -- Math.random YOK, aynı karo hep aynı sonucu verir).
-function tileVariantHash(x: number, y: number) {
-  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  h = h ^ (h >>> 16);
-  return ((h >>> 0) % 100000) / 100000;
-}
-
-function grassColorFor(tile: Tile) {
-  const bx = Math.floor(tile.x / GRASS_BLOCK_SIZE);
-  const by = Math.floor(tile.y / GRASS_BLOCK_SIZE);
-  const idx = Math.floor(tileVariantHash(bx, by) * GRASS_COLOR_VARIANTS.length);
-  return GRASS_COLOR_VARIANTS[Math.min(idx, GRASS_COLOR_VARIANTS.length - 1)];
-}
-
-// Verilen (bx,by) bloğu için (varsa) orman kümesinin üye karolarını
-// hesaplar. Büyüme, bloğun kendi sınırları içine sıkıştırılır ki bir
-// karonun üyeliği her zaman KENDİ bloğundan (bx,by) hesaplanarak
-// bulunabilsin (komşu bloklara taşıp da oradan görünmez kalmasın).
-function forestClusterMembers(bx: number, by: number): Set<string> {
-  const spawnRoll = tileVariantHash(bx * 92821 + 17, by * 63841 + 29);
-  if (spawnRoll >= FOREST_CLUSTER_CHANCE) return new Set();
-
-  const sizeRoll = tileVariantHash(bx * 15485 + 3, by * 25733 + 11);
-  const extra = Math.floor(tileVariantHash(bx * 5051 + 41, by * 7919 + 59) * 2); // 0 ya da 1
-  const size = sizeRoll >= 0.65 ? 6 + extra : 3 + extra; // %65 küçük (3-4), %35 nadir büyük (6-7)
-
-  const blockMinX = bx * FOREST_BLOCK_SIZE;
-  const blockMinY = by * FOREST_BLOCK_SIZE;
-  const originX = blockMinX + Math.floor(tileVariantHash(bx * 104729 + 5, by * 101 + 7) * FOREST_BLOCK_SIZE);
-  const originY = blockMinY + Math.floor(tileVariantHash(bx * 211 + 13, by * 104723 + 19) * FOREST_BLOCK_SIZE);
-
-  const members = new Set<string>([`${originX},${originY}`]);
-  const frontier: [number, number][] = [[originX, originY]];
-  const dirs: [number, number][] = [
-    [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1],
-  ];
-
-  let step = 0;
-  while (members.size < size && step < size * 8) {
-    step++;
-    const frontierIdx = Math.floor(tileVariantHash(originX + step * 733, originY + step * 977) * frontier.length);
-    const [px, py] = frontier[frontierIdx];
-    const dirIdx = Math.floor(tileVariantHash(originX * 31 + step * 17, originY * 31 + step * 23) * dirs.length);
-    const [dx, dy] = dirs[dirIdx];
-    const nx = px + dx;
-    const ny = py + dy;
-    // Kümeyi kendi bloğunun sınırları içinde tut (bkz. yukarıdaki not).
-    if (nx < blockMinX || nx >= blockMinX + FOREST_BLOCK_SIZE) continue;
-    if (ny < blockMinY || ny >= blockMinY + FOREST_BLOCK_SIZE) continue;
-    const k = `${nx},${ny}`;
-    if (!members.has(k)) {
-      members.add(k);
-      frontier.push([nx, ny]);
-    }
-  }
-  return members;
-}
-
-function isInForestCluster(x: number, y: number): boolean {
-  const bx = Math.floor(x / FOREST_BLOCK_SIZE);
-  const by = Math.floor(y / FOREST_BLOCK_SIZE);
-  const members = forestClusterMembers(bx, by);
-  return members.size > 0 && members.has(`${x},${y}`);
-}
-
-function decorVariantFor(tile: Tile): string | null {
-  // 1) Orman kümesinin parçası mı? (en yüksek öncelik)
-  if (isInForestCluster(tile.x, tile.y)) return TREE_DECOR;
-
-  // 2) Seyrek serpiştirilmiş dekor (taş/kütük/kazıntı) -- farklı hash
-  // "tuzları" kullanılarak diğer kararlardan bağımsız tutuluyor.
-  const scatteredRoll = tileVariantHash(tile.x + 9973, tile.y + 9973);
-  if (scatteredRoll < SCATTERED_DECOR_CHANCE) {
-    const idx = Math.floor(tileVariantHash(tile.x - 9973, tile.y - 9973) * SCATTERED_DECOR_VARIANTS.length);
-    return SCATTERED_DECOR_VARIANTS[Math.min(idx, SCATTERED_DECOR_VARIANTS.length - 1)];
-  }
-
-  // 3) Kümeye dahil olmayan tekil/yalnız ağaç.
-  const loneTreeRoll = tileVariantHash(tile.x + 42017, tile.y + 42017);
-  if (loneTreeRoll < LONE_TREE_CHANCE) return TREE_DECOR;
-
-  return null;
-}
+// Zemin artık TEK bir sabit doku (Eren'in verdiği çim karosu fotoğrafı) --
+// her karoda aynı görsel kullanılıyor, üstüne serpiştirilmiş hiçbir obje
+// (ağaç/taş/kütük) yok; dekor ileride Eren tarafından elle, tek tek
+// karolara yerleştirilecek (bkz. sohbet).
+const GROUND_TEXTURE = "/terrain/ground.jpg";
 
 function loadSession(): Session | null {
   try {
@@ -438,43 +335,6 @@ export default function App() {
     [tiles]
   );
 
-  // Zemin artık HER karonun kendi ayrı arka plan rengini çizdiği bir "kare
-  // kare" ızgara değil -- aynı GRASS_BLOCK_SIZE bloğuna (ve dolayısıyla aynı
-  // yeşil tona) düşen komşu karolar TEK bir SVG <path> içinde birleştirilip
-  // tek seferde dolduruluyor. Aynı path üzerindeki bitişik baklavaların
-  // arasında stroke/kenar çizgisi olmadığı için görsel olarak "tek parça bir
-  // ada yaması" gibi görünüyor, ayrı karolar dizisi gibi değil. Karo türüne
-  // (NPC/oyuncu/boş) bakılmaksızın HER karo bu zemine dahil -- sahiplik artık
-  // zeminin renginden değil, binanın altındaki küçük rozetten anlaşılıyor
-  // (bkz. aşağıdaki "ownership-badge").
-  const terrainGroups = useMemo(() => {
-    const groups = new Map<string, { color: string; parts: string[] }>();
-    const half = tileWidth / 2;
-    const halfH = tileHeight / 2;
-    // Bitişik karo path'leri arasında olası kıl payı boşluk/dikiş kalmasın
-    // diye köşeleri çok hafif dışa taşırıyoruz.
-    const pad = 0.75;
-    for (const tile of tiles) {
-      const bx = Math.floor(tile.x / GRASS_BLOCK_SIZE);
-      const by = Math.floor(tile.y / GRASS_BLOCK_SIZE);
-      const groupKey = `${bx}:${by}`;
-      const color = grassColorFor(tile);
-      const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-      const d = `M ${cx} ${cy - halfH - pad} L ${cx + half + pad} ${cy} L ${cx} ${cy + halfH + pad} L ${cx - half - pad} ${cy} Z `;
-      let group = groups.get(groupKey);
-      if (!group) {
-        group = { color, parts: [] };
-        groups.set(groupKey, group);
-      }
-      group.parts.push(d);
-    }
-    return Array.from(groups.entries()).map(([groupKey, group]) => ({
-      key: groupKey,
-      color: group.color,
-      d: group.parts.join(""),
-    }));
-  }, [tiles, tileWidth, tileHeight]);
-
   // Klan arkadaşlarımın oyuncu kimlikleri -- takviye hedefinin geçerli olup
   // olmadığını (kendi kalem ya da klan arkadaşımın kalesi) anlamak için.
   const guildMemberIds = useMemo(() => new Set((guild?.members ?? []).map((m) => m.playerId)), [guild]);
@@ -735,42 +595,25 @@ export default function App() {
             height: WORLD_SIZE * tileHeight + tileHeight,
           }}
         >
-          {/* Tüm adaların zemini -- artık her karo kendi arka planını çizen
-              ayrı bir dikdörtgen değil, aynı renk bloğuna düşen komşu
-              karoların TEK bir SVG path'te birleştiği "tek parça yama"lar.
-              Bkz. terrainGroups memo'su: aradaki dikişler tamamen kayboluyor. */}
-          <svg
-            className="terrain-layer"
-            width={WORLD_SIZE * tileWidth}
-            height={WORLD_SIZE * tileHeight + tileHeight}
-          >
-            {terrainGroups.map((g) => (
-              <path key={g.key} d={g.d} fill={g.color} />
-            ))}
-          </svg>
           {sortedTiles.map((tile) => {
                 const showCastle = tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
                 const showNpc = tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
                 const isGuildmate = !isMine && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-                // Yeni SVG kale/NPC çizimleri bilerek geniş/basık oranlı (dikine
-                // gitmesinler diye) -- object-fit:contain + object-position:bottom
-                // ile kutunun tabanına yaslanıyor, bu yüzden kutu boyutu eskisi
-                // kadar büyük olmasa da okunaklı kalıyor.
-                const castleSize = tileWidth * 0.92;
-                const npcSize = tileWidth * 0.86;
-                const badgeSize = Math.max(8, castleSize * 0.24);
-                const isEmpty = tile.tileType === "EMPTY";
-                const decorImg = isEmpty && tileWidth >= DECOR_MIN_WIDTH ? decorVariantFor(tile) : null;
-                const decorSize = tileWidth * 0.8;
-                // NPC/dekor ikonlarına karo bazlı hafif döndürme+ölçek farkı --
-                // aynı ikon yüzlerce karoda birebir aynı dursa "fotokopi
-                // çekilmiş" gibi tekdüze/kare kare bir tekrar hissi veriyordu.
-                const npcRotation = (tileVariantHash(tile.x * 31 + 7, tile.y * 37 + 11) - 0.5) * 20;
-                const npcScale = 0.92 + tileVariantHash(tile.x * 41 + 13, tile.y * 43 + 17) * 0.18;
-                const decorRotation = (tileVariantHash(tile.x * 53 + 19, tile.y * 59 + 23) - 0.5) * 26;
-                const decorScale = 0.88 + tileVariantHash(tile.x * 61 + 29, tile.y * 67 + 31) * 0.3;
+                // Kale/NPC görselleri artık kendi karolarının DIŞINA
+                // taşmıyor -- kutu, karonun kendi (tileWidth × tileHeight)
+                // sınırlarını asla aşmayacak şekilde (yükseklik sınırlayıcı
+                // boyut, CASTLE_IMAGE_ASPECT'e göre genişlik ondan türetiliyor)
+                // hesaplanıp karonun ALT ucuna yaslanıyor (Eren'in isteği:
+                // "Kaleler bulunduğu karenin dışına çıkmasın").
+                const castleBoxHeight = tileHeight * 0.94;
+                const castleBoxWidth = castleBoxHeight * CASTLE_IMAGE_ASPECT;
+                const npcBoxHeight = tileHeight * 0.84;
+                const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
+                const badgeSize = Math.max(8, castleBoxHeight * 0.32);
+                const showInfoLabel = (showCastle || showNpc) && tileWidth >= LABEL_MIN_WIDTH;
+                const totalTroops = tile.troops + (tile.reinforcementTroops ?? 0);
                 return (
                   <div
                     key={tile.id}
@@ -794,21 +637,12 @@ export default function App() {
                     }}
                     title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
+                    {/* Zemin -- Eren'in verdiği tek sabit çim dokusu, karo
+                        baklava şekline clip-path ile kırpılıyor (bkz.
+                        .iso-ground) ki komşu karolar arasında beyaz köşe/dikiş
+                        görünmesin. Üstüne serpiştirilmiş hiçbir obje yok. */}
+                    <img src={GROUND_TEXTURE} alt="" className="iso-ground" draggable={false} />
                     <div className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`} />
-                    {decorImg && (
-                      <img
-                        src={decorImg}
-                        alt=""
-                        className="iso-decor"
-                        style={{
-                          width: decorSize,
-                          height: decorSize,
-                          left: (tileWidth - decorSize) / 2,
-                          top: (tileHeight - decorSize) / 2 - tileHeight * 0.05,
-                          transform: `rotate(${decorRotation}deg) scale(${decorScale})`,
-                        }}
-                      />
-                    )}
                     {showCastle && (
                       <>
                         <img
@@ -816,10 +650,10 @@ export default function App() {
                           alt=""
                           className="iso-castle"
                           style={{
-                            width: castleSize,
-                            height: castleSize,
-                            left: (tileWidth - castleSize) / 2,
-                            top: (tileHeight - castleSize) / 2 - tileHeight * 0.05,
+                            width: castleBoxWidth,
+                            height: castleBoxHeight,
+                            left: (tileWidth - castleBoxWidth) / 2,
+                            top: tileHeight - castleBoxHeight,
                           }}
                         />
                         {/* Sahiplik artık zeminin renginden değil, kalenin
@@ -834,8 +668,8 @@ export default function App() {
                             background: isMine ? "#4caf50" : isGuildmate ? "#2196f3" : "#e53935",
                             width: badgeSize,
                             height: badgeSize,
-                            left: (tileWidth - castleSize) / 2 + castleSize - badgeSize * 0.7,
-                            top: (tileHeight - castleSize) / 2 - tileHeight * 0.05 - badgeSize * 0.35,
+                            left: (tileWidth - castleBoxWidth) / 2 + castleBoxWidth - badgeSize * 0.7,
+                            top: tileHeight - castleBoxHeight - badgeSize * 0.35,
                           }}
                         />
                       </>
@@ -846,13 +680,21 @@ export default function App() {
                         alt=""
                         className="iso-castle"
                         style={{
-                          width: npcSize,
-                          height: npcSize,
-                          left: (tileWidth - npcSize) / 2,
-                          top: (tileHeight - npcSize) / 2 - tileHeight * 0.05,
-                          transform: `rotate(${npcRotation}deg) scale(${npcScale})`,
+                          width: npcBoxWidth,
+                          height: npcBoxHeight,
+                          left: (tileWidth - npcBoxWidth) / 2,
+                          top: tileHeight - npcBoxHeight,
                         }}
                       />
+                    )}
+                    {/* Madde: "Saatlik üretimlerin orada toplam asker
+                        sayılarıda görünsün" -- kale/NPC'nin üstünde, haritada
+                        doğrudan görünen küçük bir üretim/asker etiketi. */}
+                    {showInfoLabel && (
+                      <div className="tile-info-label" style={{ left: tileWidth / 2 }}>
+                        <span>⚔️ {totalTroops}</span>
+                        <span>🪙 +{tile.goldPerHour}/sa</span>
+                      </div>
                     )}
                   </div>
                 );
@@ -977,21 +819,23 @@ export default function App() {
           {myTiles.length === 0 && <p className="hint">Henüz bir şehrin yok.</p>}
           <ul className="city-list">
             {myTiles.map((t) => (
-              <li key={t.id}>
-                <div className="city-row">
+              <li key={t.id} className="city-card">
+                <div className="city-card-top">
                   <img src={CASTLE_ICON} alt="" className="city-icon" />
-                  <div>
-                    <div>
-                      ({t.x},{t.y}) — Lv{t.level} — ada #{t.islandId}
+                  <div className="city-card-title">
+                    <div className="city-name">
+                      Kale <span className="city-coords">({t.x}, {t.y})</span>
                     </div>
-                    <div className="stats">
-                      ⚔️ {t.troops} asker &nbsp; 🪙 +{t.goldPerHour}/sa
-                    </div>
+                    <div className="city-meta">Seviye {t.level} · Ada #{t.islandId}</div>
                   </div>
+                </div>
+                <div className="city-stats-row">
+                  <span className="stat-chip stat-troops">⚔️ <strong>{t.troops}</strong></span>
+                  <span className="stat-chip stat-gold">🪙 <strong>+{t.goldPerHour}</strong>/sa</span>
                 </div>
                 <div className="row-actions">
                   <button onClick={() => handleUpgrade(t.id)}>Yükselt</button>
-                  <button onClick={() => goToTile(t)}>Haritada göster</button>
+                  <button onClick={() => goToTile(t)}>Haritada Göster</button>
                 </div>
               </li>
             ))}
@@ -1025,7 +869,7 @@ export default function App() {
                 {selectedTile.level} — ada #{selectedTile.islandId}
               </p>
               <p>⚔️ {selectedTile.troops} asker &nbsp; 🪙 +{selectedTile.goldPerHour}/sa</p>
-              {selectedTile.reinforcementTroops > 0 && (
+              {(selectedTile.reinforcementTroops ?? 0) > 0 && (
                 <p>🛡️ +{selectedTile.reinforcementTroops} takviye (klan)</p>
               )}
               {!selectedTile.ownerId
@@ -1055,7 +899,7 @@ export default function App() {
                 </div>
               )}
 
-              {selectedTile.reinforcements
+              {(selectedTile.reinforcements ?? [])
                 .filter((r) => r.fromPlayerId === session.playerId)
                 .map((r) => (
                   <div key={r.id} className="reinforcement-row">

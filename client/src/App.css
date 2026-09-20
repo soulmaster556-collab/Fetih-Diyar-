@@ -226,18 +226,6 @@ button:disabled {
   position: relative;
 }
 
-/* Bütün adaların zemini -- artık karo başına ayrı renkli dikdörtgenler değil,
-   App.tsx'teki terrainGroups'un ürettiği, aynı renk bloğundaki komşu
-   karoları TEK bir <path> içinde birleştiren "yama"lar (bkz. oradaki yorum).
-   Bina/dekor katmanlarının ALTINDA kalsın diye DOM'da ilk sırada. */
-.terrain-layer {
-  position: absolute;
-  left: 0;
-  top: 0;
-  z-index: 0;
-  pointer-events: none;
-}
-
 .iso-tile-group {
   position: absolute;
   cursor: pointer;
@@ -289,14 +277,42 @@ button:disabled {
   pointer-events: none;
 }
 
-/* Boş karolardaki dekor öğeleri (ağaç, kaya, kazı alanı vb.) -- zemin
-   dokusunun (iso-diamond'ın background-image'i) üzerine biner. */
-.iso-decor {
+/* Zemin -- Eren'in verdiği tek sabit çim dokusu. Karo tam olarak baklava
+   (rhombus) şeklinde kırpılıyor ki komşu karo görselleri arasında beyaz
+   köşe/dikiş görünmesin (bkz. App.tsx GROUND_TEXTURE). object-fit:fill
+   bilerek -- görsel zaten kutunun tam köşe noktalarına dokunacak şekilde
+   hazırlandı, "contain/cover" kırpma boşluk bırakabilir. */
+.iso-ground {
   position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
   pointer-events: none;
-  z-index: 1;
-  object-fit: contain;
-  object-position: bottom center;
+  object-fit: fill;
+  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
+
+/* Kale/NPC'nin üstündeki "orada" (haritada, tıklamadan görünen) küçük
+   üretim/asker etiketi. Karonun üst ucunun biraz üstünde, ortalanmış. */
+.tile-info-label {
+  position: absolute;
+  top: -18px;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  background: rgba(31, 45, 58, 0.82);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 2px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 1px 4px rgba(31, 45, 58, 0.35);
 }
 
 /* Sağdaki/soldaki kalıcı barlar kalktı -- "Krallığım" listesi ve "Seçili
@@ -381,6 +397,79 @@ button:disabled {
   height: 36px;
   object-fit: contain;
   flex-shrink: 0;
+}
+
+/* "Krallığım" listesindeki her kale artık düz metin satırları yerine daha
+   profesyonel bir kart: kalın/koyu başlık, altında soluk meta bilgisi, sonra
+   ayrı renkli "chip"lere ayrılmış istatistikler (asker/altın) -- eski
+   sürümdeki tek uzun cümle yerine (⚔️ N asker  🪙 +N/sa) net görsel
+   ayrıştırma sağlıyor. */
+.city-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid rgba(31, 45, 58, 0.06);
+}
+
+.city-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.city-card-title {
+  min-width: 0;
+}
+
+.city-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1f2d3a;
+}
+
+.city-coords {
+  font-weight: 500;
+  color: #5b6b78;
+}
+
+.city-meta {
+  font-size: 12px;
+  color: #5b6b78;
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+.city-stats-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1f2d3a;
+  background: #eef5fb;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.stat-chip strong {
+  font-weight: 800;
+}
+
+.stat-chip.stat-troops {
+  background: #fdeee9;
+  color: #b3441f;
+}
+
+.stat-chip.stat-gold {
+  background: #fdf3d8;
+  color: #916b06;
 }
 
 .row-actions {

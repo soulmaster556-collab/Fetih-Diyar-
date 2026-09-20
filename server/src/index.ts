@@ -1,7 +1,11 @@
 import express from "express";
 import cors from "cors";
 import { initSchema } from "./db.js";
-import { ensureMapGenerated, applyNpcBorderMigration } from "./game/mapgen.js";
+import {
+  ensureMapGenerated,
+  applyNpcBorderMigration,
+  applyNpcDensityReductionMigration,
+} from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
 import { playersRouter } from "./routes/players.js";
 import { tilesRouter } from "./routes/tiles.js";
@@ -18,7 +22,6 @@ async function main() {
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);
-  await applyNpcBorderMigration(settings);
 
   const app = express();
   app.use(
@@ -34,10 +37,21 @@ async function main() {
   app.use("/api/admin", adminRouter);
   app.use("/api/guilds", guildsRouter);
 
+  // Render (ve benzeri PaaS'lar) bir portun açılmasını belirli bir süre
+  // bekler; o süre dolmadan port dinlemeye başlamazsak deploy "port scan
+  // timeout" ile başarısız sayılır. Bu yüzden ÖNCE portu dinlemeye
+  // başlıyoruz, tek seferlik/geriye dönük geçişler (migration) gibi yavaş
+  // olabilecek işleri arka planda, sunucu zaten ayaktayken çalıştırıyoruz.
   const PORT = process.env.PORT ? Number(process.env.PORT) : 4000;
   app.listen(PORT, () => {
     console.log(`Fetih Diyarı sunucusu http://localhost:${PORT} adresinde çalışıyor`);
   });
+
+  applyNpcBorderMigration(settings)
+    .then(() => applyNpcDensityReductionMigration(settings))
+    .catch((err) => {
+      console.error("[migration] npc geçişleri başarısız oldu:", err);
+    });
 }
 
 main().catch((err) => {
