@@ -445,8 +445,14 @@ tilesRouter.post("/reinforcements/:id/recall", authenticate, async (req: any, re
   }
 });
 
+// Eren: harita altıgene çevrildi -- x,y artık axial hex koordinatı (q,r),
+// düz Öklid mesafesi (Math.hypot) artık YANLIŞ sonuç verir (axial eksenler
+// birbirine dik değil). Standart axial hex mesafe formülü kullanılıyor --
+// bkz. https://www.redblobgames.com/grids/hexagons/#distances-axial
 function tileDistance(a: TileRow, b: TileRow) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+  const dq = a.x - b.x;
+  const dr = a.y - b.y;
+  return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
 }
 
 // BUG FİX (Eren): naval_attack_range sadece FARKLI adadaki bir kareye

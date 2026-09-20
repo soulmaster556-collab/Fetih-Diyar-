@@ -75,15 +75,21 @@ function key(x: number, y: number) {
   return `${x},${y}`;
 }
 
-function neighbors8(x: number, y: number): [number, number][] {
-  const result: [number, number][] = [];
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      if (dx === 0 && dy === 0) continue;
-      result.push([x + dx, y + dy]);
-    }
-  }
-  return result;
+// Eren: haritayı altıgene çeviriyoruz -- x,y artık axial hex koordinatı
+// (q,r). Kare gridin 8 komşusu yerine bir altıgenin gerçek 6 komşusu var;
+// bu sabit yön listesi standart axial komşuluk formülü (bkz.
+// https://www.redblobgames.com/grids/hexagons/ -- "axial direction vectors").
+const HEX_DIRECTIONS: [number, number][] = [
+  [1, 0],
+  [1, -1],
+  [0, -1],
+  [-1, 0],
+  [-1, 1],
+  [0, 1],
+];
+
+function neighbors6(x: number, y: number): [number, number][] {
+  return HEX_DIRECTIONS.map(([dx, dy]) => [x + dx, y + dy]);
 }
 
 function inBounds(x: number, y: number) {
@@ -97,7 +103,7 @@ function sameIslandNeighborCount(
   islandId: number
 ) {
   let count = 0;
-  for (const [nx, ny] of neighbors8(x, y)) {
+  for (const [nx, ny] of neighbors6(x, y)) {
     if (occupied.get(key(nx, ny)) === islandId) count++;
   }
   return count;
@@ -148,7 +154,7 @@ function generateIslandLayout(): LandTile[] {
     if (!inBounds(x, y)) return false;
     if (x < allowed.minX || x > allowed.maxX || y < allowed.minY || y > allowed.maxY) return false;
     if (occupied.has(key(x, y))) return false;
-    for (const [nx, ny] of neighbors8(x, y)) {
+    for (const [nx, ny] of neighbors6(x, y)) {
       const owner = occupied.get(key(nx, ny));
       if (owner !== undefined && owner !== islandId) return false;
     }
@@ -192,7 +198,7 @@ function generateIslandLayout(): LandTile[] {
     let stalls = 0;
     while (islandTiles.length < targetSize && stalls < MAX_GROWTH_STALLS) {
       const [bx, by] = pickGrowthOrigin(islandTiles, occupied, islandId);
-      const candidates = neighbors8(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId, allowed));
+      const candidates = neighbors6(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId, allowed));
       if (candidates.length === 0) {
         stalls++;
         continue;
@@ -212,7 +218,7 @@ function generateIslandLayout(): LandTile[] {
   // deniz) en az bir komşusu varsa kıyı sayılır. Kale/NPC bu karolarda asla
   // yerleşmemeli (Eren'in isteği) -- sadece adanın iç kısmı yerleşime açık.
   for (const tile of allTiles) {
-    for (const [nx, ny] of neighbors8(tile.x, tile.y)) {
+    for (const [nx, ny] of neighbors6(tile.x, tile.y)) {
       if (occupied.get(key(nx, ny)) !== tile.islandId) {
         tile.isCoastal = true;
         break;
@@ -221,6 +227,30 @@ function generateIslandLayout(): LandTile[] {
   }
 
   return allTiles;
+}
+
+// Eren'in isteği: "sadece haritayı altıgene çevirelim". Kare gridin x,y'si
+// ile altıgenin axial q,r'si aynı iki tamsayı kolonunda tutuluyor (bkz.
+// db.ts) ama komşuluk/mesafe anlamları tamamen farklı -- eski kare haritada
+// üretilmiş adaların hex komşuluğuna göre şekli bozuk/kopuk görünürdü. Bu
+// yüzden (Eren'in de kabul ettiği gibi) test haritasını TEK SEFERLİK olarak
+// tamamen sıfırlıyoruz: hem karoları hem de hesapları (test kayıtları)
+// temizleyip ensureMapGenerated'ın yeni hex-komşuluklu adaları sıfırdan
+// üretmesine izin veriyoruz. schema_migrations ile korunduğu için sunucu
+// her yeniden başladığında bir daha ÇALIŞMAZ.
+export async function applyHexGridConversionMigration() {
+  const MIGRATION_NAME = "hex_grid_conversion_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: harita altıgene geçiyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita hex olarak yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {
@@ -323,7 +353,7 @@ export async function applyNpcBorderMigration(settings: Settings) {
   for (const t of rows) occupied.set(key(t.x, t.y), t.island_id);
 
   function isCoastalRow(t: { x: number; y: number; island_id: number }) {
-    for (const [nx, ny] of neighbors8(t.x, t.y)) {
+    for (const [nx, ny] of neighbors6(t.x, t.y)) {
       if (occupied.get(key(nx, ny)) !== t.island_id) return true;
     }
     return false;

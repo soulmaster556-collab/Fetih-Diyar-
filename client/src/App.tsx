@@ -74,6 +74,14 @@ const GROUND_TEXTURE = "/terrain/ground.jpg";
 const PUDDLE_TEXTURE = "/terrain/puddle.png";
 const PUDDLE_CHANCE = 0.022;
 
+// Eren: "sadece haritayı (altıgene) çevirelim, içini sonradan görselleri
+// ekleyeceğiz" -- hex geçişinin bu ilk fazında kale/NPC/su birikintisi
+// GÖRSELLERİ bilinçli olarak render edilmiyor (harita/mesafe/tıklama
+// mantığının doğru çalıştığını önce boş yeşil zeminle doğrulayalım diye).
+// Kod silinmedi, sadece bu bayrakla kapatıldı -- hex'e göre yeniden
+// boyutlanmış görseller hazır olunca burası true yapılacak.
+const SHOW_BUILDINGS_AND_DECOR = false;
+
 // Karo koordinatından (x,y) 0-1 arası DETERMİNİSTİK (her render'da aynı
 // sonucu veren) bir sözde-rastgele değer üretir -- su birikintisi gibi
 // dekoratif öğelerin her yeniden çizimde/kaydırmada yer değiştirmeden aynı
@@ -92,30 +100,32 @@ function loadSession(): Session | null {
   }
 }
 
-// Grid koordinatını (x,y) izometrik ekran merkezine çevirir. Standart 2:1
-// izometrik projeksiyon: sağa gitmek ekranda sağ-aşağı, aşağı gitmek
-// ekranda sol-aşağı hareket ettirir — bu da o klasik "baklava" ızgarayı
-// oluşturur. offsetX, en soldaki karonun negatif koordinata düşmesini önler.
+// Grid koordinatını (artık axial hex koordinatı: x=q, y=r) ekran merkezine
+// çevirir. Sivri-uçlu (pointy-top) altıgen döşeme kullanıyoruz: aynı satırda
+// (r sabit) yan yana karolar tam "tileWidth" kadar kayar; bir alt satıra
+// (r+1) geçmek hem yarım karo sağa hem de karo yüksekliğinin 3/4'ü kadar
+// aşağı kaydırır -- bu standart axial-to-pixel dönüşümü, klasik altıgen
+// petek görünümünü verir. x,y her zaman >= 0 olduğu için (WORLD_SIZE içinde)
+// eski baklava sisteminin aksine negatif koordinatı önlemek için ayrı bir
+// offsetX'e gerek yok.
 function isoCenter(x: number, y: number, tileWidth: number) {
-  const tileHeight = tileWidth / 2;
-  const offsetX = ((WORLD_SIZE - 1) * tileWidth) / 2;
+  const tileHeight = tileWidth * (2 / Math.sqrt(3));
   return {
-    cx: offsetX + (x - y) * (tileWidth / 2),
-    cy: (x + y) * (tileHeight / 2),
+    cx: tileWidth * (x + y / 2),
+    cy: tileHeight * 0.75 * y,
   };
 }
 
-// isoCenter'ın tersi: ekrandaki bir (screenX, screenY) noktasının hangi
-// dünya koordinatına düştüğünü bulur. Dört köşeyi bu şekilde çözüp min/max
-// alarak, görünen dikdörtgen alanın kapsadığı (x,y) aralığını (bir dörtgen
-// değil, baklava şeklinde olsa da) yaklaşık olarak buluyoruz — sunucudan
+// isoCenter'ın tam tersi (doğrusal bir dönüşüm olduğu için yaklaşık değil,
+// birebir ters çözüm): ekrandaki bir (screenX, screenY) noktasının hangi
+// axial (q,r) hücresine denk geldiğini bulur. Dört köşeyi bu şekilde çözüp
+// min/max alarak, görünen alanın kapsadığı aralığı buluyoruz — sunucudan
 // sadece bu aralığı istemek için yeterli.
 function screenToWorld(sx: number, sy: number, tileWidth: number) {
-  const tileHeight = tileWidth / 2;
-  const offsetX = ((WORLD_SIZE - 1) * tileWidth) / 2;
-  const a = (sx - offsetX) / (tileWidth / 2); // x - y
-  const b = sy / (tileHeight / 2); // x + y
-  return { x: (a + b) / 2, y: (b - a) / 2 };
+  const tileHeight = tileWidth * (2 / Math.sqrt(3));
+  const y = sy / (tileHeight * 0.75);
+  const x = sx / tileWidth - y / 2;
+  return { x, y };
 }
 
 export default function App() {
@@ -177,7 +187,8 @@ export default function App() {
   const unreadReportCount = useMemo(() => reports.filter((r) => r.readAt === null).length, [reports]);
   const [tileWidthIndex, setTileWidthIndex] = useState(DEFAULT_TILE_WIDTH_INDEX);
   const tileWidth = TILE_WIDTHS[tileWidthIndex];
-  const tileHeight = tileWidth / 2;
+  // Sivri-uçlu altıgende yükseklik = genişlik × 2/√3 (bkz. isoCenter).
+  const tileHeight = tileWidth * (2 / Math.sqrt(3));
   const viewportRef = useRef<HTMLDivElement>(null);
   const scrollDebounceRef = useRef<number | undefined>(undefined);
   const hasCenteredRef = useRef(false);
@@ -758,13 +769,18 @@ export default function App() {
         <div
           className="iso-map"
           style={{
-            width: WORLD_SIZE * tileWidth,
-            height: WORLD_SIZE * tileHeight + tileHeight,
+            // Axial hex düzeninde en sağdaki karo cx = tileWidth*1.5*(WORLD_SIZE-1)
+            // konumunda oturuyor (bkz. isoCenter) -- kapsayıcı buna göre
+            // boyutlandırılıyor, eski kare/baklava formülü artık geçerli değil.
+            width: tileWidth * (1.5 * (WORLD_SIZE - 1) + 1),
+            height: tileHeight * 0.75 * (WORLD_SIZE - 1) + tileHeight,
           }}
         >
           {sortedTiles.map((tile) => {
-                const showCastle = tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
-                const showNpc = tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
+                const showCastle =
+                  SHOW_BUILDINGS_AND_DECOR && tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
+                const showNpc =
+                  SHOW_BUILDINGS_AND_DECOR && tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
                 const isGuildmate = !isMine && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
                 // Eren'in düzeltmesi: mavi sancak = oyuncu (ben/klanım),
@@ -803,7 +819,10 @@ export default function App() {
                 // deterministik (koordinata bağlı) bir olasılıkla ekleniyor
                 // ki kaydırdıkça/yeniden çekildikçe yer değiştirmesin.
                 const showPuddle =
-                  tile.tileType === "EMPTY" && tileWidth >= 22 && pseudoRandom(tile.x, tile.y) < PUDDLE_CHANCE;
+                  SHOW_BUILDINGS_AND_DECOR &&
+                  tile.tileType === "EMPTY" &&
+                  tileWidth >= 22 &&
+                  pseudoRandom(tile.x, tile.y) < PUDDLE_CHANCE;
                 return (
                   <div
                     key={tile.id}

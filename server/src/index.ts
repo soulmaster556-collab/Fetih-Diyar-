@@ -3,6 +3,7 @@ import cors from "cors";
 import { initSchema } from "./db.js";
 import {
   ensureMapGenerated,
+  applyHexGridConversionMigration,
   applyNpcBorderMigration,
   applyNpcDensityReductionMigration,
 } from "./game/mapgen.js";
@@ -19,6 +20,11 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
 
 async function main() {
   await initSchema();
+  // Hex geçişi -- tek seferlik, test haritasını/hesaplarını sıfırlar (bkz.
+  // mapgen.ts). ensureMapGenerated'dan ÖNCE ve senkron çalışmalı ki tiles
+  // tablosu boşaldıktan hemen sonra yeni hex-komşuluklu ada üretimi devreye
+  // girsin.
+  await applyHexGridConversionMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);

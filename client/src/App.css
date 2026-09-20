@@ -289,7 +289,9 @@ button:disabled {
 .iso-diamond {
   position: absolute;
   inset: 0;
-  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  /* Eren: haritayı altıgene çevirdik -- eski baklava (rhombus) kırpma yerine
+     sivri-uçlu (pointy-top) altıgen köşe noktaları (bkz. App.tsx isoCenter). */
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   background: transparent;
   transition: background-color 0.1s ease;
 }
@@ -337,7 +339,7 @@ button:disabled {
   z-index: 0;
   pointer-events: none;
   object-fit: fill;
-  clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
 
 /* Eren'in verdiği "su birikintisi" görseli -- sadece boş karelerin küçük
