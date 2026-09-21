@@ -67,7 +67,11 @@ const DEFAULT_TILE_WIDTH_INDEX = 2;
 // kendisinden değil, kalenin yanındaki renkli rozetten anlaşılıyor (bkz.
 // ownership-badge) -- bu yüzden eski "mavi sancak/kırmızı sancak" iki-görsel
 // sistemi kaldırıldı, sadece NPC hâlâ ayrı bir görsel kullanıyor (bkz.
-// NPC_CASTLE_ICON).
+// NPC_LEVEL_TIERS).
+// Eren (2. tur): yeşil/yosunlu-kristal temalı yeni 6 seviyelik kale seti
+// gönderdi ("Npc ve Oyuncu kaleleri olucaklar") -- eski lacivert/turkuaz seti
+// bu dosyaların YERİNE (aynı dosya adlarıyla) kondu, kod tarafında değişiklik
+// gerekmedi.
 const CASTLE_LEVEL_TIERS: [number, string][] = [
   [200, "/buildings/castle_levels/level_200.png"],
   [100, "/buildings/castle_levels/level_100.png"],
@@ -82,14 +86,29 @@ function castleImageForLevel(level: number): string {
   }
   return CASTLE_LEVEL_TIERS[CASTLE_LEVEL_TIERS.length - 1][1];
 }
-// Eren'in gönderdiği gerçek NPC kalesi görseli (koyu lacivert/altın,
-// gözcü kulesi ortada) -- geçici oyuncu-kalesi placeholder'ı kaldırıldı.
-const NPC_CASTLE_ICON = "/buildings/npc_castle.png";
+// Eren (2. tur): NPC kampları için de lav/şeytani temalı yeni bir set
+// gönderdi -- eskiden NPC tek bir sabit görsel kullanıyordu (npc_castle.png),
+// artık oyuncu kalesiyle aynı mantıkla NPC'nin KENDİ seviyesine (bkz.
+// mapgen.ts: NPC'ler hep 1-3 arası doğuyor) göre 3 farklı görselden biri
+// seçiliyor -- en küçük/orta/en gösterişli üç kule NPC'nin 1/2/3 seviyesine
+// atandı, kalan üç görsel ileride NPC seviye aralığı büyürse diye ayrı
+// tutuldu (henüz projeye eklenmedi).
+const NPC_LEVEL_TIERS: [number, string][] = [
+  [3, "/buildings/npc_castle_levels/npc_level_3.png"],
+  [2, "/buildings/npc_castle_levels/npc_level_2.png"],
+  [1, "/buildings/npc_castle_levels/npc_level_1.png"],
+];
+function npcCastleImageForLevel(level: number): string {
+  for (const [threshold, src] of NPC_LEVEL_TIERS) {
+    if (level >= threshold) return src;
+  }
+  return NPC_LEVEL_TIERS[NPC_LEVEL_TIERS.length - 1][1];
+}
 // Kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın diye
-// kale/NPC boyutu bu orana göre hesaplanıyor (bkz. aşağıdaki
-// castleBoxWidth/Height). object-fit:contain her görselin kendi gerçek
-// oranını koruduğu için 6 seviye görselinin birbirinden farklı oranları
-// olması sorun değil -- bu sadece dıştaki kutunun oranı.
+// NPC kale boyutu bu orana göre hesaplanıyor (bkz. aşağıdaki npcBoxWidth).
+// object-fit:contain her görselin kendi gerçek oranını koruduğu için NPC'nin
+// 3 seviye görselinin birbirinden farklı oranları olması sorun değil -- bu
+// sadece dıştaki kutunun oranı.
 const CASTLE_IMAGE_ASPECT = 700 / 512;
 const ICON_MIN_WIDTH = 28;
 
@@ -1244,9 +1263,10 @@ export default function App() {
                 // Eren'in isteği: gerçek oyuncu kaleleri artık sahipliğe göre
                 // değil SEVİYEYE göre görsel değiştiriyor (bkz.
                 // CASTLE_LEVEL_TIERS) -- sahiplik yanındaki renkli rozetten
-                // anlaşılıyor. NPC kampları hâlâ ayrı, Eren'in gönderdiği
-                // gerçek NPC kale görselini kullanıyor (bkz. NPC_CASTLE_ICON).
+                // anlaşılıyor. NPC kampları da artık KENDİ seviyesine göre 3
+                // görselden birini kullanıyor (bkz. NPC_LEVEL_TIERS).
                 const castleIcon = castleImageForLevel(tile.level);
+                const npcIcon = npcCastleImageForLevel(tile.level);
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
                 // Eren: "Oyuncu kalelerini büyüt altıgenin içinde çok küçük
                 // kalıyorlar." -- ölçüm yapıp gerçek sebebi bulduk: eski kod
@@ -1265,9 +1285,13 @@ export default function App() {
                 // (~1.02 oran) bu tavanın altında kalıyor, yani komşu
                 // karolarla üst üste binme riski yok (bkz. Eren'in eski "üst
                 // üste binmeler var" uyarısı -- o hataya geri dönülmedi).
-                // NPC kampları için istek gelmedi, eski oran/boyut korunuyor.
+                // Eren (2. tur, yeni yeşil/kristal set): yeni level_10 görseli
+                // öncekilerden daha "yassı" (~1.18 oran) -- kutu oranı
+                // (1.05'ten 1.2'ye) hafifçe artırıldı ki object-fit:contain bu
+                // görseli de tam yüksekliğine sığdırabilsin, tileWidth*0.94
+                // tavanı üst üste binmeye karşı güvenlik payını zaten koruyor.
                 const castleBoxHeight = tileHeight * 0.82;
-                const castleBoxWidth = Math.min(castleBoxHeight * 1.05, tileWidth * 0.94);
+                const castleBoxWidth = Math.min(castleBoxHeight * 1.2, tileWidth * 0.94);
                 const npcBoxHeight = tileHeight * 0.58;
                 const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
                 const castleTop = (tileHeight - castleBoxHeight) / 2;
@@ -1346,7 +1370,7 @@ export default function App() {
                     )}
                     {showNpc && (
                       <img
-                        src={NPC_CASTLE_ICON}
+                        src={npcIcon}
                         alt=""
                         className="iso-castle"
                         style={{
