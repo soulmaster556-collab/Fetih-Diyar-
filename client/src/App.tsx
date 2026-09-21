@@ -31,6 +31,7 @@ import {
   type GuildListEntry,
   type LeaderboardResponse,
   type MyProfile,
+  type PlayerSummary,
   type ReceivedGuildInvite,
   type Report,
   type Session,
