@@ -50,7 +50,8 @@ const DEFAULT_TILE_WIDTH_INDEX = 2;
 // birini kullanıyor (bkz. castleImageForLevel). Sahiplik artık görselin
 // kendisinden değil, kalenin yanındaki renkli rozetten anlaşılıyor (bkz.
 // ownership-badge) -- bu yüzden eski "mavi sancak/kırmızı sancak" iki-görsel
-// sistemi kaldırıldı, sadece NPC hâlâ ayrı (geçici) bir görsel kullanıyor.
+// sistemi kaldırıldı, sadece NPC hâlâ ayrı bir görsel kullanıyor (bkz.
+// NPC_CASTLE_ICON).
 const CASTLE_LEVEL_TIERS: [number, string][] = [
   [200, "/buildings/castle_levels/level_200.png"],
   [100, "/buildings/castle_levels/level_100.png"],
@@ -65,10 +66,9 @@ function castleImageForLevel(level: number): string {
   }
   return CASTLE_LEVEL_TIERS[CASTLE_LEVEL_TIERS.length - 1][1];
 }
-// Eren: "şimdilik sen geçici olarak NPC kale koy, ben sonra görselini
-// atacağım" -- NPC kampları için geçici görsel; gerçek NPC sanatı gelince
-// sadece bu satır değişecek.
-const NPC_CASTLE_ICON = "/buildings/player_castle_new.png";
+// Eren'in gönderdiği gerçek NPC kalesi görseli (koyu lacivert/altın,
+// gözcü kulesi ortada) -- geçici oyuncu-kalesi placeholder'ı kaldırıldı.
+const NPC_CASTLE_ICON = "/buildings/npc_castle.png";
 // Kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın diye
 // kale/NPC boyutu bu orana göre hesaplanıyor (bkz. aşağıdaki
 // castleBoxWidth/Height). object-fit:contain her görselin kendi gerçek
@@ -82,29 +82,13 @@ const LABEL_MIN_WIDTH = 40;
 
 // Zemin artık TEK bir sabit doku (Eren'in verdiği çim karosu fotoğrafı) --
 // her karoda aynı görsel kullanılıyor, üstüne serpiştirilmiş hiçbir obje
-// (ağaç/taş/kütük) yok; dekor ileride Eren tarafından elle, tek tek
-// karolara yerleştirilecek (bkz. sohbet).
+// (ağaç/taş/kütük/su birikintisi) yok -- Eren: "dekorları kaldır" -- dekor
+// ileride Eren tarafından elle, tek tek karolara yerleştirilecek.
 const GROUND_TEXTURE = "/terrain/ground.jpg";
-// Eren'in verdiği "su birikintisi" görseli -- boş karelerin KÜÇÜK bir
-// kısmına (bkz. PUDDLE_CHANCE) serpiştiriliyor, kale/NPC olan karolara asla
-// eklenmiyor (üst üste binmesin diye).
-const PUDDLE_TEXTURE = "/terrain/puddle.png";
-const PUDDLE_CHANCE = 0.022;
 
-// Eren: hex geçişinin ilk fazında (harita/mesafe/tıklama mantığını boş
-// zeminle doğrularken) bu bayrak false'tu. Artık seviyeye göre kale
-// görselleri hazır olduğu için TEKRAR açıldı -- kale/NPC/su birikintisi
-// hex karoların üzerinde tekrar görünüyor.
-const SHOW_BUILDINGS_AND_DECOR = true;
-
-// Karo koordinatından (x,y) 0-1 arası DETERMİNİSTİK (her render'da aynı
-// sonucu veren) bir sözde-rastgele değer üretir -- su birikintisi gibi
-// dekoratif öğelerin her yeniden çizimde/kaydırmada yer değiştirmeden aynı
-// karolarda sabit kalması için (gerçek Math.random yerine).
-function pseudoRandom(x: number, y: number) {
-  const s = Math.sin(x * 374761393 + y * 668265263 + 12.9898) * 43758.5453;
-  return s - Math.floor(s);
-}
+// Kale/NPC görselleri hex karoların üzerinde gösteriliyor mu -- Eren'in asıl
+// amacı eklenen kale görsellerini sergilemek olduğu için bu hep açık.
+const SHOW_BUILDINGS = true;
 
 function loadSession(): Session | null {
   try {
@@ -544,6 +528,20 @@ export default function App() {
   // Kendi kalemize tıklayınca açılan küçük menüden "Saldır", "Destek
   // Gönder" ya da "Gözcü Gönder" seçilince: bilgi kartını kapatıp "hedef
   // seç" moduna geçiyoruz.
+  // Eren: "Bir yeri tıkladığım zaman bir pencere açılıyor farklı bir yeri
+  // tıklayınca eski pencere de ekranda kalıyor, otomatik kapansın" -- aynı
+  // anda yalnızca TEK bir yüzen panel (kale menüsü, Krallığım, Lonca,
+  // Liderlik, Raporlar) açık olmalı. Yeni bir panel açılmadan önce bu
+  // çağrılıp diğer hepsi kapatılıyor.
+  function closeFloatingPanels() {
+    setSelectedTile(null);
+    setSelectedScreenPos(null);
+    setShowKingdomList(false);
+    setShowGuildPanel(false);
+    setShowLeaderboard(false);
+    setShowReports(false);
+  }
+
   function startAction(type: ActionType, fromTile: Tile) {
     setActionMode({ type, fromTile });
     setPendingTarget(null);
@@ -651,20 +649,26 @@ export default function App() {
   }
 
   function openGuildPanel() {
-    setShowGuildPanel((v) => !v);
-    if (!guild) listGuilds().then(setAvailableGuilds).catch(() => {});
+    const next = !showGuildPanel;
+    closeFloatingPanels();
+    setShowGuildPanel(next);
+    if (next && !guild) listGuilds().then(setAvailableGuilds).catch(() => {});
   }
 
   function openLeaderboard() {
-    setShowLeaderboard((v) => !v);
-    fetchLeaderboard().then(setLeaderboard).catch(() => {});
+    const next = !showLeaderboard;
+    closeFloatingPanels();
+    setShowLeaderboard(next);
+    if (next) fetchLeaderboard().then(setLeaderboard).catch(() => {});
   }
 
   // Raporlar panelini açınca hem en güncel listeyi çekiyoruz hem de hepsini
   // okunmuş işaretliyoruz -- rozet sayısı böylece panel kapanınca sıfırlanır.
   function openReports() {
-    setShowReports((v) => !v);
-    if (!session) return;
+    const next = !showReports;
+    closeFloatingPanels();
+    setShowReports(next);
+    if (!next || !session) return;
     fetchMyReports(session.token).then(setReports).catch(() => {});
     if (unreadReportCount > 0) {
       markReportsRead(session.token)
@@ -710,13 +714,13 @@ export default function App() {
   }
 
   function goToTile(tile: Tile) {
+    closeFloatingPanels();
     setSelectedTile(tile);
     setActionMode(null);
     setPendingTarget(null);
     setMessage(null);
     setError(null);
     scrollToWorld(tile.x, tile.y, true);
-    setShowKingdomList(false);
     const el = viewportRef.current;
     if (el) {
       const rect = el.getBoundingClientRect();
@@ -793,16 +797,16 @@ export default function App() {
         >
           {sortedTiles.map((tile) => {
                 const showCastle =
-                  SHOW_BUILDINGS_AND_DECOR && tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
+                  SHOW_BUILDINGS && tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
                 const showNpc =
-                  SHOW_BUILDINGS_AND_DECOR && tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
+                  SHOW_BUILDINGS && tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
                 const isMine = tile.ownerId === session.playerId;
                 const isGuildmate = !isMine && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
                 // Eren'in isteği: gerçek oyuncu kaleleri artık sahipliğe göre
                 // değil SEVİYEYE göre görsel değiştiriyor (bkz.
                 // CASTLE_LEVEL_TIERS) -- sahiplik yanındaki renkli rozetten
-                // anlaşılıyor. NPC kampları hâlâ ayrı, geçici bir görsel
-                // kullanıyor (Eren gerçek NPC sanatını sonra gönderecek).
+                // anlaşılıyor. NPC kampları hâlâ ayrı, Eren'in gönderdiği
+                // gerçek NPC kale görselini kullanıyor (bkz. NPC_CASTLE_ICON).
                 const castleIcon = castleImageForLevel(tile.level);
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
                 // Kale/NPC görselleri artık kendi karolarının DIŞINA
@@ -833,14 +837,6 @@ export default function App() {
                 // rozeti gri, oyuncu (kendi/klan/düşman fark etmez) sarı/altın
                 // renginde kalıyor.
                 const isNpcTile = tile.tileType === "NPC";
-                // Su birikintisi: sadece boş karelerin küçük bir kısmına,
-                // deterministik (koordinata bağlı) bir olasılıkla ekleniyor
-                // ki kaydırdıkça/yeniden çekildikçe yer değiştirmesin.
-                const showPuddle =
-                  SHOW_BUILDINGS_AND_DECOR &&
-                  tile.tileType === "EMPTY" &&
-                  tileWidth >= 22 &&
-                  pseudoRandom(tile.x, tile.y) < PUDDLE_CHANCE;
                 return (
                   <div
                     key={tile.id}
@@ -857,6 +853,7 @@ export default function App() {
                         handleTargetPick(tile, e.clientX, e.clientY);
                         return;
                       }
+                      closeFloatingPanels();
                       setSelectedTile(tile);
                       setMessage(null);
                       setError(null);
@@ -865,34 +862,10 @@ export default function App() {
                     title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
                     {/* Zemin -- Eren'in verdiği tek sabit çim dokusu, karo
-                        baklava şekline clip-path ile kırpılıyor (bkz.
+                        altıgen şekline clip-path ile kırpılıyor (bkz.
                         .iso-ground) ki komşu karolar arasında beyaz köşe/dikiş
                         görünmesin. Üstüne serpiştirilmiş hiçbir obje yok. */}
                     <img src={GROUND_TEXTURE} alt="" className="iso-ground" draggable={false} />
-                    {showPuddle && (() => {
-                      // Eren: "hiçbir yerleştirilen objeyi karelerin dibine
-                      // dayama, ortala" -- kale ile aynı mantık: kutunun
-                      // sol/üst konumu (karo genişliği/yüksekliği - kutu) / 2
-                      // olarak hesaplanıyor, böylece obje her zaman karonun
-                      // TAM ortasında oturuyor (önceki sabit yüzdelik
-                      // ofsetler su birikintisini hafifçe aşağı kaydırıyordu).
-                      const puddleWidth = tileWidth * 0.6;
-                      const puddleHeight = puddleWidth * (248 / 323);
-                      return (
-                        <img
-                          src={PUDDLE_TEXTURE}
-                          alt=""
-                          className="iso-puddle"
-                          draggable={false}
-                          style={{
-                            width: puddleWidth,
-                            height: puddleHeight,
-                            left: (tileWidth - puddleWidth) / 2,
-                            top: (tileHeight - puddleHeight) / 2,
-                          }}
-                        />
-                      );
-                    })()}
                     <div className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`} />
                     {showCastle && (
                       <>
@@ -991,7 +964,11 @@ export default function App() {
           </button>
           <button
             className={`kingdom-toggle ${showKingdomList ? "active" : ""}`}
-            onClick={() => setShowKingdomList((v) => !v)}
+            onClick={() => {
+              const next = !showKingdomList;
+              closeFloatingPanels();
+              setShowKingdomList(next);
+            }}
           >
             🏰 Krallığım ({myTiles.length})
           </button>
