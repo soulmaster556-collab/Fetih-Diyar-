@@ -831,14 +831,6 @@ export default function App() {
                 const hasIntel = tile.troops !== null;
                 const showInfoLabel = (showCastle || showNpc) && tileWidth >= LABEL_MIN_WIDTH && hasIntel;
                 const totalTroops = (tile.troops ?? 0) + (tile.reinforcementTroops ?? 0);
-                // Seviye artık her zaman herkese açık -- gözcü gerekmeden
-                // haritada kalenin/NPC'nin üstünde gösteriliyor.
-                const showLevelBadge = (showCastle || showNpc) && tileWidth >= LABEL_MIN_WIDTH;
-                // Eren: "NPC renk düzenlemesi ile oyuncununkileri ayır, npc
-                // ninkiler gri olabilir level tabelaları" -- NPC seviye
-                // rozeti gri, oyuncu (kendi/klan/düşman fark etmez) sarı/altın
-                // renginde kalıyor.
-                const isNpcTile = tile.tileType === "NPC";
                 return (
                   <div
                     key={tile.id}
@@ -914,17 +906,15 @@ export default function App() {
                         }}
                       />
                     )}
-                    {/* Seviye rozeti: her zaman görünür, gözcüye bağlı değil
-                        (Eren: "Haritada kalelerin üzerine levellerini
-                        yazalım her level aldığında orda görünebilsin"). */}
-                    {showLevelBadge && (
-                      <div
-                        className={`level-badge ${isNpcTile ? "level-badge-npc" : ""}`}
-                        style={{ left: tileWidth / 2 }}
-                      >
-                        Lv{tile.level}
-                      </div>
-                    )}
+                    {/* Seviye rozeti artık BURADA render edilmiyor -- ayrı,
+                        tüm karoların üstünde tek bir katmana taşındı (bkz.
+                        aşağıdaki .iso-labels-layer). Sebep: her
+                        .iso-tile-group kendi z-index'i (1) yüzünden kendi
+                        "istifleme bağlamını" oluşturuyor -- bu da komşu bir
+                        karo DOM'da SONRA geldiğinde, önceki karonun karo
+                        dışına taşan (yukarı yüzen) rozetinin üstünü örtmesine
+                        sebep oluyordu (Eren'in ekran görüntüsündeki "Lv4"
+                        yazılarının yarısının kesilmesi tam olarak buydu). */}
                     {/* Madde: "Saatlik üretimlerin orada toplam asker
                         sayılarıda görünsün" -- ama artık sadece gözcülenmiş
                         (ya da kendi/klan) kalelerde, ve donmuş/son bilinen
@@ -938,6 +928,47 @@ export default function App() {
                   </div>
                 );
               })}
+              {/* Seviye rozetleri -- Eren'in ekran görüntüsünde "Lv4"
+                  yazılarının yarısı kesik görünüyordu. Sebep: yukarıdaki her
+                  .iso-tile-group kendi z-index'i (1) yüzünden kendi
+                  istifleme bağlamını oluşturuyor, bu da komşu bir karo
+                  DOM'da SONRA geldiğinde onun zemininin, önceki karonun karo
+                  dışına taşan (yukarı yüzen) rozetinin üstünü örtmesine
+                  sebep oluyordu. Çözüm: tüm rozetleri, hiçbir karonun asla
+                  üstüne binemeyeceği, TEK ve en üstteki ortak bir katmanda
+                  toplamak (bkz. .iso-labels-layer, z-index tüm
+                  .iso-tile-group'lardan yüksek). */}
+              <div className="iso-labels-layer">
+                {sortedTiles.map((tile) => {
+                  const showCastle =
+                    SHOW_BUILDINGS && tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
+                  const showNpc =
+                    SHOW_BUILDINGS && tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
+                  const showLevelBadge = (showCastle || showNpc) && tileWidth >= LABEL_MIN_WIDTH;
+                  if (!showLevelBadge) return null;
+                  const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
+                  const isNpcTile = tile.tileType === "NPC";
+                  return (
+                    <div
+                      key={tile.id}
+                      className="iso-label-anchor"
+                      style={{
+                        left: cx - tileWidth / 2,
+                        top: cy - tileHeight / 2,
+                        width: tileWidth,
+                        height: tileHeight,
+                      }}
+                    >
+                      <div
+                        className={`level-badge ${isNpcTile ? "level-badge-npc" : ""}`}
+                        style={{ left: tileWidth / 2 }}
+                      >
+                        Lv{tile.level}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

@@ -365,13 +365,33 @@ button:disabled {
    hiçbir çizgi/dikiş görünmesin. */
 .iso-ground {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  /* Eren: "altıgen kesişim yerlerinde dikey boşluk çizgileri oluyor" --
+     komşu karoların clip-path'li altıgenleri, tarayıcının alt piksel
+     yuvarlamasından dolayı bazen 1px'in altında boşluk bırakıyor, altından
+     da .map-viewport'un mavi deniz zemini görünüyordu (tam olarak o dikey
+     çizgiler). Zemin artık tek düz renk olduğu için bu 1px'lik "taşma"yı her
+     yöne uygulayıp komşu karolarla hafifçe üst üste bindirmek tamamen
+     güvenli -- aynı renk üst üste bindiği için görünmez, ama alttaki mavi
+     asla sızmıyor. */
+  inset: -1px;
   z-index: 0;
   pointer-events: none;
   background-color: #9ccc65;
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+/* Seviye rozeti katmanı -- bkz. App.tsx .iso-labels-layer yorumu. Bu katman
+   tüm .iso-tile-group'ların (z-index: 1) üstünde durur ki hiçbir karonun
+   zemini/kalesi bir rozetin üstüne binemesin. */
+.iso-labels-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.iso-label-anchor {
+  position: absolute;
 }
 
 /* Kale/NPC'nin üstündeki "orada" (haritada, tıklamadan görünen) küçük
