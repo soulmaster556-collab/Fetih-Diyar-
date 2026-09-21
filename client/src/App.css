@@ -347,6 +347,23 @@ button:disabled {
   object-position: bottom center;
 }
 
+/* Eren: "Sadece oyuncu kalelerine ışıltı ekle" -- gerçek oyuncu kalelerinin
+   (NPC kampı değil) etrafında yumuşak, yavaşça nefes alan altın bir parıltı.
+   drop-shadow kullanıyoruz (box-shadow değil) çünkü görsel şeffaf PNG --
+   drop-shadow gerçek siluete göre yayılıyor, dikdörtgen kutuya göre değil. */
+.iso-castle-glow {
+  animation: castle-glow-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes castle-glow-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 5px rgba(255, 213, 79, 0.55)) drop-shadow(0 0 11px rgba(255, 213, 79, 0.3));
+  }
+  50% {
+    filter: drop-shadow(0 0 9px rgba(255, 213, 79, 0.9)) drop-shadow(0 0 18px rgba(255, 213, 79, 0.55));
+  }
+}
+
 /* Zemin -- Eren: "zemini iptal et tek renk açık yeşil zemin koy, altıgenleri
    görmek istemiyorum -- dümdüz tek renk açık yeşil". Doku/fotoğraf tamamen
    kaldırıldı (bir dokunun en ufak ton farkı bile komşu karo sınırlarında bal
@@ -367,6 +384,23 @@ button:disabled {
   z-index: 0;
   pointer-events: none;
   background-color: #9ccc65;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+/* Çim topağı dokusu -- .iso-ground'un (düz renk) TAM üstünde, aynı boyut/
+   kırpma. Görsel App.tsx'te grassTextureForTile() ile üç varyanttan
+   (a/b/c) axial koordinata göre seçiliyor ki komşu karolar asla aynı
+   görseli almasın (bkz. App.tsx'teki GRASS_TEXTURES yorumu). background-size
+   100% 100% -- doku zaten oyunun tam sivri-uçlu altıgen oranında üretildi
+   (bkz. doku üretim script'i), bu yüzden gerdirme deforme etmiyor. */
+.iso-ground-grass {
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  background-position: center;
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
 
@@ -422,25 +456,34 @@ button:disabled {
    durur ki ikisi de görünürken üst üste binmesin. Sarı/altın = oyuncu
    kalesi (kendi/klan/düşman fark etmez), gri = NPC kampı (Eren: "npc
    ninkiler gri olabilir level tabelaları"). */
+/* Eren: "level yazılarını kalelere yakınlaştır veya farklı stil ayarla" --
+   kaleler büyüdüğü için (bkz. App.tsx castleBoxHeight 0.62->0.82) eski sabit
+   -34px boşluk artık kalenin tepesiyle rozet arasında gereksiz büyük bir
+   boşluk bırakıyordu; -22px'e çekildi (hover'da beliren .tile-info-label
+   -18px'te olduğu için tam üst üste binmesin diye birkaç piksel pay
+   bırakıldı). Ayrıca yuvarlak hap yerine oyunun hex
+   temasıyla eşleşen küçük, sivri-altlı bir "flama" şekli verildi (bkz.
+   .hex-menu-level-shield ile aynı aile) -- farklı ve daha "oyun içi rozet"
+   hissi veren bir stil. */
 .level-badge {
   position: absolute;
-  top: -34px;
+  top: -22px;
   transform: translateX(-50%);
   z-index: 3;
-  background: rgba(255, 193, 7, 0.95);
+  background: linear-gradient(180deg, #ffd54f, rgba(255, 193, 7, 0.95));
   color: #4a3200;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
-  line-height: 1.4;
-  padding: 1px 6px;
-  border-radius: 999px;
+  line-height: 1.5;
+  padding: 1px 7px 3px;
+  clip-path: polygon(12% 0%, 88% 0%, 100% 55%, 50% 100%, 0% 55%);
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 1px 4px rgba(31, 45, 58, 0.3);
+  box-shadow: 0 1px 4px rgba(31, 45, 58, 0.35);
 }
 
 .level-badge.level-badge-npc {
-  background: rgba(158, 165, 173, 0.95);
+  background: linear-gradient(180deg, #c3cad1, rgba(158, 165, 173, 0.95));
   color: #2c3238;
 }
 
@@ -449,7 +492,7 @@ button:disabled {
    seviye etiketinin rengiyle gösteriliyor: NPC gri (yukarıda), kendi/klan
    sarı (varsayılan .level-badge), düşman oyuncu kırmızı (bu kural). */
 .level-badge.level-badge-enemy {
-  background: rgba(217, 58, 58, 0.95);
+  background: linear-gradient(180deg, #e5484d, rgba(217, 58, 58, 0.95));
   color: #fff5f2;
 }
 
@@ -1399,6 +1442,10 @@ button:disabled {
   max-width: 620px;
 }
 
+.modal-guild {
+  max-width: 560px;
+}
+
 /* Liderlik Panosu -- iki ayrı sıralama (asker / kale), tam ekran modalda
    artık yan yana iki sütun halinde, ilk üç sıra madalya rengiyle vurgulu. */
 .leaderboard-sections {
@@ -1789,6 +1836,11 @@ button:disabled {
   border-color: var(--danger);
 }
 
+/* Eren: "Saldırı menüsü ... şuan verdiğim görsel tarzda olsun" -- referans
+   görselde üstte oyulmuş/kabartma hissi veren koyu lacivert bir "hap" banner
+   (isim + rütbe kalkanı + lonca rozeti), altında canlı renkli altıgen aksiyon
+   düğmeleri var. Aynı ruh burada da: banner artık yuvarlak uçlu, biraz daha
+   derin bir gradyan + altın çerçeve ile "oyulmuş" bir kapsül gibi duruyor. */
 .hex-menu-banner {
   display: flex;
   align-items: center;
@@ -1798,6 +1850,7 @@ button:disabled {
     radial-gradient(120% 160% at 0% 0%, rgba(31, 182, 166, 0.25), transparent 60%),
     linear-gradient(135deg, var(--panel-2), var(--ink));
   border-bottom: 1px solid var(--hairline-gold);
+  box-shadow: inset 0 -6px 14px rgba(0, 0, 0, 0.25);
 }
 
 .hex-menu-level-shield {
@@ -1809,7 +1862,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 0 2px rgba(255, 255, 255, 0.12) inset;
 }
 
 .hex-menu-level-shield span {
@@ -1868,44 +1921,56 @@ button:disabled {
   padding: 12px 14px 14px;
 }
 
+/* Eren: "Saldırı menüsü ... şuan verdiğim görsel tarzda olsun" -- referans
+   görseldeki gibi 2x2 "petek" düzeni (üst sıra hafif sola/sağa, alt sıra
+   ters yönde kaydırılmış) -- düz tek sıra yerine altıgenlerin gerçekten
+   birbirine kenetlenmiş gibi durduğu bir his veriyor. Butonlar da referanstaki
+   gibi belirgin biçimde büyütüldü. */
 .hex-actions {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-  padding: 4px 0 6px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px 26px;
+  justify-items: center;
+  padding: 10px 4px 8px;
 }
 
 .hex-action {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   background: none;
   border: none;
   cursor: pointer;
   padding: 0;
-  width: 62px;
+  width: 78px;
 }
 
+.hex-action:nth-child(1) { transform: translateX(-4px); }
+.hex-action:nth-child(2) { transform: translateX(4px); }
+.hex-action:nth-child(3) { transform: translate(-4px, -6px); }
+.hex-action:nth-child(4) { transform: translate(4px, -6px); }
+
 .hex-action-shape {
-  width: 52px;
-  height: 46px;
+  width: 66px;
+  height: 58px;
   clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--panel-border);
-  transition: transform 0.12s ease, filter 0.12s ease;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.25);
+  transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
 }
 
 .hex-action:hover .hex-action-shape {
-  transform: translateY(-2px);
-  filter: brightness(1.1);
+  transform: translateY(-3px) scale(1.05);
+  filter: brightness(1.15);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 
 .hex-action-icon {
-  font-size: 20px;
+  font-size: 24px;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
 }
 

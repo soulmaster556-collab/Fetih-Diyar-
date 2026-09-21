@@ -81,6 +81,28 @@ const NPC_CASTLE_ICON = "/buildings/npc_castle.png";
 // olması sorun değil -- bu sadece dıştaki kutunun oranı.
 const CASTLE_IMAGE_ASPECT = 700 / 512;
 const ICON_MIN_WIDTH = 28;
+
+// Eren: "kenarları kel çim dokularını (13/14/15) oyuna random döşenecek
+// şekilde ayarla, böylece birbirini tekrar etmez desenler" -- zemin artık
+// tekrar doku kullanıyor (bkz. .iso-ground-grass), ama üç görselden hangisi
+// her karoda göründüğü GERÇEK rastgelelik yerine axial hex koordinatına göre
+// (x - y) mod 3 ile seçiliyor. Sebep: düz Math.random() render'da her
+// yeniden çizimde titreyebilir VE komşu iki karo şansla aynı görseli
+// alabilir (aynı görsel yan yana gelince "desen tekrarı" göze çok batar).
+// (x - y) mod 3, altıgen komşuluk sisteminde (6 komşu, bkz. isoCenter) HER
+// zaman komşudan farklı bir değer üretir -- yani üç dokudan hiçbiri asla
+// bitişik iki karoda yan yana tekrarlamaz, ama harita genelinde üçü de
+// dağınık/organik görünür (her doku de kendi içinde farklı seed ile
+// rastgele serpiştirilmiş çim topaklarından oluşuyor).
+const GRASS_TEXTURES = [
+  "/terrain/grass-tuft-a.png",
+  "/terrain/grass-tuft-b.png",
+  "/terrain/grass-tuft-c.png",
+];
+function grassTextureForTile(x: number, y: number): string {
+  const idx = (((x - y) % 3) + 3) % 3;
+  return GRASS_TEXTURES[idx];
+}
 // Üretim/asker etiketi çok küçük karolarda okunaksız kalacağı için sadece
 // yeterince yakınlaştırılmışken gösteriliyor.
 const LABEL_MIN_WIDTH = 40;
@@ -864,22 +886,26 @@ export default function App() {
                 // gerçek NPC kale görselini kullanıyor (bkz. NPC_CASTLE_ICON).
                 const castleIcon = castleImageForLevel(tile.level);
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-                // Kale/NPC görselleri kendi karolarının DIŞINA taşmasın diye
-                // kutu yüksekliği, CASTLE_IMAGE_ASPECT (~1.37, enine geniş)
-                // hesaba katılarak genişlik tileWidth'i AŞMAYACAK şekilde
-                // sınırlandırıldı (eski 0.94 oranı genişlikte ~%48 taşmaya
-                // sebep oluyordu -- komşu karolardaki kaleler üst üste
-                // biniyormuş gibi görünüyordu, bkz. Eren'in "üst üste
-                // binmeler var" uyarısı). Eren'in isteği: "kaleleri karenin
-                // içine ortala" -- dikey olarak karonun tam ortasında. Eren:
-                // "kaleleri de biraz daha hexleri doldurmaya yakın oranda
-                // büyütelim" -- 0.6/0.54 zaten güvenli üst sınıra (genişlik
-                // tileWidth'i aşmadan en fazla ~%63.3) yakındı, bu yüzden
-                // sadece küçük bir kademe yukarı çekildi (güvenlik payı
-                // korunarak, aksi halde komşu karolarla üst üste binme
-                // hatası geri gelirdi).
-                const castleBoxHeight = tileHeight * 0.62;
-                const castleBoxWidth = castleBoxHeight * CASTLE_IMAGE_ASPECT;
+                // Eren: "Oyuncu kalelerini büyüt altıgenin içinde çok küçük
+                // kalıyorlar." -- ölçüm yapıp gerçek sebebi bulduk: eski kod
+                // kutuyu CASTLE_IMAGE_ASPECT'e (700/512 ≈ 1.37, ENİNE geniş)
+                // göre boyutlandırıyordu, ama CASTLE_LEVEL_TIERS'taki 6 gerçek
+                // seviye görseli aslında dar/uzun (gerçek en-boy oranları
+                // ~0.41 ile ~1.02 arası, hiçbiri 1.37'ye yaklaşmıyor). Kutu
+                // her zaman görselden daha "yassı" olduğu için object-fit:
+                // contain kutunun sadece YÜKSEKLİĞİNİ dolduruyordu -- yani
+                // kutuyu büyütmenin tek yolu buydu, ama eski kod güvenlik payı
+                // için yüksekliği 0.62'de tutuyordu. Artık kaleye ÖZEL
+                // CASTLE_IMAGE_ASPECT'e güvenmek yerine kutuyu ferah tutuyoruz
+                // (yükseklik 0.62->0.82, genişlik en fazla tileWidth'in
+                // %94'ü) ve object-fit:contain her seviyenin kendi gerçek
+                // oranını koruyarak sığdırıyor -- en geniş gerçek görsel bile
+                // (~1.02 oran) bu tavanın altında kalıyor, yani komşu
+                // karolarla üst üste binme riski yok (bkz. Eren'in eski "üst
+                // üste binmeler var" uyarısı -- o hataya geri dönülmedi).
+                // NPC kampları için istek gelmedi, eski oran/boyut korunuyor.
+                const castleBoxHeight = tileHeight * 0.82;
+                const castleBoxWidth = Math.min(castleBoxHeight * 1.05, tileWidth * 0.94);
                 const npcBoxHeight = tileHeight * 0.58;
                 const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
                 const castleTop = (tileHeight - castleBoxHeight) / 2;
@@ -914,12 +940,18 @@ export default function App() {
                     }}
                     title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
-                    {/* Zemin -- Eren'in isteği üzerine artık doku/fotoğraf
-                        değil, dümdüz TEK renk açık yeşil (bkz. .iso-ground'un
-                        background-color'ı App.css'te) -- altıgen sınırları
-                        görünmesin diye komşu karolar arasında hiçbir ton farkı
-                        yok. Üstüne serpiştirilmiş hiçbir obje de yok. */}
+                    {/* Zemin -- düz açık yeşil taban rengi (bkz. .iso-ground)
+                        korunuyor, ÜSTÜNE Eren'in "kenarlar kel kalmış"
+                        isteğiyle son haline getirdiği çim topağı dokusu
+                        (bkz. GRASS_TEXTURES/grassTextureForTile) biniyor.
+                        Doku PNG'leri zaten kendi altıgen sınırına kırpılmış
+                        üretildi ve komşu-karo dikiş testinden geçti, burada
+                        .iso-ground-grass'taki clip-path ek bir güvenlik. */}
                     <div className="iso-ground" />
+                    <div
+                      className="iso-ground-grass"
+                      style={{ backgroundImage: `url(${grassTextureForTile(tile.x, tile.y)})` }}
+                    />
                     <div className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`} />
                     {/* Sahiplik artık kalenin yanındaki ayrı bir rozetle değil
                         (Eren: "oyuncunun kalelerinin yanındaki yeşil
@@ -928,10 +960,13 @@ export default function App() {
                         .iso-labels-layer: NPC gri, kendi/klan sarı, düşman
                         oyuncu kırmızı. */}
                     {showCastle && (
+                      // Eren: "Sadece oyuncu kalelerine ışıltı ekle" -- glow
+                      // sadece burada (showCastle/PLAYER dalı), NPC kampları
+                      // (showNpc dalı, aşağıda) hiç dokunulmadı.
                       <img
                         src={castleIcon}
                         alt=""
-                        className="iso-castle"
+                        className="iso-castle iso-castle-glow"
                         style={{
                           width: castleBoxWidth,
                           height: castleBoxHeight,
@@ -1193,12 +1228,19 @@ export default function App() {
         </div>
       )}
 
+      {/* Eren: "Lonca bölümü açıldığı zaman oda ortada açılsın (liderlik
+          panosu gibi)" -- köşeye tutunan küçük ".kingdom-dropdown" yerine,
+          Liderlik/Raporlar panolarıyla birebir aynı ortalanmış tam-ekran
+          modal deseni (.modal-overlay/.modal-screen/.modal-header/
+          .modal-body, bkz. yukarıdaki showLeaderboard/showReports). */}
       {showGuildPanel && (
-        <div className="kingdom-dropdown">
-          <div className="tile-card-header">
-            <h2>Lonca</h2>
-            <button className="icon-btn" onClick={() => setShowGuildPanel(false)}>✕</button>
-          </div>
+        <div className="modal-overlay" onClick={() => setShowGuildPanel(false)}>
+          <div className="modal-screen modal-guild" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>🛡️ Lonca</h2>
+              <button className="icon-btn" onClick={() => setShowGuildPanel(false)}>✕</button>
+            </div>
+            <div className="modal-body">
           {guild ? (
             <div>
               <p>
@@ -1246,6 +1288,8 @@ export default function App() {
               </ul>
             </div>
           )}
+            </div>
+          </div>
         </div>
       )}
 
