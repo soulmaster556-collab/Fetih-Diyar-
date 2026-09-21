@@ -6,6 +6,7 @@ import {
   createGuild,
   declineGuildInvite,
   fetchActiveAttacks,
+  fetchAttackEta,
   fetchLeaderboard,
   fetchMap,
   fetchMyGuild,
@@ -266,6 +267,13 @@ export default function App() {
   // gösteriliyor (bkz. aşağıdaki .attack-lines-layer render'ı).
   const [activeAttacks, setActiveAttacks] = useState<ActiveAttack[]>([]);
   const prevAttackIdsRef = useRef<Set<number>>(new Set());
+  // Eren: "51sn diyor fakat ... hedefe çok hızlı ulaşıyor" -- istemcinin
+  // saati sunucununkinden farklı olabileceği için (bkz. server tiles.ts
+  // serverNow yorumu), gerçek "şu an"ı Date.now() + bu farkla hesaplıyoruz.
+  // Her /attacks/active cevabında ve saldırı gönderiminde tazeleniyor.
+  const clockOffsetRef = useRef(0);
+  // "Saldırı Emri" onay kartında, göndermeden önce tahmini seyahat süresi.
+  const [pendingAttackEtaMs, setPendingAttackEtaMs] = useState<number | null>(null);
   // Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun" -- bana
   // (henüz bir loncada olmasam bile) gelmiş, cevaplanmamış davetler.
   const [receivedInvites, setReceivedInvites] = useState<ReceivedGuildInvite[]>([]);
@@ -397,7 +405,8 @@ export default function App() {
   // için 3-10 saniyelik normal polling aralığını beklemeye gerek kalmasın.
   const refreshActiveAttacks = (token: string) => {
     fetchActiveAttacks(token)
-      .then((list) => {
+      .then(({ serverNow, attacks: list }) => {
+        clockOffsetRef.current = serverNow - Date.now();
         const prevIds = prevAttackIdsRef.current;
         const nextIds = new Set(list.map((a) => a.id));
         const someResolved = Array.from(prevIds).some((id) => !nextIds.has(id));
@@ -720,6 +729,24 @@ export default function App() {
     setError(null);
   }
 
+  // Eren: "Saldırı Emri sayfasında süre görünmeli ki oyuncu ne kadar sürede
+  // gideceğini bilmeli." -- onay kartı açılınca (sadece saldırı için,
+  // takviye/gözcü anlık) sunucudan tahmini süreyi çekiyoruz.
+  useEffect(() => {
+    setPendingAttackEtaMs(null);
+    if (!session || !pendingTarget || pendingTarget.type !== "attack") return;
+    let cancelled = false;
+    fetchAttackEta(session.token, pendingTarget.fromTile.id, pendingTarget.targetTile.id)
+      .then((r) => {
+        if (!cancelled) setPendingAttackEtaMs(r.durationMs);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTarget?.fromTile.id, pendingTarget?.targetTile.id, pendingTarget?.type]);
+
   // Hedef seçme modundayken haritada bir karoya tıklanınca çağrılır --
   // hedef geçerliyse asker-sayısı modalını açar, değilse hatayı gösterip
   // modda kalır (kullanıcı başka bir kareye tıklayıp tekrar deneyebilir).
@@ -814,6 +841,7 @@ export default function App() {
         // rapor kutusuyla (bkz. .attack-lines-layer, refreshActiveAttacks)
         // birkaç saniye sonra geliyor.
         const order = await attackTile(session.token, targetTile.id, fromTile.id, troopsInput);
+        clockOffsetRef.current = order.serverNow - Date.now();
         const etaSec = Math.max(1, Math.round((order.arrivesAt - order.departedAt) / 1000));
         setMessage(`Ordu yola çıktı! ${etaSec} sn sonra hedefe ulaşacak.`);
         refreshActiveAttacks(session.token);
@@ -1268,9 +1296,14 @@ export default function App() {
                 {activeAttacks.map((atk) => {
                   const from = isoCenter(atk.fromX, atk.fromY, tileWidth);
                   const to = isoCenter(atk.targetX, atk.targetY, tileWidth);
+                  // Eren: "51sn diyor fakat ... hedefe çok hızlı ulaşıyor" --
+                  // ham Date.now() yerine sunucuyla senkronize edilmiş "şu an"
+                  // (bkz. clockOffsetRef) kullanılıyor ki markör GERÇEKTEN
+                  // süresi dolduğunda hedefe ulaşsın.
+                  const estServerNow = Date.now() + clockOffsetRef.current;
                   const totalMs = Math.max(1, atk.arrivesAt - atk.departedAt);
-                  const elapsedMs = Math.min(totalMs, Math.max(0, Date.now() - atk.departedAt));
-                  const etaSec = Math.max(0, Math.round((atk.arrivesAt - Date.now()) / 1000));
+                  const elapsedMs = Math.min(totalMs, Math.max(0, estServerNow - atk.departedAt));
+                  const etaSec = Math.max(0, Math.round((atk.arrivesAt - estServerNow) / 1000));
                   return (
                     <div
                       key={atk.id}
@@ -1704,12 +1737,89 @@ export default function App() {
             : selectedTile.tileType === "EMPTY"
             ? "Boş Kare"
             : selectedTile.ownerUsername ?? "Bilinmiyor";
+        const closeMenu = () => { setSelectedTile(null); setSelectedScreenPos(null); };
+        const actionsArc = (
+          // Eren: "Kale üzerine gelince açılan menüyü kalenin altından
+          // kalenin sağına ve soluna uzuyacak şekilde yarım ay olarak yap.
+          // Ve yarım ayın çizgisinin üzerinede saldır, destek, gözcü,
+          // yükselt ekle." -- dört eylem bir hilal eğrisi üzerinde: uçlar
+          // (Saldır/Yükselt) yukarıda, ortadakiler (Destek/Gözcü) aşağıda.
+          // Eren (2. tur): "Sana altına yarım ay yap ve mini menüleri
+          // üzerine yerleştir dedim ama sen hala kare penceredesin ...
+          // Screenshot_19'deki menü tasarımını istiyorum ve ikonlarda 3D
+          // boyutlu olucak." -- bu blok artık ayrı bir kart/pencere İÇİNDE
+          // değil, doğrudan haritanın üzerinde şeffaf biçimde yüzüyor (bkz.
+          // isMineSel dalı aşağıda ve .hex-menu-floating / .hex-action-shape
+          // App.css'teki glossy 3D güncellemesi).
+          <div className="hex-actions">
+            <svg className="hex-actions-arc" viewBox="0 0 260 150" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="hexActionsArcGradient" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="rgba(240, 180, 41, 0)" />
+                  <stop offset="50%" stopColor="rgba(240, 180, 41, 0.9)" />
+                  <stop offset="100%" stopColor="rgba(240, 180, 41, 0)" />
+                </linearGradient>
+              </defs>
+              <path className="hex-actions-arc-path" d="M 20 30 Q 130 122 240 30" />
+            </svg>
+            <button className="hex-action hex-action-attack" onClick={() => startAction("attack", selectedTile)}>
+              <span className="hex-action-shape"><span className="hex-action-icon">⚔️</span></span>
+              <span className="hex-action-label">Saldır</span>
+            </button>
+            <button className="hex-action hex-action-reinforce" onClick={() => startAction("reinforce", selectedTile)}>
+              <span className="hex-action-shape"><span className="hex-action-icon">🛡️</span></span>
+              <span className="hex-action-label">Destek</span>
+            </button>
+            <button className="hex-action hex-action-scout" onClick={() => startAction("scout", selectedTile)}>
+              <span className="hex-action-shape"><span className="hex-action-icon">🔭</span></span>
+              <span className="hex-action-label">Gözcü</span>
+            </button>
+            <button className="hex-action hex-action-upgrade" onClick={() => handleUpgrade(selectedTile.id)}>
+              <span className="hex-action-shape"><span className="hex-action-icon">⬆️</span></span>
+              <span className="hex-action-label">Yükselt</span>
+            </button>
+          </div>
+        );
+        const myRecallRows = (selectedTile.reinforcements ?? [])
+          .filter((r) => r.fromPlayerId === session.playerId)
+          .map((r) => (
+            <div key={r.id} className="reinforcement-row">
+              <span>{r.troops} asker gönderdin</span>
+              <button onClick={() => handleRecall(r.id)}>Geri Çağır</button>
+            </div>
+          ));
+
+        if (isMineSel) {
+          // Eren: kendi kalem için artık kare/dikdörtgen bir pencere/kart
+          // YOK -- sadece küçük, yuvarlak "mini" bilgi hapları (seviye,
+          // asker, altın, takviye, kapat) ve altında doğrudan haritanın
+          // üzerinde yüzen hilal aksiyon menüsü var (bkz. .hex-menu-floating).
+          return (
+            <div className="hex-menu-floating" style={{ left, top }}>
+              <div className="hex-floating-chips">
+                <span className="hex-chip hex-chip-level">🏰 {selectedTile.level}</span>
+                {hasIntelSel && (
+                  <span className="hex-chip hex-chip-troops">⚔️ {selectedTile.troops}</span>
+                )}
+                {hasIntelSel && (
+                  <span className="hex-chip hex-chip-gold">🪙 +{selectedTile.goldPerHour}</span>
+                )}
+                {(selectedTile.reinforcementTroops ?? 0) > 0 && (
+                  <span className="hex-chip hex-chip-reinforce">🛡️ +{selectedTile.reinforcementTroops}</span>
+                )}
+                <button className="hex-chip hex-chip-close" onClick={closeMenu}>✕</button>
+              </div>
+              {actionsArc}
+              {myRecallRows.length > 0 && (
+                <div className="hex-floating-recalls">{myRecallRows}</div>
+              )}
+            </div>
+          );
+        }
+
         return (
           <div className="tile-card hex-menu" style={{ left, top, maxHeight: CARD_MAX_HEIGHT }}>
-            <button
-              className="hex-menu-close"
-              onClick={() => { setSelectedTile(null); setSelectedScreenPos(null); }}
-            >
+            <button className="hex-menu-close" onClick={closeMenu}>
               ✕
             </button>
             <div className="hex-menu-banner">
@@ -1720,7 +1830,6 @@ export default function App() {
                 <div className="hex-menu-owner-name">{ownerLabel}</div>
                 <div className="hex-menu-owner-sub">
                   ({selectedTile.x}, {selectedTile.y}) · Ada #{selectedTile.islandId}
-                  {isMineSel && <span className="hex-menu-pill hex-menu-pill-own">Benim</span>}
                   {isGuildmateSel && <span className="hex-menu-pill hex-menu-pill-guild">Klan</span>}
                 </div>
               </div>
@@ -1735,7 +1844,7 @@ export default function App() {
                   {(selectedTile.reinforcementTroops ?? 0) > 0 && (
                     <p className="hint">🛡️ +{selectedTile.reinforcementTroops} takviye (klan)</p>
                   )}
-                  {!isMineSel && !isGuildmateSel && selectedTile.scoutedAt !== null && (
+                  {!isGuildmateSel && selectedTile.scoutedAt !== null && (
                     <p className="hint scout-hint">
                       🔍 Gözcü raporu: {new Date(selectedTile.scoutedAt).toLocaleString("tr-TR", {
                         day: "2-digit",
@@ -1762,60 +1871,13 @@ export default function App() {
                 </p>
               )}
 
-              {selectedTile.tileType !== "EMPTY" && !isMineSel && (
+              {selectedTile.tileType !== "EMPTY" && (
                 <p className="hint">
                   Saldırmak veya gözcü göndermek için önce kendi kalene tıkla, açılan menüden seç, sonra bu kareyi hedef göster.
                 </p>
               )}
 
-              {isMineSel && (
-                // Eren: "Kale üzerine gelince açılan menüyü kalenin altından
-                // kalenin sağına ve soluna uzuyacak şekilde yarım ay olarak
-                // yap. Ve yarım ayın çizgisinin üzerinede saldır, destek,
-                // gözcü, yükselt ekle." -- eski 2x2 petek düzeni yerine, dört
-                // eylem artık uçları yukarıda (kalenin iki yanı hizasında),
-                // ortası aşağıda (kalenin altında) olan bir hilal/yarım ay
-                // eğrisi üzerinde diziliyor. Eğrinin kendisi de altın,
-                // kesik çizgili bir hilal şeridiyle (bkz. .hex-actions-arc)
-                // görselleştiriliyor -- butonlar tam o çizginin üzerinde.
-                <div className="hex-actions">
-                  <svg className="hex-actions-arc" viewBox="0 0 260 150" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="hexActionsArcGradient" x1="0" y1="0" x2="1" y2="0">
-                        <stop offset="0%" stopColor="rgba(240, 180, 41, 0)" />
-                        <stop offset="50%" stopColor="rgba(240, 180, 41, 0.9)" />
-                        <stop offset="100%" stopColor="rgba(240, 180, 41, 0)" />
-                      </linearGradient>
-                    </defs>
-                    <path className="hex-actions-arc-path" d="M 20 30 Q 130 122 240 30" />
-                  </svg>
-                  <button className="hex-action hex-action-attack" onClick={() => startAction("attack", selectedTile)}>
-                    <span className="hex-action-shape"><span className="hex-action-icon">⚔️</span></span>
-                    <span className="hex-action-label">Saldır</span>
-                  </button>
-                  <button className="hex-action hex-action-reinforce" onClick={() => startAction("reinforce", selectedTile)}>
-                    <span className="hex-action-shape"><span className="hex-action-icon">🛡️</span></span>
-                    <span className="hex-action-label">Destek</span>
-                  </button>
-                  <button className="hex-action hex-action-scout" onClick={() => startAction("scout", selectedTile)}>
-                    <span className="hex-action-shape"><span className="hex-action-icon">🔭</span></span>
-                    <span className="hex-action-label">Gözcü</span>
-                  </button>
-                  <button className="hex-action hex-action-upgrade" onClick={() => handleUpgrade(selectedTile.id)}>
-                    <span className="hex-action-shape"><span className="hex-action-icon">⬆️</span></span>
-                    <span className="hex-action-label">Yükselt</span>
-                  </button>
-                </div>
-              )}
-
-              {(selectedTile.reinforcements ?? [])
-                .filter((r) => r.fromPlayerId === session.playerId)
-                .map((r) => (
-                  <div key={r.id} className="reinforcement-row">
-                    <span>{r.troops} asker gönderdin</span>
-                    <button onClick={() => handleRecall(r.id)}>Geri Çağır</button>
-                  </div>
-                ))}
+              {myRecallRows}
             </div>
           </div>
         );
@@ -1860,6 +1922,16 @@ export default function App() {
               </div>
 
               <p className="hint">Elindeki asker: <strong>{maxTroops}</strong></p>
+              {pendingTarget.type === "attack" && (
+                <p className="hint pending-eta">
+                  🕒 Tahmini seyahat süresi:{" "}
+                  <strong>
+                    {pendingAttackEtaMs === null
+                      ? "hesaplanıyor…"
+                      : `${Math.round(pendingAttackEtaMs / 1000)} sn`}
+                  </strong>
+                </p>
+              )}
 
               <div className="attack-form">
                 <label>

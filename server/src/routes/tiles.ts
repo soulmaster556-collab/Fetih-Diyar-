@@ -483,6 +483,31 @@ function canReach(from: TileRow, target: TileRow, settings: Settings) {
   return tileDistance(from, target) <= settings.naval_attack_range;
 }
 
+// Eren: "Saldırı Emri sayfasında süre görünmeli ki oyuncu ne kadar sürede
+// gideceğini bilmeli." -- asker sayısını onaylamadan ÖNCE, tahmini seyahat
+// süresini gösterebilmek için. Sunucudaki travelDurationMs ile BİREBİR aynı
+// formülü kullanıyor (istemcide ayrıca kopyalanmıyor ki iki taraf asla
+// birbirinden sapmasın) -- hiçbir asker göndermez, sadece hesaplar.
+tilesRouter.get("/attack-eta", authenticate, async (req: any, res) => {
+  try {
+    const fromTileId = Number(req.query?.fromTileId);
+    const targetTileId = Number(req.query?.targetTileId);
+    const settings = await loadSettings();
+    const [{ rows: fromRows }, { rows: targetRows }] = await Promise.all([
+      pool.query<TileRow>("SELECT * FROM tiles WHERE id = $1", [fromTileId]),
+      pool.query<TileRow>("SELECT * FROM tiles WHERE id = $1", [targetTileId]),
+    ]);
+    const fromTile = fromRows[0];
+    const targetTile = targetRows[0];
+    if (!fromTile || !targetTile) return res.status(404).json({ error: "Kare bulunamadı." });
+    const durationMs = travelDurationMs(fromTile, targetTile, settings);
+    res.json({ durationMs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
 // Eren: "Oyunda artık saldırılar zamanlamalı olsun. Direk tıkla saldır değil
 // ve saldırdığın kaleden saldırdığın kaleye gidildiğini belli eden bir
 // saldırı hattı olsun" -- bu uç nokta artık çarpışmayı ANINDA çözmüyor,
@@ -556,6 +581,9 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
       troopsSent,
       departedAt: now,
       arrivesAt,
+      // bkz. GET /attacks/active'teki serverNow yorumu -- istemci saat farkını
+      // ilk seçtiği hesaba burada, ilk polling turunu beklemeden ayarlayabilsin.
+      serverNow: now,
     });
   } catch (err) {
     console.error(err);
@@ -593,8 +621,20 @@ tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
           OR ao.target_tile_id IN (SELECT id FROM tiles WHERE owner_id = ANY($2::text[]))`,
       [player.id, relevantOwnerIds]
     );
-    res.json(
-      rows.map((r) => ({
+    // Eren: "51sn diyor fakat ... hedefe çok hızlı ulaşıyor" -- animasyon
+    // istemcinin KENDİ saat'ine (Date.now()) göre "ne kadar yol alındığını"
+    // hesaplıyordu; istemcinin saati sunucununkinden birkaç saniye/dakika
+    // ileri/geri olabilir (özellikle farklı makine/saat dilimi), bu da
+    // markörün ya anında hedefte belirmesine ya da hiç hareket etmeden
+    // beklemesine sebep oluyordu. Çözüm: sunucunun KENDİ "şu an"ını da
+    // (serverNow) her cevaba ekliyoruz -- istemci bunu kendi Date.now()'ı ile
+    // karşılaştırıp bir "saat farkı" (clock offset) çıkarıyor ve elapsed/eta
+    // hesaplarında ham Date.now() yerine hep bunu kullanıyor (bkz. App.tsx
+    // clockOffsetRef). Böylece iki taraf da hep AYNI zaman çizgisine göre
+    // konuşmuş oluyor.
+    res.json({
+      serverNow: Date.now(),
+      attacks: rows.map((r) => ({
         id: r.id,
         attackerId: r.attacker_id,
         attackerUsername: r.attacker_username,
@@ -606,8 +646,8 @@ tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
         departedAt: Number(r.departed_at),
         arrivesAt: Number(r.arrives_at),
         isMine: r.attacker_id === player.id,
-      }))
-    );
+      })),
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });

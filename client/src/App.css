@@ -424,8 +424,28 @@ button:disabled {
    (.selected) ve ayrı bir davranış olan bilgi etiketi hover'ı (bkz.
    .iso-tile-group:hover .tile-info-label) korunuyor. */
 
+/* Eren: "Karenin üzerine basınca çıkan sarı şeyi istemiyorum" -- eski sarı
+   dolgu vurgusu kaldırıldı. Seçili karoyu artık ayrı bir renkli katman değil,
+   TIKLAMA HİSSİYATININ KENDİSİ (aşağıdaki .iso-tile-group:active) belli
+   ediyor -- tıpkı üst menüdeki butonlara basınca olduğu gibi. */
 .iso-diamond.selected {
-  background: rgba(255, 213, 79, 0.45);
+  background: transparent;
+}
+
+/* Eren: "kalelere de uygula ve tıklanabilen heryere uygula" -- üst menü
+   butonlarındaki (.kingdom-toggle:active) hafif "bas ve geri yaylan" hissini
+   tüm tıklanabilir yüzeylere (karolar dahil) genelleştiren tek bir kural. */
+button:not(:disabled),
+.iso-tile-group:not(.iso-tile-dead) {
+  transition: transform 0.08s ease;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.95);
+}
+
+.iso-tile-group:not(.iso-tile-dead):active {
+  transform: scale(0.94);
 }
 
 .iso-castle {
@@ -2141,6 +2161,21 @@ button:disabled {
   position: relative;
   height: 150px;
   margin: 4px 0 2px;
+  /* Kapsayıcı .hex-menu-floating pointer-events:none olduğu için (bkz.
+     yukarısı), bu alanın boş kısımları haritaya tıklamayı engellemesin diye
+     burası da none -- yalnızca gerçek butonlar (.hex-action) auto. */
+  pointer-events: none;
+  /* .hex-menu-floating bir flex (column, align-items: center) kapsayıcı --
+     flex öğeleri varsayılan olarak İÇERİĞİNE göre daralır, tıpkı eski
+     .tile-card/.hex-menu-body'deki gibi otomatik %100 genişlik almaz. Bu
+     yüzden içindeki mutlak konumlu (position:absolute, dolayısıyla normal
+     akışa katkısı olmayan) 4 buton için hesaplanan left:%8/34/66/92 değerleri
+     neredeyse sıfır genişlikli bir kutuya göre hesaplanıp üst üste
+     biniyordu. width:100% + align-self:stretch ile bu artık hem eski kart
+     bağlamında (etkisiz/varsayılan davranışla aynı) hem yeni flex bağlamda
+     (gerçek genişliği alarak) doğru çalışıyor. */
+  width: 100%;
+  align-self: stretch;
 }
 
 .hex-actions-arc {
@@ -2173,6 +2208,15 @@ button:disabled {
   padding: 0;
   width: 78px;
   transform: translateX(-50%);
+  pointer-events: auto;
+}
+
+/* .hex-action konumlanmak için zaten translateX(-50%) kullanıyor -- genel
+   "button:active { transform: scale() }" kuralı bunu ezip düğmeyi kendi
+   genişliğinin yarısı kadar kaydırırdı, o yüzden burada ikisini birlikte
+   veriyoruz (bkz. App.css'teki genel basma efekti kuralı). */
+.hex-action:active {
+  transform: translateX(-50%) scale(0.93);
 }
 
 /* Sırasıyla: Saldır (sol uç, yukarıda), Destek (sol-orta, aşağıda), Gözcü
@@ -2213,18 +2257,116 @@ button:disabled {
   color: var(--text-dim);
 }
 
+/* Eren (2. tur): "saldır destek gözcü yükselt gibi ikonlarda 3D boyutlu
+   olucak" -- referans görseldeki gibi parlak/cilalı (glossy) bir 3D his
+   vermek için her rengin üstüne bir radial-gradient "ışık yansıması" ve
+   daha güçlü kabartma gölgeleri eklendi. Bu, ayrı bir ::before/::after katmanı
+   yerine doğrudan arka plana katmanlanmış bir gradyan olarak uygulanıyor ki
+   ikon her zaman en üstte, net kalsın. */
 .hex-action-attack .hex-action-shape {
-  background: linear-gradient(180deg, var(--danger), var(--danger-strong));
+  background:
+    radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 48%),
+    linear-gradient(180deg, var(--danger), var(--danger-strong));
 }
 
 .hex-action-reinforce .hex-action-shape {
-  background: linear-gradient(180deg, #5a9dff, var(--blue-guild));
+  background:
+    radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 48%),
+    linear-gradient(180deg, #5a9dff, var(--blue-guild));
 }
 
 .hex-action-scout .hex-action-shape {
-  background: linear-gradient(180deg, var(--gold), var(--gold-strong));
+  background:
+    radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0) 48%),
+    linear-gradient(180deg, var(--gold), var(--gold-strong));
 }
 
 .hex-action-upgrade .hex-action-shape {
-  background: linear-gradient(180deg, #4bd07f, var(--good));
+  background:
+    radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 48%),
+    linear-gradient(180deg, #4bd07f, var(--good));
+}
+
+/* Eren: "Sana altına yarım ay yap ve mini menüleri üzerine yerleştir dedim
+   ama sen hala kare penceredesin ... Screenshot_19'deki menü tasarımını
+   istiyorum" -- kendi kalen için artık .tile-card/.hex-menu'nun dikdörtgen
+   arka planı/border'ı/gölgesi/padding'i tamamen YOK. Sadece küçük yuvarlak
+   "mini" bilgi hapları ve altında doğrudan harita üzerinde yüzen hilal
+   aksiyon menüsü var. Kapsayıcının kendisi tamamen şeffaf ve tıklamaları
+   geçirir (pointer-events: none) -- sadece haplar/butonlar tıklanabilir
+   (pointer-events: auto) ki boş alanlarda haritaya tıklama engellenmesin. */
+.hex-menu-floating {
+  position: fixed;
+  z-index: 25;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+
+.hex-floating-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.hex-chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-bright);
+  background: rgba(16, 27, 38, 0.72);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--hairline-gold);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+}
+
+.hex-chip-troops {
+  border-color: rgba(229, 72, 77, 0.4);
+}
+
+.hex-chip-gold {
+  border-color: rgba(240, 180, 41, 0.4);
+}
+
+.hex-chip-reinforce {
+  border-color: rgba(63, 140, 255, 0.4);
+}
+
+.hex-chip-close {
+  cursor: pointer;
+  padding: 4px 8px;
+  background: rgba(229, 72, 77, 0.22);
+  border-color: rgba(229, 72, 77, 0.5);
+}
+
+.hex-chip-close:hover {
+  background: rgba(229, 72, 77, 0.4);
+}
+
+.hex-floating-recalls {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.hex-floating-recalls .reinforcement-row {
+  background: rgba(16, 27, 38, 0.72);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
 }

@@ -267,6 +267,8 @@ export interface AttackOrder {
   troopsSent: number;
   departedAt: number;
   arrivesAt: number;
+  // bkz. ActiveAttack üstündeki "saat farkı" (clock offset) yorumu.
+  serverNow: number;
 }
 
 export function attackTile(
@@ -280,6 +282,16 @@ export function attackTile(
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ fromTileId, troopsSent }),
   }).then((r) => handle<AttackOrder>(r));
+}
+
+// Eren: "Saldırı Emri sayfasında süre görünmeli" -- asker sayısı onaylanmadan
+// ÖNCE tahmini seyahat süresini göstermek için (bkz. server tiles.ts
+// GET /attack-eta). Sunucudaki formülle birebir aynı sonucu verir.
+export function fetchAttackEta(token: string, fromTileId: number, targetTileId: number) {
+  const params = new URLSearchParams({ fromTileId: String(fromTileId), targetTileId: String(targetTileId) });
+  return fetch(`${BASE}/tiles/attack-eta?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<{ durationMs: number }>(r));
 }
 
 // Haritada gösterilecek, hâlâ yolda olan tüm saldırılar (kendi + klanınki --
@@ -299,10 +311,18 @@ export interface ActiveAttack {
   isMine: boolean;
 }
 
+// bkz. AttackOrder.serverNow yorumu -- istemci saatiyle sunucu saati arasında
+// fark olabileceği (farklı makine/saat dilimi) için her "yolda olanlar"
+// cevabı sunucunun kendi "şu an"ını da taşıyor.
+export interface ActiveAttacksResponse {
+  serverNow: number;
+  attacks: ActiveAttack[];
+}
+
 export function fetchActiveAttacks(token: string) {
   return fetch(`${BASE}/tiles/attacks/active`, {
     headers: { Authorization: `Bearer ${token}` },
-  }).then((r) => handle<ActiveAttack[]>(r));
+  }).then((r) => handle<ActiveAttacksResponse>(r));
 }
 
 // Asker takviyesi -- hedef kendi kalenmiş gibi (askerler doğrudan

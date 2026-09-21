@@ -74,14 +74,18 @@ export const SETTING_DEFS = [
     label: "Saldırı: karo başına seyahat süresi (sn)",
     description:
       "Bir saldırının kaynak ile hedef arasındaki her 1 karolik mesafe için ne kadar sürede yol aldığı (saniye), oyun hızına bölünür. Saldırı artık anında sonuçlanmıyor -- bu süre kadar yolda kalıyor (bkz. attack_orders).",
-    default: 3,
+    // Eren: "Bu zaman ayarlarını x3 daha yavaşlat." -- eski değer 3'tü.
+    // (Canlıdaki değer de admin panelinden/DB'den aynı şekilde güncellendi,
+    // bu default sadece SIFIRDAN kurulan bir ortam için geçerli.)
+    default: 9,
   },
   {
     key: "attack_min_travel_seconds",
     label: "Saldırı: minimum seyahat süresi (sn)",
     description:
       "Çok yakın hedeflerde bile saldırının en az bu kadar sürede ulaşmasını sağlayan taban değer (yolda giderken animasyonun görünür olması için).",
-    default: 4,
+    // Eren: "Bu zaman ayarlarını x3 daha yavaşlat." -- eski değer 4'tü.
+    default: 12,
   },
 ] as const;
 
