@@ -80,11 +80,12 @@ const ICON_MIN_WIDTH = 28;
 // yeterince yakınlaştırılmışken gösteriliyor.
 const LABEL_MIN_WIDTH = 40;
 
-// Zemin artık TEK bir sabit doku (Eren'in verdiği çim karosu fotoğrafı) --
-// her karoda aynı görsel kullanılıyor, üstüne serpiştirilmiş hiçbir obje
-// (ağaç/taş/kütük/su birikintisi) yok -- Eren: "dekorları kaldır" -- dekor
-// ileride Eren tarafından elle, tek tek karolara yerleştirilecek.
-const GROUND_TEXTURE = "/terrain/ground.jpg";
+// Eren: "zemini iptal et tek renk açık yeşil zemin koy, altıgenleri görmek
+// istemiyorum -- dümdüz tek renk açık yeşil" -- doku/fotoğraf tabanlı zemin
+// tamamen kaldırıldı (küçük ton farkları komşu karo sınırlarında görünüp bal
+// peteği deseni gibi duruyordu), yerine .iso-ground CSS'inde düz TEK renk
+// background-color geldi (bkz. App.css). Üstüne serpiştirilmiş hiçbir obje
+// yok.
 
 // Kale/NPC görselleri hex karoların üzerinde gösteriliyor mu -- Eren'in asıl
 // amacı eklenen kale görsellerini sergilemek olduğu için bu hep açık.
@@ -809,16 +810,17 @@ export default function App() {
                 // gerçek NPC kale görselini kullanıyor (bkz. NPC_CASTLE_ICON).
                 const castleIcon = castleImageForLevel(tile.level);
                 const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-                // Kale/NPC görselleri artık kendi karolarının DIŞINA
-                // taşmıyor -- kutu, karonun kendi (tileWidth × tileHeight)
-                // sınırlarını asla aşmayacak şekilde (yükseklik sınırlayıcı
-                // boyut, CASTLE_IMAGE_ASPECT'e göre genişlik ondan türetiliyor)
-                // hesaplanıyor. Eren'in isteği: "kaleleri karenin içine
-                // ortala" -- alt ucuna yaslamak yerine artık dikey olarak
-                // karonun tam ortasına yerleştiriliyor.
-                const castleBoxHeight = tileHeight * 0.94;
+                // Kale/NPC görselleri kendi karolarının DIŞINA taşmasın diye
+                // kutu yüksekliği, CASTLE_IMAGE_ASPECT (~1.37, enine geniş)
+                // hesaba katılarak genişlik tileWidth'i AŞMAYACAK şekilde
+                // sınırlandırıldı (eski 0.94 oranı genişlikte ~%48 taşmaya
+                // sebep oluyordu -- komşu karolardaki kaleler üst üste
+                // biniyormuş gibi görünüyordu, bkz. Eren'in "üst üste
+                // binmeler var" uyarısı). Eren'in isteği: "kaleleri karenin
+                // içine ortala" -- dikey olarak karonun tam ortasında.
+                const castleBoxHeight = tileHeight * 0.6;
                 const castleBoxWidth = castleBoxHeight * CASTLE_IMAGE_ASPECT;
-                const npcBoxHeight = tileHeight * 0.84;
+                const npcBoxHeight = tileHeight * 0.54;
                 const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
                 const castleTop = (tileHeight - castleBoxHeight) / 2;
                 const npcTop = (tileHeight - npcBoxHeight) / 2;
@@ -861,11 +863,12 @@ export default function App() {
                     }}
                     title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
-                    {/* Zemin -- Eren'in verdiği tek sabit çim dokusu, karo
-                        altıgen şekline clip-path ile kırpılıyor (bkz.
-                        .iso-ground) ki komşu karolar arasında beyaz köşe/dikiş
-                        görünmesin. Üstüne serpiştirilmiş hiçbir obje yok. */}
-                    <img src={GROUND_TEXTURE} alt="" className="iso-ground" draggable={false} />
+                    {/* Zemin -- Eren'in isteği üzerine artık doku/fotoğraf
+                        değil, dümdüz TEK renk açık yeşil (bkz. .iso-ground'un
+                        background-color'ı App.css'te) -- altıgen sınırları
+                        görünmesin diye komşu karolar arasında hiçbir ton farkı
+                        yok. Üstüne serpiştirilmiş hiçbir obje de yok. */}
+                    <div className="iso-ground" />
                     <div className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`} />
                     {showCastle && (
                       <>

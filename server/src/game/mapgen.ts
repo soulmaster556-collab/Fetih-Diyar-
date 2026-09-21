@@ -23,27 +23,15 @@ const GRID_ROWS = 6;
 // anda test edecek, sıkışmasınlar diye geniş tutuluyor; harita yine de
 // tamamı tek ekranda görünmeyecek kadar büyük -- kaydırma/uzaklaştırma hâlâ
 // gerekiyor, ama varsayılan yakınlıkta hiçbir yönde deniz görünmemeli).
-// ISLAND_COUNT === 1 olduğunda generateIslandLayout() aşağıdaki
-// GRID_COLS×GRID_ROWS hücre sistemini tamamen atlayıp adayı doğrudan
-// dünyanın ortasından, SINGLE_ISLAND_* sabitlerine göre büyütüyor (bkz.
-// generateIslandLayout içindeki "if (ISLAND_COUNT === 1)" dalı). Adayı
-// tekrar birden fazla parçaya bölmek istersek burayı eski haline (10,
-// 400-650) döndürüp bir sonraki migration'ı (applyBigSingleIslandMigration
-// gibi) tetiklemek yeterli -- ada üretimi tamamen tersine çevrilebilir.
+// ISLAND_COUNT === 1 olduğunda generateIslandLayout() yukarıdaki
+// GRID_COLS×GRID_ROWS hücre sistemini tamamen atlayıp doğrudan
+// generateRectangleIsland()'ı çağırıyor (düz kenarlı dikdörtgen, bkz. o
+// fonksiyonun üstündeki not). Adayı tekrar birden fazla parçaya bölmek
+// istersek burayı eski haline (10) döndürüp bir sonraki migration'ı
+// tetiklemek yeterli -- ada üretimi tamamen tersine çevrilebilir.
 const ISLAND_COUNT = 1;
 const ISLAND_MIN_SIZE = 400;
 const ISLAND_MAX_SIZE = 650;
-// Tek-ada modunda hedef büyüklük: WORLD_SIZE 200×200 iken dünyanın kenarına
-// değmeyecek şekilde ortada büyüyen, önceki 10 adanın toplamından (~5000)
-// daha küçük ama tek bir adanın eski max'inden (650) çok daha büyük bir
-// alan -- birkaç test oyuncusu rahatça yayılabilsin, üstelik varsayılan
-// (46px) yakınlıkta merkezdeki bir kaleden hiçbir yönde deniz görünmesin.
-const SINGLE_ISLAND_MIN_SIZE = 3500;
-const SINGLE_ISLAND_MAX_SIZE = 5000;
-// Ada, dünyanın dört kenarından bu kadar tampon bırakarak büyüyor (hem
-// görsel olarak dünyanın tam sınırına yapışmasın hem de kıyı hesaplama
-// mantığı kenarda tuhaf davranmasın diye).
-const SINGLE_ISLAND_MARGIN = 12;
 // Bir ada, organik/yuvarlak kenarlar oluşturabilsin diye kendi hücresinin
 // dışına bu kadar taşabilir — komşu ada büyümesi zaten bitişikliği
 // engellediği için bu taşma iki ada arasındaki boşluğu sıfırlamaz, sadece
@@ -52,8 +40,20 @@ const CELL_OVERFLOW = 5;
 const MAX_SEED_ATTEMPTS_PER_ISLAND = 80;
 // Tek büyük ada, eski küçük adalardan çok daha fazla büyüme adımı
 // gerektiriyor -- 300 durak sınırı bu boyutta erken tetiklenip adayı
-// hedeflenenden küçük bırakabilirdi, bu yüzden yükseltildi.
+// hedeflenenden küçük bırakabilirdi, bu yüzden yükseltildi. (Artık sadece
+// ISLAND_COUNT > 1 organik moduna aitse kullanılıyor.)
 const MAX_GROWTH_STALLS = 1200;
+
+// Eren: "ada dediğimiz olay dikdörtgene yakın simetrik olsun, bilgisayar
+// ekranını (yatay monitör) düşün" -- organik/yuvarlak büyüyen tek-ada
+// algoritması tamamen kaldırıldı, yerine düz kenarlı, geniş bir DİKDÖRTGEN
+// kara kütlesi geldi (bkz. generateRectangleIsland). 80×52 oranı, hex
+// satırlarının ekranda %75 sıkışmasını (bkz. App.tsx isoCenter) hesaba
+// katarak yaklaşık 16:9'luk bir monitör görünümü verecek şekilde seçildi.
+// Toplam ~4160 karo, önceki organik adayla (3500-5000 hedefi) aynı
+// büyüklük sınıfında.
+const RECT_ISLAND_WIDTH = 80;
+const RECT_ISLAND_HEIGHT = 52;
 
 interface LandTile {
   x: number;
@@ -160,6 +160,39 @@ function pickGrowthOrigin(
   return best;
 }
 
+// Dünyanın tam ortasında, düz kenarlı bir RECT_ISLAND_WIDTH×RECT_ISLAND_HEIGHT
+// dikdörtgeni dolduruyor. Axial hex koordinatlarında (bkz. App.tsx isoCenter:
+// cx = tileWidth*(x + y/2)) düz bir x aralığını sabit tutup satır (y)
+// arttıkça x'i olduğu gibi bırakırsak ekranda PARALELKENAR (her satır bir
+// öncekinden sağa kaymış) elde ederiz. Bunun yerine her satırın x
+// başlangıcını satır numarasının yarısı kadar SOLA kaydırıyoruz (standart
+// "offset -> axial" dönüşümü, bkz. redblobgames.com/grids/hexagons) — böylece
+// ekrandaki sol/sağ kenarlar gerçekten dikey kalıyor ve sonuç, yatay bir
+// monitör gibi düzgün/simetrik bir dikdörtgene benziyor.
+function generateRectangleIsland(): LandTile[] {
+  const islandId = 1;
+  const occupied = new Map<string, number>();
+  const coords: [number, number][] = [];
+
+  const centerX = Math.floor(WORLD_SIZE / 2);
+  const centerY = Math.floor(WORLD_SIZE / 2);
+  const rowStart = -Math.floor(RECT_ISLAND_HEIGHT / 2);
+  const colStart = -Math.floor(RECT_ISLAND_WIDTH / 2);
+
+  for (let r = 0; r < RECT_ISLAND_HEIGHT; r++) {
+    const y = centerY + rowStart + r;
+    const rowShift = Math.floor((rowStart + r) / 2) - Math.floor(rowStart / 2);
+    for (let c = 0; c < RECT_ISLAND_WIDTH; c++) {
+      const x = centerX + colStart + c - rowShift;
+      if (!inBounds(x, y)) continue;
+      occupied.set(key(x, y), islandId);
+      coords.push([x, y]);
+    }
+  }
+
+  return coords.map(([x, y]) => ({ x, y, islandId, isCoastal: false }));
+}
+
 /**
  * Generates an archipelago of large, closely-packed islands: the world is
  * divided into a grid and each island grows as a random blob confined to
@@ -167,10 +200,16 @@ function pickGrowthOrigin(
  * neighbors already belong to a *different* island — that's what keeps
  * islands visually and mechanically separate even though they now sit right
  * next to each other with only a thin strip of water between them.
+ *
+ * Eren: "tek ve büyük ada" isteğinden beri ISLAND_COUNT===1 iken bu organik
+ * büyütme hiç çalışmıyor -- bkz. generateRectangleIsland (düz dikdörtgen).
+ * Adayı ileride tekrar birden fazla parçaya bölmek istenirse ISLAND_COUNT'u
+ * 10'a çıkarmak bu fonksiyonu tekrar devreye sokar.
  */
 function generateIslandLayout(): LandTile[] {
+  const allTiles: LandTile[] = ISLAND_COUNT === 1 ? generateRectangleIsland() : [];
   const occupied = new Map<string, number>(); // "x,y" -> islandId
-  const allTiles: LandTile[] = [];
+  for (const t of allTiles) occupied.set(key(t.x, t.y), t.islandId);
 
   function canPlace(x: number, y: number, islandId: number, allowed: CellBounds) {
     if (!inBounds(x, y)) return false;
@@ -183,81 +222,60 @@ function generateIslandLayout(): LandTile[] {
     return true;
   }
 
-  // Eren: "tek ve büyük ada" -- ISLAND_COUNT === 1 iken GRID_COLS×GRID_ROWS
-  // hücre bölüşümünü tamamen atlıyoruz (tek adanın birkaç bin karoya
-  // büyümesi gerekiyor, bir hücreye -- 200/6 ≈ 33×33 -- asla sığmaz).
-  // Bunun yerine "hücre" doğrudan dünyanın tamamı (kenarlardan
-  // SINGLE_ISLAND_MARGIN payı çıkarılmış hâli) oluyor ve tohum tam ortadan
-  // seçiliyor.
-  const cells: CellBounds[] =
-    ISLAND_COUNT === 1
-      ? [
-          {
-            minX: SINGLE_ISLAND_MARGIN,
-            maxX: WORLD_SIZE - 1 - SINGLE_ISLAND_MARGIN,
-            minY: SINGLE_ISLAND_MARGIN,
-            maxY: WORLD_SIZE - 1 - SINGLE_ISLAND_MARGIN,
-          },
-        ]
-      : shuffled(buildGridCells()).slice(0, ISLAND_COUNT);
+  if (ISLAND_COUNT > 1) {
+    const cells: CellBounds[] = shuffled(buildGridCells()).slice(0, ISLAND_COUNT);
 
-  cells.forEach((cell, idx) => {
-    const islandId = idx + 1;
-    const allowed: CellBounds =
-      ISLAND_COUNT === 1
-        ? cell
-        : {
-            minX: Math.max(0, cell.minX - CELL_OVERFLOW),
-            maxX: Math.min(WORLD_SIZE - 1, cell.maxX + CELL_OVERFLOW),
-            minY: Math.max(0, cell.minY - CELL_OVERFLOW),
-            maxY: Math.min(WORLD_SIZE - 1, cell.maxY + CELL_OVERFLOW),
-          };
+    cells.forEach((cell, idx) => {
+      const islandId = idx + 1;
+      const allowed: CellBounds = {
+        minX: Math.max(0, cell.minX - CELL_OVERFLOW),
+        maxX: Math.min(WORLD_SIZE - 1, cell.maxX + CELL_OVERFLOW),
+        minY: Math.max(0, cell.minY - CELL_OVERFLOW),
+        maxY: Math.min(WORLD_SIZE - 1, cell.maxY + CELL_OVERFLOW),
+      };
 
-    // Tek-ada modunda tohum tam ortadan (küçük bir rastgele sapmayla)
-    // seçilir; çoklu-ada modunda hücrenin iç %50'lik bölgesinden seçilir —
-    // kenara çok yakın başlarsa komşu hücrenin adasıyla erken çarpışıp
-    // büyümesi kısıtlanabilir.
-    const innerW = Math.max(1, Math.floor((cell.maxX - cell.minX) * (ISLAND_COUNT === 1 ? 0.1 : 0.5)));
-    const innerH = Math.max(1, Math.floor((cell.maxY - cell.minY) * (ISLAND_COUNT === 1 ? 0.1 : 0.5)));
-    const innerMinX = cell.minX + Math.floor(((cell.maxX - cell.minX) - innerW) / 2);
-    const innerMinY = cell.minY + Math.floor(((cell.maxY - cell.minY) - innerH) / 2);
+      // Tohum, hücrenin iç %50'lik bölgesinden seçilir — kenara çok yakın
+      // başlarsa komşu hücrenin adasıyla erken çarpışıp büyümesi
+      // kısıtlanabilir.
+      const innerW = Math.max(1, Math.floor((cell.maxX - cell.minX) * 0.5));
+      const innerH = Math.max(1, Math.floor((cell.maxY - cell.minY) * 0.5));
+      const innerMinX = cell.minX + Math.floor(((cell.maxX - cell.minX) - innerW) / 2);
+      const innerMinY = cell.minY + Math.floor(((cell.maxY - cell.minY) - innerH) / 2);
 
-    let seed: [number, number] | null = null;
-    for (let t = 0; t < MAX_SEED_ATTEMPTS_PER_ISLAND; t++) {
-      const sx = innerMinX + Math.floor(Math.random() * (innerW + 1));
-      const sy = innerMinY + Math.floor(Math.random() * (innerH + 1));
-      if (canPlace(sx, sy, islandId, allowed)) {
-        seed = [sx, sy];
-        break;
+      let seed: [number, number] | null = null;
+      for (let t = 0; t < MAX_SEED_ATTEMPTS_PER_ISLAND; t++) {
+        const sx = innerMinX + Math.floor(Math.random() * (innerW + 1));
+        const sy = innerMinY + Math.floor(Math.random() * (innerH + 1));
+        if (canPlace(sx, sy, islandId, allowed)) {
+          seed = [sx, sy];
+          break;
+        }
       }
-    }
-    if (!seed) return; // bu hücrede yer bulunamadı; ada atlanır
+      if (!seed) return; // bu hücrede yer bulunamadı; ada atlanır
 
-    const targetSize =
-      ISLAND_COUNT === 1
-        ? SINGLE_ISLAND_MIN_SIZE + Math.floor(Math.random() * (SINGLE_ISLAND_MAX_SIZE - SINGLE_ISLAND_MIN_SIZE + 1))
-        : ISLAND_MIN_SIZE + Math.floor(Math.random() * (ISLAND_MAX_SIZE - ISLAND_MIN_SIZE + 1));
-    const islandTiles: [number, number][] = [seed];
-    occupied.set(key(seed[0], seed[1]), islandId);
+      const targetSize = ISLAND_MIN_SIZE + Math.floor(Math.random() * (ISLAND_MAX_SIZE - ISLAND_MIN_SIZE + 1));
+      const islandTiles: [number, number][] = [seed];
+      occupied.set(key(seed[0], seed[1]), islandId);
 
-    let stalls = 0;
-    while (islandTiles.length < targetSize && stalls < MAX_GROWTH_STALLS) {
-      const [bx, by] = pickGrowthOrigin(islandTiles, occupied, islandId);
-      const candidates = neighbors6(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId, allowed));
-      if (candidates.length === 0) {
-        stalls++;
-        continue;
+      let stalls = 0;
+      while (islandTiles.length < targetSize && stalls < MAX_GROWTH_STALLS) {
+        const [bx, by] = pickGrowthOrigin(islandTiles, occupied, islandId);
+        const candidates = neighbors6(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId, allowed));
+        if (candidates.length === 0) {
+          stalls++;
+          continue;
+        }
+        stalls = 0;
+        const [cx, cy] = candidates[Math.floor(Math.random() * candidates.length)];
+        occupied.set(key(cx, cy), islandId);
+        islandTiles.push([cx, cy]);
       }
-      stalls = 0;
-      const [cx, cy] = candidates[Math.floor(Math.random() * candidates.length)];
-      occupied.set(key(cx, cy), islandId);
-      islandTiles.push([cx, cy]);
-    }
 
-    for (const [x, y] of islandTiles) {
-      allTiles.push({ x, y, islandId, isCoastal: false });
-    }
-  });
+      for (const [x, y] of islandTiles) {
+        allTiles.push({ x, y, islandId, isCoastal: false });
+      }
+    });
+  }
 
   // Kıyı hesaplama: bir karo, aynı adaya ait OLMAYAN (farklı ada ya da boş
   // deniz) en az bir komşusu varsa kıyı sayılır. Kale/NPC bu karolarda asla
@@ -319,6 +337,35 @@ export async function applyBigSingleIslandMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita tek büyük ada olarak yeniden üretilecek.`);
+}
+
+// Eren: "şu adayı kaldırsak normal bir ekran olsa... bu ada işi can sıktı" +
+// "ada dikdörtgene yakın simetrik olsun, yatay monitör gibi düşün" + "NPC'ler
+// azalıcak" -- organik/yuvarlak büyüyen tek-ada algoritması tamamen
+// kaldırıldı (bkz. generateRectangleIsland), aynı zamanda npc_spawn_chance
+// bir kademe daha düşürülüyor. Koordinat sistemi yine değişmedi ama önceki
+// organik test haritasıyla uyuşmuyor, o yüzden bir kez daha tam sıfırlama
+// gerekiyor.
+export async function applyRectSingleIslandMigration() {
+  const MIGRATION_NAME = "rect_single_island_v2";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: ada dikdörtgene çevriliyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  // Eski varsayılan (0.08) hâlâ ayarlıysa yeni, daha düşük varsayılana
+  // (0.02) taşı -- admin panelinden elle değiştirilmişse dokunma. (Bu
+  // migration hiç canlıya çıkmamıştı; 0.04'e taşıyan ilk sürümü hiçbir
+  // veritabanında hiç çalışmadığı için doğrudan burada 0.02'ye güncellendi.)
+  await pool.query(
+    "UPDATE game_settings SET value = 0.02 WHERE key = 'npc_spawn_chance' AND value = 0.08"
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita dikdörtgen tek ada olarak yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {

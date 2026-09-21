@@ -5,6 +5,7 @@ import {
   ensureMapGenerated,
   applyHexGridConversionMigration,
   applyBigSingleIslandMigration,
+  applyRectSingleIslandMigration,
   applyNpcBorderMigration,
   applyNpcDensityReductionMigration,
 } from "./game/mapgen.js";
@@ -30,6 +31,9 @@ async function main() {
   // çalışmalı ki tiles tablosu boşaldıktan hemen sonra ensureMapGenerated
   // tek büyük adayı üretsin.
   await applyBigSingleIslandMigration();
+  // Organik adadan düz dikdörtgen adaya geçiş + NPC yoğunluğunu bir kademe
+  // daha düşürme -- yine ÖNCE ve senkron (bkz. yukarıdaki notlar).
+  await applyRectSingleIslandMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);
