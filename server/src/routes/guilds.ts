@@ -10,6 +10,15 @@ interface GuildRow {
   name: string;
   leader_id: string;
   created_at: number;
+  flag_id: number;
+}
+
+// Eren: "10 adet lonca bayrağı ekle" -- geçerli bayrak kimliği 1-10, aralık
+// dışı/eksik gelirse 1'e (varsayılan) düşülüyor.
+const VALID_FLAG_IDS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+function normalizeFlagId(value: unknown): number {
+  const n = Number(value);
+  return VALID_FLAG_IDS.has(n) ? n : 1;
 }
 
 async function getMyGuildRow(playerId: string) {
@@ -53,6 +62,7 @@ async function serializeGuild(guild: GuildRow) {
     id: guild.id,
     name: guild.name,
     leaderId: guild.leader_id,
+    flagId: guild.flag_id,
     memberCount: memberRows.length,
     members: memberRows.map((m) => ({ playerId: m.player_id, username: m.username, joinedAt: m.joined_at })),
     pendingInvites: inviteRows.map((i) => ({
@@ -80,6 +90,7 @@ guildsRouter.get("/", async (_req, res) => {
         name: g.name,
         leaderUsername: g.leader_username,
         memberCount: Number(g.member_count),
+        flagId: g.flag_id,
       }))
     );
   } catch (err) {
@@ -113,13 +124,14 @@ guildsRouter.post("/", authenticate, async (req: any, res) => {
     const existing = await getMyGuildRow(player.id);
     if (existing) return res.status(400).json({ error: "Zaten bir loncadasın. Önce ayrılmalısın." });
 
+    const flagId = normalizeFlagId(req.body?.flagId);
     const now = Date.now();
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       const { rows } = await client.query<GuildRow>(
-        `INSERT INTO guilds (name, leader_id, created_at) VALUES ($1, $2, $3) RETURNING *`,
-        [name, player.id, now]
+        `INSERT INTO guilds (name, leader_id, created_at, flag_id) VALUES ($1, $2, $3, $4) RETURNING *`,
+        [name, player.id, now, flagId]
       );
       const guild = rows[0];
       await client.query(

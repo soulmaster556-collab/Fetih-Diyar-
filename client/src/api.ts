@@ -388,6 +388,7 @@ export interface Guild {
   id: number;
   name: string;
   leaderId: string;
+  flagId: number;
   memberCount: number;
   members: GuildMember[];
   pendingInvites: GuildPendingInvite[];
@@ -398,6 +399,7 @@ export interface GuildListEntry {
   name: string;
   leaderUsername: string;
   memberCount: number;
+  flagId: number;
 }
 
 export function listGuilds() {
@@ -410,11 +412,14 @@ export function fetchMyGuild(token: string) {
   }).then((r) => handle<Guild | null>(r));
 }
 
-export function createGuild(token: string, name: string) {
+// Eren: "10 adet lonca bayrağı ekle ... lonca kurulumunda olsun
+// seçilebilmeli" -- flagId opsiyonel, verilmezse sunucu 1'i (varsayılan)
+// kullanıyor.
+export function createGuild(token: string, name: string, flagId?: number) {
   return fetch(`${BASE}/guilds`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, flagId }),
   }).then((r) => handle<Guild>(r));
 }
 

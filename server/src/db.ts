@@ -98,6 +98,12 @@ export async function initSchema() {
       created_at BIGINT NOT NULL
     );
   `);
+  // Eren: "oyuna aynı şekilde aynı stilde ama farklı görselleri olan 10 adet
+  // lonca bayrağı ekle, lonca kurulumunda seçilebilmeli" -- bayrağın kendisi
+  // sabit bir SVG şablonu + renk/amblem (bkz. client App.tsx GUILD_FLAG_DEFS),
+  // burada sadece hangi bayrağın seçildiği (1-10) saklanıyor. Eski loncalar
+  // için varsayılan 1.
+  await pool.query(`ALTER TABLE guilds ADD COLUMN IF NOT EXISTS flag_id INTEGER NOT NULL DEFAULT 1;`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS guild_members (

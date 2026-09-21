@@ -129,6 +129,168 @@ const LABEL_MIN_WIDTH = 40;
 // amacı eklenen kale görsellerini sergilemek olduğu için bu hep açık.
 const SHOW_BUILDINGS = true;
 
+// Eren (2. tur): "saldır destek gözcü gibi ikonlarda... daha profesyonel
+// farklı bir tasarım yap" -- emoji yerine, aksiyon menüsünün cilalı/3D
+// altıgen rozetlerinin üzerine oturan sade, beyaz siluetli vektör ikonlar.
+// Renk zaten rozetten (hex-action-shape gradyanı) geliyor, ikon sadece net
+// bir silüet olsun diye düz beyaz.
+function ActionIconSword() {
+  return (
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+      <g transform="rotate(45 12 12)">
+        <rect x="10.6" y="1.2" width="2.8" height="12.4" rx="1.2" fill="#fff" />
+        <rect x="6.8" y="13.4" width="10.4" height="2.6" rx="1.1" fill="#fff" />
+        <rect x="10.8" y="15.6" width="2.4" height="5.2" rx="1" fill="#fff" opacity="0.92" />
+        <circle cx="12" cy="21.4" r="1.7" fill="#fff" />
+      </g>
+    </svg>
+  );
+}
+function ActionIconShield() {
+  return (
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+      <path
+        d="M12 2.2L19.5 5.1V10.4C19.5 15.6 16.5 19.5 12 21.6C7.5 19.5 4.5 15.6 4.5 10.4V5.1L12 2.2Z"
+        fill="#fff"
+      />
+      <path d="M12 4.6V19.1" stroke="rgba(0,0,0,0.22)" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+function ActionIconScout() {
+  return (
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+      <g transform="rotate(-38 12 12)">
+        <path d="M8.5 4.2 L18 6.4 L18.6 9.4 L8 10.8 Z" fill="#fff" />
+        <rect x="4.6" y="9.6" width="4.4" height="4.4" rx="1" fill="#fff" />
+        <circle cx="18.3" cy="7.9" r="1" fill="rgba(0,0,0,0.25)" />
+      </g>
+    </svg>
+  );
+}
+function ActionIconUpgrade() {
+  return (
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+      <path d="M12 3.2L19.6 11.6H15.4V20.4H8.6V11.6H4.4L12 3.2Z" fill="#fff" />
+    </svg>
+  );
+}
+
+// Eren: "oyuna aynı şekilde aynı stilde ama farklı görselleri olan 10 adet
+// lonca bayrağı ekle" -- TEK bir bayrak şablonu (direk + kırlangıç kuyruklu
+// flama), her biri farklı renk gradyanı + farklı sade amblemle ayrışıyor.
+// Sunucu sadece 1-10 arası flagId saklıyor (bkz. guilds.ts), görselin
+// kendisi tamamen client'ta üretiliyor.
+export const GUILD_FLAG_DEFS: { id: number; name: string; colors: [string, string]; emblem: string }[] = [
+  { id: 1, name: "Kızıl Şahin", colors: ["#e5484d", "#8a1f22"], emblem: "star" },
+  { id: 2, name: "Derin Deniz", colors: ["#2f8fd6", "#12466e"], emblem: "wave" },
+  { id: 3, name: "Orman Yemini", colors: ["#3fae5c", "#1c5c30"], emblem: "tree" },
+  { id: 4, name: "Altın Taç", colors: ["#f0b429", "#a5720f"], emblem: "diamond" },
+  { id: 5, name: "Gece Ayı", colors: ["#6b5ecb", "#332a72"], emblem: "moon" },
+  { id: 6, name: "Demir Kule", colors: ["#7c8b96", "#3d474e"], emblem: "tower" },
+  { id: 7, name: "Kutsal Yemin", colors: ["#e8e2d0", "#a89f7e"], emblem: "cross" },
+  { id: 8, name: "Kum Fırtınası", colors: ["#d99a4e", "#8a5a20"], emblem: "sun" },
+  { id: 9, name: "Kurt Sürüsü", colors: ["#5a6b7a", "#232f38"], emblem: "paw" },
+  { id: 10, name: "Kan Kardeşliği", colors: ["#c23a5e", "#661f34"], emblem: "stripe" },
+];
+
+function GuildFlagEmblem({ emblem }: { emblem: string }) {
+  const fill = "rgba(255,255,255,0.92)";
+  switch (emblem) {
+    case "star":
+      return (
+        <path
+          d="M0,-3.2 L0.9,-1 L3.2,-1 L1.3,0.4 L2,2.8 L0,1.4 L-2,2.8 L-1.3,0.4 L-3.2,-1 L-0.9,-1 Z"
+          fill={fill}
+        />
+      );
+    case "wave":
+      return (
+        <g fill="none" stroke={fill} strokeWidth="1" strokeLinecap="round">
+          <path d="M-3.4,-1.2 Q-1.7,-2.6 0,-1.2 T3.4,-1.2" />
+          <path d="M-3.4,1.6 Q-1.7,0.2 0,1.6 T3.4,1.6" />
+        </g>
+      );
+    case "tree":
+      return (
+        <g fill={fill}>
+          <path d="M0,-3.4 L2.6,1.2 H1 L2.2,3 H-2.2 L-1,1.2 H-2.6 Z" />
+        </g>
+      );
+    case "diamond":
+      return <rect x="-2.2" y="-2.2" width="4.4" height="4.4" transform="rotate(45)" fill={fill} />;
+    case "moon":
+      return <path d="M0.6,-3.2 A3.2,3.2 0 1 0 0.6,3.2 A2.3,2.3 0 1 1 0.6,-3.2 Z" fill={fill} />;
+    case "tower":
+      return (
+        <g fill={fill}>
+          <path d="M-2,-1 L0,-3.4 L2,-1 Z" />
+          <rect x="-1.6" y="-1" width="3.2" height="4.4" />
+          <rect x="-0.5" y="0.6" width="1" height="1.2" fill="rgba(0,0,0,0.32)" />
+        </g>
+      );
+    case "cross":
+      return (
+        <g fill={fill}>
+          <rect x="-0.7" y="-3" width="1.4" height="6" />
+          <rect x="-2.6" y="-0.7" width="5.2" height="1.4" />
+        </g>
+      );
+    case "sun":
+      return (
+        <g stroke={fill} strokeWidth="0.9" strokeLinecap="round">
+          <circle cx="0" cy="0" r="1.6" fill={fill} stroke="none" />
+          <line x1="0" y1="-2" x2="0" y2="-3.5" />
+          <line x1="0" y1="2" x2="0" y2="3.5" />
+          <line x1="-2" y1="0" x2="-3.5" y2="0" />
+          <line x1="2" y1="0" x2="3.5" y2="0" />
+          <line x1="-1.4" y1="-1.4" x2="-2.5" y2="-2.5" />
+          <line x1="1.4" y1="1.4" x2="2.5" y2="2.5" />
+          <line x1="-1.4" y1="1.4" x2="-2.5" y2="2.5" />
+          <line x1="1.4" y1="-1.4" x2="2.5" y2="-2.5" />
+        </g>
+      );
+    case "paw":
+      return (
+        <g fill={fill}>
+          <ellipse cx="0" cy="1" rx="1.8" ry="1.4" />
+          <circle cx="-1.6" cy="-1.4" r="0.85" />
+          <circle cx="0" cy="-2.1" r="0.85" />
+          <circle cx="1.6" cy="-1.4" r="0.85" />
+        </g>
+      );
+    case "stripe":
+    default:
+      return <rect x="-4.6" y="-0.8" width="9.2" height="1.6" transform="rotate(-18)" fill={fill} opacity="0.8" />;
+  }
+}
+
+function GuildFlag({ flagId, size = 28, title }: { flagId: number; size?: number; title?: string }) {
+  const def = GUILD_FLAG_DEFS.find((f) => f.id === flagId) ?? GUILD_FLAG_DEFS[0];
+  const gradId = `guildFlagGrad${def.id}`;
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className="guild-flag-svg">
+      {title ? <title>{def.name}</title> : null}
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={def.colors[0]} />
+          <stop offset="100%" stopColor={def.colors[1]} />
+        </linearGradient>
+      </defs>
+      <rect x="3" y="1.6" width="1.6" height="20.8" rx="0.6" fill="#caa23a" />
+      <path
+        d="M4.6 3 H19.5 L15.8 8 L19.5 13 H4.6 Z"
+        fill={`url(#${gradId})`}
+        stroke="rgba(0,0,0,0.25)"
+        strokeWidth="0.4"
+      />
+      <g transform="translate(10.9 8)">
+        <GuildFlagEmblem emblem={def.emblem} />
+      </g>
+    </svg>
+  );
+}
+
 function loadSession(): Session | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -236,6 +398,9 @@ export default function App() {
   const [showGuildPanel, setShowGuildPanel] = useState(false);
   const [availableGuilds, setAvailableGuilds] = useState<GuildListEntry[]>([]);
   const [guildNameInput, setGuildNameInput] = useState("");
+  // Eren: "10 adet lonca bayrağı ekle ... lonca kurulumunda olsun
+  // seçilebilmeli" -- yeni lonca formunda seçilen bayrak, varsayılan 1.
+  const [guildFlagInput, setGuildFlagInput] = useState(1);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Sağdaki/soldaki sabit barlar kaldırıldığı için "Seçili Kare" bilgi
@@ -957,9 +1122,10 @@ export default function App() {
     if (!session || !guildNameInput.trim()) return;
     setError(null);
     try {
-      const g = await createGuild(session.token, guildNameInput.trim());
+      const g = await createGuild(session.token, guildNameInput.trim(), guildFlagInput);
       setGuild(g);
       setGuildNameInput("");
+      setGuildFlagInput(1);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -1394,10 +1560,10 @@ export default function App() {
             🏰 Krallığım ({myTiles.length})
           </button>
           <button
-            className={`kingdom-toggle ${showGuildPanel ? "active" : ""}`}
+            className={`kingdom-toggle kingdom-toggle-guild ${showGuildPanel ? "active" : ""}`}
             onClick={openGuildPanel}
           >
-            🛡️ {guild ? guild.name : "Lonca"}
+            {guild ? <GuildFlag flagId={guild.flagId} size={20} /> : "🛡️"} {guild ? guild.name : "Lonca"}
             {receivedInvites.length > 0 ? ` (${receivedInvites.length})` : ""}
           </button>
           <button
@@ -1537,8 +1703,9 @@ export default function App() {
             <div className="modal-body">
           {guild ? (
             <div>
-              <p>
-                <strong>{guild.name}</strong> — {guild.memberCount} üye
+              <p className="guild-header-row">
+                <GuildFlag flagId={guild.flagId} size={36} />
+                <span><strong>{guild.name}</strong> — {guild.memberCount} üye</span>
               </p>
               <ul className="city-list">
                 {guild.members.map((m) => (
@@ -1614,6 +1781,24 @@ export default function App() {
                   minLength={3}
                   maxLength={24}
                 />
+                {/* Eren: "10 adet lonca bayrağı ekle ... lonca kurulumunda
+                    olsun seçilebilmeli" -- 10 bayrağın hepsi küçük seçilebilir
+                    kartlar olarak listeleniyor, seçili olan altın çerçeveyle
+                    vurgulanıyor. */}
+                <p className="hint guild-section-heading">Lonca bayrağı seç</p>
+                <div className="guild-flag-picker">
+                  {GUILD_FLAG_DEFS.map((f) => (
+                    <button
+                      type="button"
+                      key={f.id}
+                      className={`guild-flag-option ${guildFlagInput === f.id ? "selected" : ""}`}
+                      onClick={() => setGuildFlagInput(f.id)}
+                      title={f.name}
+                    >
+                      <GuildFlag flagId={f.id} size={30} />
+                    </button>
+                  ))}
+                </div>
                 <button type="submit">Lonca Kur</button>
               </form>
               <p className="hint">Ya da mevcut bir loncaya katıl:</p>
@@ -1622,6 +1807,7 @@ export default function App() {
                 {availableGuilds.map((g) => (
                   <li key={g.id}>
                     <div className="city-row">
+                      <GuildFlag flagId={g.flagId} size={26} />
                       <div>
                         <div>{g.name}</div>
                         <div className="stats">👑 {g.leaderUsername} &nbsp; 👥 {g.memberCount}</div>
@@ -1751,31 +1937,43 @@ export default function App() {
           // değil, doğrudan haritanın üzerinde şeffaf biçimde yüzüyor (bkz.
           // isMineSel dalı aşağıda ve .hex-menu-floating / .hex-action-shape
           // App.css'teki glossy 3D güncellemesi).
+          // Eren (3. tur): "Bu 4 ikonu birbirine bağlayan kalın bir bar
+          // ekle. Fakat ikonlar bardan dışarı taşıcak şekilde olmalı hem
+          // aşağıdan hem yukarıdan sanki barın üzerine sonradan
+          // yerleştirilmiş gibi durmalılar." -- eski ince kesik-çizgili
+          // "hilal" yerine, iki üst üste path ile (koyu metal gövde + üstte
+          // ince parlak highlight şeridi) kalın, cilalı bir "kemer/bar"
+          // çizildi. Butonlar (.hex-action) zaten bardan sonra DOM'da
+          // geldiği için üstte duruyor; boyutları barın kalınlığından
+          // büyük tutulup dikey ortası bar çizgisine denk gelecek şekilde
+          // konumlandı (bkz. App.css .hex-action nth-child top değerleri)
+          // -- yani her ikon barın hem üstüne hem altına taşıyor.
           <div className="hex-actions">
-            <svg className="hex-actions-arc" viewBox="0 0 260 150" preserveAspectRatio="none">
+            <svg className="hex-actions-arc" viewBox="0 0 260 118" preserveAspectRatio="none">
               <defs>
-                <linearGradient id="hexActionsArcGradient" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="rgba(240, 180, 41, 0)" />
-                  <stop offset="50%" stopColor="rgba(240, 180, 41, 0.9)" />
-                  <stop offset="100%" stopColor="rgba(240, 180, 41, 0)" />
+                <linearGradient id="hexActionsBarGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#6b7280" />
+                  <stop offset="45%" stopColor="#3f4652" />
+                  <stop offset="100%" stopColor="#20242c" />
                 </linearGradient>
               </defs>
-              <path className="hex-actions-arc-path" d="M 20 30 Q 130 122 240 30" />
+              <path className="hex-actions-bar-body" d="M 16 24 Q 130 84 244 24" />
+              <path className="hex-actions-bar-shine" d="M 18 20 Q 130 78 242 20" />
             </svg>
             <button className="hex-action hex-action-attack" onClick={() => startAction("attack", selectedTile)}>
-              <span className="hex-action-shape"><span className="hex-action-icon">⚔️</span></span>
+              <span className="hex-action-shape"><span className="hex-action-icon"><ActionIconSword /></span></span>
               <span className="hex-action-label">Saldır</span>
             </button>
             <button className="hex-action hex-action-reinforce" onClick={() => startAction("reinforce", selectedTile)}>
-              <span className="hex-action-shape"><span className="hex-action-icon">🛡️</span></span>
+              <span className="hex-action-shape"><span className="hex-action-icon"><ActionIconShield /></span></span>
               <span className="hex-action-label">Destek</span>
             </button>
             <button className="hex-action hex-action-scout" onClick={() => startAction("scout", selectedTile)}>
-              <span className="hex-action-shape"><span className="hex-action-icon">🔭</span></span>
+              <span className="hex-action-shape"><span className="hex-action-icon"><ActionIconScout /></span></span>
               <span className="hex-action-label">Gözcü</span>
             </button>
             <button className="hex-action hex-action-upgrade" onClick={() => handleUpgrade(selectedTile.id)}>
-              <span className="hex-action-shape"><span className="hex-action-icon">⬆️</span></span>
+              <span className="hex-action-shape"><span className="hex-action-icon"><ActionIconUpgrade /></span></span>
               <span className="hex-action-label">Yükselt</span>
             </button>
           </div>

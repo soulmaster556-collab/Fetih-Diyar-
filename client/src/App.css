@@ -157,19 +157,25 @@ button:disabled {
   gap: 12px;
 }
 
+/* Eren (3. tur): "Sol üstteki profil yuvarlağını büyüt biraz oradaki mavi
+   bardan dışarı çıksın." -- 58px -> 76px büyütüldü. .topbar'ın kendi
+   yüksekliği içeriğe göre belirleniyor (sabit height yok) ve arka planı
+   aşağı doğru şeffaflaşan bir gradyan (bkz. .topbar), bu yüzden büyüyen
+   avatarın alt kısmı doğal olarak barın "koyu" bölgesinin dışına, solan
+   kısma taşıyor -- ekstra negatif margin gerekmedi. */
 .profile-avatar-btn {
   position: relative;
-  width: 58px;
-  height: 58px;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
   padding: 0;
   flex-shrink: 0;
   cursor: pointer;
   background: linear-gradient(180deg, #24384a 0%, #17242f 100%);
-  border: 2px solid var(--hairline-gold);
+  border: 3px solid var(--hairline-gold);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 3px 10px rgba(0, 0, 0, 0.4);
+    0 6px 16px rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -192,7 +198,7 @@ button:disabled {
 }
 
 .profile-avatar-fallback {
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 800;
   color: var(--gold-soft);
   letter-spacing: 0.02em;
@@ -202,15 +208,15 @@ button:disabled {
   position: absolute;
   right: -2px;
   bottom: -2px;
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--teal-strong);
   border: 2px solid var(--ink);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .profile-avatar-input {
@@ -697,19 +703,30 @@ button:not(:disabled):active {
 /* Sağdaki/soldaki kalıcı barlar kalktı -- "Krallığım" listesi ve "Seçili
    Kare" bilgisi artık ihtiyaç oldukça beliren, üstteki menü/tıklanan karoya
    göre konumlanan yüzen kartlar (bkz. App.tsx kingdom-dropdown / tile-card). */
+/* Eren (3. tur): "Tüm açılan pencereler 3d gibi boyutlu olsun" -- tüm
+   pop-up panellerin (bu ikisi + aşağıdaki .modal-screen) ortak "3D" reçetesi:
+   1) kalınca, hafif parlak bir dış çerçeve, 2) üst iç kenarda ince bir ışık
+   şeridi (sanki panel kabartmalı/oyulmuş), 3) alt iç kenarda koyu bir gölge
+   (derinlik), 4) daha güçlü/katmanlı dış gölge. Tek bir --panel-3d-shadow
+   değişkeni yerine her yerde aynı deseni tekrar yazıyoruz çünkü border-radius
+   farklı (12px vs 16px) -- inset gölgelerin görünürlüğü radius'a duyarlı. */
 .kingdom-dropdown,
 .tile-card {
   position: fixed;
   width: 300px;
   background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel-1) 100%);
   backdrop-filter: blur(10px);
-  border: 1px solid var(--panel-border);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;
   padding: 14px 16px;
   overflow-y: auto;
   z-index: 25;
   color: var(--text-bright);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.55),
+    0 2px 0 rgba(0, 0, 0, 0.4),
+    0 1.5px 0 rgba(255, 255, 255, 0.22) inset,
+    0 -14px 22px rgba(0, 0, 0, 0.35) inset;
 }
 
 .kingdom-dropdown {
@@ -841,6 +858,47 @@ button:not(:disabled):active {
 
 .kingdom-load-more:hover {
   background: rgba(255, 255, 255, 0.12);
+}
+
+/* Eren: "10 adet lonca bayrağı ekle ... lonca kurulumunda olsun
+   seçilebilmeli" -- yeni lonca formundaki 10 küçük bayrak seçici kart. */
+.guild-flag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.guild-flag-option {
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.guild-flag-option:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.guild-flag-option.selected {
+  border-color: var(--hairline-gold);
+  background: rgba(240, 180, 41, 0.16);
+}
+
+.guild-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kingdom-toggle-guild {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 /* Raporlar panelindeki tür filtre çipleri. */
@@ -1621,9 +1679,15 @@ button:not(:disabled):active {
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel-1) 100%);
-  border: 1px solid var(--panel-border);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
   border-radius: 16px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 2px 0 rgba(255, 255, 255, 0.06) inset;
+  /* Eren (3. tur): "Tüm açılan pencereler 3d gibi boyutlu olsun" -- bkz.
+     .tile-card/.kingdom-dropdown'daki aynı reçete. */
+  box-shadow:
+    0 26px 60px rgba(0, 0, 0, 0.58),
+    0 2px 0 rgba(0, 0, 0, 0.4),
+    0 2px 0 rgba(255, 255, 255, 0.2) inset,
+    0 -18px 30px rgba(0, 0, 0, 0.35) inset;
   overflow: hidden;
   color: var(--text-bright);
 }
@@ -2035,8 +2099,16 @@ button:not(:disabled):active {
    üstte oyuncu/klan/level banner'ı, altta altıgen şekilli eylem butonları). */
 .hex-menu {
   padding: 0;
-  border: 1px solid var(--hairline-gold);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(240, 180, 41, 0.08);
+  border: 1.5px solid var(--hairline-gold);
+  /* Eren (3. tur): "Tüm açılan pencereler 3d gibi boyutlu olsun" -- .tile-card
+     tabanındaki 3D reçeteyle aynı katmanlar (üst ışık şeridi + alt iç gölge),
+     üstüne bu panele özel altın parıltı halkası eklendi. */
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.55),
+    0 2px 0 rgba(0, 0, 0, 0.4),
+    0 1.5px 0 rgba(255, 255, 255, 0.22) inset,
+    0 -14px 22px rgba(0, 0, 0, 0.35) inset,
+    0 0 0 1px rgba(240, 180, 41, 0.1);
 }
 
 .hex-menu-close {
@@ -2159,7 +2231,11 @@ button:not(:disabled):active {
    çizginin üzerine oturuyor. */
 .hex-actions {
   position: relative;
-  height: 150px;
+  /* Eren (3. tur): "Saldırı menüsünü daha ufalt" -- 150px'ten 118px'e
+     küçültüldü; SVG viewBox'ı da (bkz. App.tsx) 260x118 olarak birebir bu
+     yüksekliğe eşleniyor ki bar/buton konumlarını px cinsinden hesaplamak
+     kolay olsun (bkz. .hex-action nth-child yorumu). */
+  height: 118px;
   margin: 4px 0 2px;
   /* Kapsayıcı .hex-menu-floating pointer-events:none olduğu için (bkz.
      yukarısı), bu alanın boş kısımları haritaya tıklamayı engellemesin diye
@@ -2187,12 +2263,24 @@ button:not(:disabled):active {
   overflow: visible;
 }
 
-.hex-actions-arc-path {
+/* Eren (3. tur): "Bu 4 ikonu birbirine bağlayan kalın bir bar ekle" -- eski
+   ince kesik-çizgili altın hilal yerine, iki path üst üste bindirilerek
+   kalın, cilalı bir metal "kemer/bar" çiziliyor: gövde (koyu-açık gradyan,
+   kalın stroke) + üstüne ince beyaz "parlama" şeridi (hafif yukarı kaydırılmış
+   ikinci path, cam/metal yüzeyin üstten ışık alması hissi için). */
+.hex-actions-bar-body {
   fill: none;
-  stroke: url(#hexActionsArcGradient);
-  stroke-width: 3;
+  stroke: url(#hexActionsBarGradient);
+  stroke-width: 15;
   stroke-linecap: round;
-  stroke-dasharray: 2 11;
+  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.5));
+}
+
+.hex-actions-bar-shine {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 2.4;
+  stroke-linecap: round;
 }
 
 .hex-action {
@@ -2201,14 +2289,19 @@ button:not(:disabled):active {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: 3px;
   background: none;
   border: none;
   cursor: pointer;
   padding: 0;
-  width: 78px;
+  width: 64px;
   transform: translateX(-50%);
   pointer-events: auto;
+  /* İkonlar bardan taşıyor: bu buton kutusu barın hemen üstünden başlayıp
+     altına kadar uzanıyor (bkz. nth-child top değerleri + .hex-action-shape
+     yüksekliği), bar ise DOM'da önce geldiği için altta kalıyor -- "sanki
+     barın üzerine sonradan yerleştirilmiş" hissi z-index sırasından geliyor. */
+  z-index: 1;
 }
 
 /* .hex-action konumlanmak için zaten translateX(-50%) kullanıyor -- genel
@@ -2223,38 +2316,65 @@ button:not(:disabled):active {
    (sağ-orta, aşağıda), Yükselt (sağ uç, yukarıda) -- Eren'in verdiği sırayla
    ("saldır, destek, gözcü, yükselt") soldan sağa, hilalin çizgisi üzerinde.
    nth-child 2'den başlıyor çünkü ilk çocuk artık dekoratif SVG (1). */
-.hex-action:nth-child(2) { left: 8%; top: 4px; }
-.hex-action:nth-child(3) { left: 34%; top: 68px; }
-.hex-action:nth-child(4) { left: 66%; top: 68px; }
-.hex-action:nth-child(5) { left: 92%; top: 4px; }
+/* Eren (3. tur): "ikonlar bardan dışarı taşıcak şekilde olmalı hem
+   aşağıdan hem yukarıdan" -- top değerleri, barın (bkz. App.tsx path'i
+   "M 16 24 Q 130 84 244 24") o x noktasındaki y'sine göre HESAPLANDI ki
+   altıgen rozetin (48px yüksek) dikey ortası tam barın üzerine denk gelsin:
+   uç butonlarda (Saldır/Yükselt, x≈16/244) bar y=24 -> top=0 (merkez 0+24=24);
+   orta butonlarda (Destek/Gözcü, x≈88/172) bar y≈50 -> top=26 (merkez 26+24=50).
+   Böylece rozetin üst yarısı barın üstünde, alt yarısı altında kalıyor. */
+.hex-action:nth-child(2) { left: 8%; top: 0px; }
+.hex-action:nth-child(3) { left: 34%; top: 26px; }
+.hex-action:nth-child(4) { left: 66%; top: 26px; }
+.hex-action:nth-child(5) { left: 92%; top: 0px; }
 
 .hex-action-shape {
-  width: 66px;
-  height: 58px;
+  /* Eren (3. tur): "Saldırı menüsünü daha ufalt" -- 66x58 -> 54x48. */
+  width: 54px;
+  height: 48px;
   clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid rgba(255, 255, 255, 0.22);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.25);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.3);
   transition: transform 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
 }
 
 .hex-action:hover .hex-action-shape {
   transform: translateY(-3px) scale(1.05);
   filter: brightness(1.15);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 0, 0, 0.3);
 }
 
 .hex-action-icon {
-  font-size: 24px;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 }
 
+.hex-action-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+/* Eren (3. tur): "saldır destek gözcü gibi yazılarıda daha görünür yap
+   rengini de değiştir" -- soluk gri yerine parlak altın + koyu bir dış
+   çizgi/gölge (metinle aynı görünmesi için text-shadow ile iki yönde
+   "stroke" taklidi) böylece yeşil zemine karşı her zaman okunur. */
 .hex-action-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--gold-soft);
+  letter-spacing: 0.02em;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 -1px 0 rgba(0, 0, 0, 0.9),
+    1px 0 0 rgba(0, 0, 0, 0.9),
+    -1px 0 0 rgba(0, 0, 0, 0.9),
+    0 2px 4px rgba(0, 0, 0, 0.6);
 }
 
 /* Eren (2. tur): "saldır destek gözcü yükselt gibi ikonlarda 3D boyutlu
@@ -2269,10 +2389,13 @@ button:not(:disabled):active {
     linear-gradient(180deg, var(--danger), var(--danger-strong));
 }
 
+/* Eren (3. tur): "altında çıkan maviyi kaldır" -- Destek rozeti maviydi,
+   yerine zırh/çelik temalı bir bronz-gümüş gradyanı geldi (mavi tamamen
+   kaldırıldı, palette artık kırmızı/bronz/altın/yeşil). */
 .hex-action-reinforce .hex-action-shape {
   background:
-    radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 48%),
-    linear-gradient(180deg, #5a9dff, var(--blue-guild));
+    radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0) 48%),
+    linear-gradient(180deg, #b8ab8e, #7a6a4d);
 }
 
 .hex-action-scout .hex-action-shape {
