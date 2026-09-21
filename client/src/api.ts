@@ -143,6 +143,109 @@ export function updateAdminSettings(adminKey: string, values: Record<string, num
   }).then((r) => handle<{ values: Record<string, number> }>(r));
 }
 
+// Admin -- Oyuncular bölümü (bkz. server/src/routes/admin.ts).
+export interface AdminPlayerSummary {
+  id: string;
+  username: string;
+  createdAt: number;
+  seasonPoints: number;
+  banned: boolean;
+  gold: number;
+  goldPerHour: number;
+  troops: number;
+  troopsPerHour: number;
+  castles: number;
+  guildName: string | null;
+}
+
+export interface AdminPlayerTile {
+  id: number;
+  x: number;
+  y: number;
+  islandId: number;
+  level: number;
+  goldPerHour: number;
+  troopsPerHour: number;
+  troops: number;
+}
+
+export interface AdminPlayerDetail {
+  id: string;
+  username: string;
+  createdAt: number;
+  seasonPoints: number;
+  banned: boolean;
+  gold: number;
+  goldPerHour: number;
+  troopsPerHour: number;
+  guild: { id: number; name: string; isLeader: boolean } | null;
+  tiles: AdminPlayerTile[];
+}
+
+function adminHeaders(adminKey: string, withJson = false): Record<string, string> {
+  const headers: Record<string, string> = { "x-admin-key": adminKey };
+  if (withJson) headers["Content-Type"] = "application/json";
+  return headers;
+}
+
+export function fetchAdminPlayers(adminKey: string, q: string, limit = 50, offset = 0) {
+  const params = new URLSearchParams({ q, limit: String(limit), offset: String(offset) });
+  return fetch(`${BASE}/admin/players?${params.toString()}`, {
+    headers: adminHeaders(adminKey),
+  }).then((r) => handle<{ players: AdminPlayerSummary[]; total: number }>(r));
+}
+
+export function fetchAdminPlayerDetail(adminKey: string, playerId: string) {
+  return fetch(`${BASE}/admin/players/${playerId}`, {
+    headers: adminHeaders(adminKey),
+  }).then((r) => handle<AdminPlayerDetail>(r));
+}
+
+export function setAdminPlayerGold(adminKey: string, playerId: string, gold: number) {
+  return fetch(`${BASE}/admin/players/${playerId}/gold`, {
+    method: "POST",
+    headers: adminHeaders(adminKey, true),
+    body: JSON.stringify({ gold }),
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
+export function setAdminTileTroops(adminKey: string, tileId: number, troops: number) {
+  return fetch(`${BASE}/admin/tiles/${tileId}/troops`, {
+    method: "POST",
+    headers: adminHeaders(adminKey, true),
+    body: JSON.stringify({ troops }),
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
+export function setAdminPlayerPassword(adminKey: string, playerId: string, password: string) {
+  return fetch(`${BASE}/admin/players/${playerId}/password`, {
+    method: "POST",
+    headers: adminHeaders(adminKey, true),
+    body: JSON.stringify({ password }),
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
+export function setAdminPlayerBanned(adminKey: string, playerId: string, banned: boolean) {
+  return fetch(`${BASE}/admin/players/${playerId}/${banned ? "ban" : "unban"}`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
+export function kickAdminPlayerFromGuild(adminKey: string, playerId: string) {
+  return fetch(`${BASE}/admin/players/${playerId}/kick-guild`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
+export function deleteAdminPlayer(adminKey: string, playerId: string) {
+  return fetch(`${BASE}/admin/players/${playerId}`, {
+    method: "DELETE",
+    headers: adminHeaders(adminKey),
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
 export function attackTile(
   token: string,
   targetTileId: number,

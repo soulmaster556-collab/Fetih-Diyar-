@@ -92,6 +92,10 @@ playersRouter.post("/login", async (req, res) => {
     if (!player || !verifyPassword(password, player.password_hash)) {
       return res.status(401).json({ error: "Kullanıcı adı veya şifre yanlış." });
     }
+    // Admin panelinden yasaklanmış oyuncu -- şifre doğru olsa bile giriş yok.
+    if (player.banned) {
+      return res.status(403).json({ error: "Hesabınız yasaklandı." });
+    }
 
     const newToken = randomUUID();
     await pool.query("UPDATE players SET token = $1 WHERE id = $2", [newToken, player.id]);
@@ -131,6 +135,10 @@ export async function authenticate(req: any, res: any, next: any) {
     const { rows } = await pool.query<Player>("SELECT * FROM players WHERE token = $1", [token]);
     const player = rows[0];
     if (!player) return res.status(401).json({ error: "Geçersiz oturum." });
+    // Admin panelinden yasaklanan oyuncunun token'ı ban anında zaten
+    // döndürülüyor (bkz. routes/admin.ts), ama tutarlılık için burada da
+    // kontrol ediyoruz -- ban kaldırılıp token hâlâ eskiyse bile reddedilsin.
+    if (player.banned) return res.status(403).json({ error: "Hesabınız yasaklandı." });
 
     req.player = player;
     next();
@@ -151,7 +159,10 @@ export async function optionalAuthenticate(req: any, _res: any, next: any) {
     const token = header.startsWith("Bearer ") ? header.slice(7) : null;
     if (token) {
       const { rows } = await pool.query<Player>("SELECT * FROM players WHERE token = $1", [token]);
-      if (rows[0]) req.player = rows[0];
+      // Yasaklı oyuncu burada reddedilmiyor (bu uç nokta herkese açık), ama
+      // req.player hiç doldurulmuyor ki yasaklı kullanıcı anonim biri gibi
+      // davranılsın (kendi/klan kalesi ayrıcalığı görmesin).
+      if (rows[0] && !rows[0].banned) req.player = rows[0];
     }
   } catch (err) {
     console.error(err);

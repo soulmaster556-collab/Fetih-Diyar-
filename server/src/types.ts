@@ -8,6 +8,8 @@ export interface Player {
   // Krallık geneli ortak altın havuzu (bkz. game/resources.ts).
   gold: number;
   gold_collected_at: number;
+  // Admin panelinden yasaklanmış mı (bkz. routes/admin.ts).
+  banned: boolean;
 }
 
 export type TileType = "NPC" | "PLAYER" | "EMPTY";

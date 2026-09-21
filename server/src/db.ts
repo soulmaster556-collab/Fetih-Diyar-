@@ -30,6 +30,12 @@ export async function initSchema() {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS gold DOUBLE PRECISION NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS gold_collected_at BIGINT NOT NULL DEFAULT 0;`);
 
+  // Admin panelinden bir oyuncuyu yasaklayabilme (Eren'in isteği: "oyunculara
+  // müdahale edilebilecek şeyler ekle") -- yasaklı oyuncunun mevcut token'ı
+  // ban anında döndürülür (bkz. routes/admin.ts) ve authenticate/login bu
+  // bayrağı kontrol edip erişimi reddeder (bkz. routes/players.ts).
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false;`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tiles (
       id SERIAL PRIMARY KEY,

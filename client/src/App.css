@@ -851,55 +851,145 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Admin paneli -- Eren: "admin panelini daha profesyonel yap, oyuncular
+   bölümü ekle, oyunculara müdahale edilebilecek şeyler ekle". Eski panel
+   düz beyaz/açık mavi bir form ekranıydı; artık oyunun geri kalanıyla aynı
+   lacivert/altın/turkuaz temayı (bkz. :root, .modal-screen, .kingdom-table)
+   kullanan, sekmeli (Oyuncular / Ayarlar) tam bir kontrol paneli. */
 .admin-login {
   height: 100vh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  background: #eaf4ff;
-  color: #1f2d3a;
+  background: radial-gradient(circle at 50% 20%, #1c3346 0%, var(--ink) 70%);
+  color: var(--text-bright);
 }
 
-.admin-login form {
+.admin-login-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel-1) 100%);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 32px 36px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.admin-login-card h1 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--gold-soft);
+  letter-spacing: 0.02em;
+}
+
+.admin-login-card form {
   display: flex;
   gap: 8px;
 }
 
-.admin-login input {
+.admin-login-card input {
   padding: 10px 14px;
   border-radius: 6px;
-  border: 1px solid #bcd3e0;
-  background: #fff;
-  color: #1f2d3a;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
   min-width: 220px;
 }
 
-.admin-panel {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 24px 16px 60px;
-  background: #eaf4ff;
-  min-height: 100vh;
-  color: #1f2d3a;
+.admin-login-card .error {
+  color: #ff8a70;
+  font-size: 13px;
+  margin: 0;
 }
 
-.admin-panel header {
+.admin-panel {
+  min-height: 100vh;
+  background: var(--ink);
+  color: var(--text-bright);
+  padding-bottom: 60px;
+}
+
+.admin-header {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 20px;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 24px;
+  background: linear-gradient(180deg, #223345 0%, #16222e 100%);
+  border-bottom: 1px solid var(--hairline-gold);
 }
 
-.admin-panel header a {
-  color: #4d6373;
+.admin-header h1 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--gold-soft);
+  letter-spacing: 0.02em;
+}
+
+.admin-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.admin-header-actions a {
+  color: var(--text-dim);
   text-decoration: none;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.admin-panel header a:hover {
-  color: #1f2d3a;
+.admin-header-actions a:hover {
+  color: var(--text-bright);
+}
+
+.admin-logout {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-bright);
+  font-size: 13px;
+  padding: 6px 12px;
+}
+
+.admin-logout:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 14px 24px 0;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+.admin-tabs button {
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 10px 18px;
+  border-radius: 8px 8px 0 0;
+}
+
+.admin-tabs button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
+}
+
+.admin-tabs button.active {
+  background: var(--panel-1);
+  color: var(--gold-soft);
+  box-shadow: inset 0 -2px 0 var(--gold);
+}
+
+.admin-content {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 20px 24px 0;
+  background: var(--panel-1);
+  border-radius: 0 0 12px 12px;
+  min-height: 60vh;
 }
 
 .settings-list {
@@ -914,27 +1004,309 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--panel-border);
   border-radius: 8px;
   padding: 14px 16px;
-  box-shadow: 0 2px 8px rgba(31, 45, 58, 0.08);
 }
 
 .setting-row label {
   font-weight: 600;
   display: block;
   margin-bottom: 4px;
+  color: var(--text-bright);
 }
 
 .setting-row input {
   width: 110px;
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid #bcd3e0;
-  background: #fff;
-  color: #1f2d3a;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
   text-align: right;
   flex-shrink: 0;
+}
+
+/* Oyuncular sekmesi -- arama + aranabilir/sayfalanabilir tablo. */
+.admin-search {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.admin-search input {
+  flex: 1;
+  padding: 9px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
+}
+
+.admin-players-head {
+  display: grid;
+  grid-template-columns: 1.4fr 0.9fr 0.8fr 0.8fr 0.6fr 1fr 0.8fr;
+  gap: 8px;
+  padding: 0 10px 6px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.admin-players-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.admin-players-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.9fr 0.8fr 0.8fr 0.6fr 1fr 0.8fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.admin-players-row:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.admin-players-row-banned {
+  background: rgba(229, 72, 77, 0.1);
+}
+
+.admin-players-row-banned:hover {
+  background: rgba(229, 72, 77, 0.18);
+}
+
+.admin-players-username {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-players-guild {
+  color: var(--blue-guild);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-stat-gold {
+  color: var(--gold-soft);
+  font-weight: 700;
+}
+
+.admin-stat-troops {
+  color: #ff8a70;
+  font-weight: 700;
+}
+
+.admin-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.admin-badge-ok {
+  background: rgba(53, 181, 106, 0.16);
+  color: var(--good);
+}
+
+.admin-badge-danger {
+  background: rgba(229, 72, 77, 0.18);
+  color: #ff8a70;
+}
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding-bottom: 20px;
+}
+
+/* Oyuncu detay/müdahale ekranı -- .modal-overlay/.modal-screen deseni. */
+.admin-detail-screen {
+  max-width: 760px;
+}
+
+.admin-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-banned-banner {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.admin-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.admin-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.admin-stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.admin-stat-value {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.admin-section h3 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+}
+
+.admin-action-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.admin-action-row:last-child {
+  border-bottom: none;
+}
+
+.admin-action-row label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.admin-action-row-danger label {
+  color: #ff8a70;
+}
+
+.admin-inline-form {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-inline-form input {
+  width: 140px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
+}
+
+.admin-inline-form button {
+  font-size: 13px;
+  padding: 7px 12px;
+}
+
+.admin-btn-danger {
+  background: linear-gradient(180deg, var(--danger) 0%, var(--danger-strong) 100%);
+}
+
+.admin-btn-danger:hover {
+  background: var(--danger-strong);
+}
+
+.admin-btn-success {
+  background: linear-gradient(180deg, #4bd082 0%, var(--good) 100%);
+  color: #06331a;
+}
+
+.admin-tiles-head {
+  display: grid;
+  grid-template-columns: 1.4fr 0.6fr 1.2fr 0.8fr auto;
+  gap: 8px;
+  padding: 0 8px 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.admin-tiles-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.admin-tiles-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.6fr 1.2fr 0.8fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.admin-tiles-coords small {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.admin-tiles-level {
+  font-weight: 700;
+  color: var(--gold-soft);
+}
+
+.admin-tiles-prod {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.admin-tiles-row input {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
+}
+
+.admin-tiles-save {
+  font-size: 11px;
+  padding: 5px 9px;
 }
 
 /* Eren: "Liderlik panosu öne ayrı ekran olarak çıksın" / "Mesajlar
