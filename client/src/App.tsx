@@ -37,12 +37,17 @@ const VIEWPORT_MARGIN = 6;
 // Karo genişliği (izometrik baklava şeklinin genişliği, px). Yükseklik hep
 // genişliğin yarısı — klasik 2:1 izometrik oran (Travian/Forge of Empires
 // tarzı haritalarda kullanılan oran).
-// Eren'in isteği: "Uzak zoomdan eksiltip yakın zoom ekle" -- en uzak seviye
-// (16px, haritanın neredeyse tamamen ayrıntısız göründüğü seviye) kaldırıldı,
-// buna karşılık üst uca iki yeni yakın seviye (88, 120) eklendi.
-const TILE_WIDTHS = [22, 32, 46, 64, 88, 120];
-// Varsayılan hâlâ 46px (önceki turdaki "daha yakın plan" kararı korunuyor) --
-// bu istek sadece kullanılabilir zoom ARALIĞINI kaydırıyor, varsayılanı değil.
+// Eren: "hexleri biraz daha büyütelim", "zoom da zaten fazla uzağa gidiyor
+// şuan onu düzeltelim çok uzağa gitmesine gerek yok", "başlangıç daha da
+// yakın plan başlamalı" -- üç isteği birden karşılamak için tüm ölçek yukarı
+// kaydırıldı: en uzak seviye (eski 22px, aşırı küçük/uzak) tamamen kaldırıldı,
+// yeni minimum (36) eski varsayılana (46) yakın kalıp aşırı uzaklaşmayı
+// engelliyor, ve varsayılan (72) eskisinden %56 daha büyük başlıyor ("daha
+// yakın plan"). Üst uca da bir sonraki adım (160) eklendi, yakınlaştırma
+// tavanı da birlikte yükselsin diye.
+const TILE_WIDTHS = [36, 52, 72, 100, 136, 160];
+// Varsayılan artık 72px (index 2) -- eski varsayılan (46) yerine, "daha yakın
+// plan" isteği için bir kademe büyütüldü.
 const DEFAULT_TILE_WIDTH_INDEX = 2;
 // Eren'in isteği: "kaleler leveline göre şekil değiştirsin" -- oyuncuya ait
 // (kendi/klan/düşman fark etmez, hepsi "gerçek oyuncu kalesi") karolar artık
@@ -372,15 +377,28 @@ export default function App() {
     setKingdomVisibleCount(25);
   }, [kingdomSearch, kingdomSort]);
 
-  // İlk açılışta oyuncunun ilk şehri gelince oraya kaydır (aksi halde 200x80
-  // dünyanın rastgele bir köşesinde, muhtemelen boş denizde kalırız).
+  // Eren: "Oyuna girişdeki başlangıç her zaman ilk ana kalede sabit olmalı
+  // (her giriş için)" -- myTiles[0]'ın sırası garanti değildi (server
+  // ORDER BY vermiyordu), bu yüzden artık server'ın login/register
+  // cevabıyla birlikte gönderdiği sabit home koordinatlarını (session.homeX/
+  // homeY) kullanıyoruz; bunlar hemen mevcut olduğu için myTiles'ın
+  // yüklenmesini beklemeye gerek yok. Çok eski hesaplarda (backfill'den önce
+  // hiç kale sahibi olunmamışsa) home koordinatları null gelebilir -- o
+  // durumda eski davranışa (myTiles[0]) düşülüyor.
   useEffect(() => {
-    if (hasCenteredRef.current || myTiles.length === 0) return;
+    if (hasCenteredRef.current || !session) return;
+    if (typeof session.homeX === "number" && typeof session.homeY === "number") {
+      hasCenteredRef.current = true;
+      scrollToWorld(session.homeX, session.homeY, false);
+      refresh();
+      return;
+    }
+    if (myTiles.length === 0) return;
     hasCenteredRef.current = true;
     scrollToWorld(myTiles[0].x, myTiles[0].y, false);
     refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myTiles]);
+  }, [session, myTiles]);
 
   // Zoom değişince bir karonun ekrandaki piksel karşılığı değiştiği için
   // önce (varsa) ekranın ortasındaki dünya noktasını yeni ölçeğe göre
@@ -595,10 +613,48 @@ export default function App() {
         return;
       }
     }
+    // Eren: "Gözcü gönderirken rakam seçmeye gerek yok sabit 1 direk
+    // göndersin." -- gözcü için asker-sayısı modalı hiç açılmadan, doğrudan
+    // 1 asker ile gönderiliyor.
+    if (type === "scout") {
+      runScout(fromTile, tile);
+      return;
+    }
     setError(null);
     setTroopsInput(10);
     setPendingTarget({ type, fromTile, targetTile: tile });
     setSelectedScreenPos({ x: screenX, y: screenY });
+  }
+
+  // Gözcüyü asker-sayısı modalına hiç girmeden, sabit 1 asker ile doğrudan
+  // gönderir (bkz. handleTargetPick). handleConfirmAction'daki "scout" dalı
+  // artık çalışma zamanında hiç tetiklenmiyor ama TS tip güvenliği için
+  // (actionMeta, pendingTarget.type: ActionType ile indeksleniyor) yerinde
+  // bırakıldı.
+  async function runScout(fromTile: Tile, targetTile: Tile) {
+    if (!session) return;
+    if ((fromTile.troops ?? 0) < 1) {
+      setError("Gözcü göndermek için en az 1 askerin olmalı.");
+      return;
+    }
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await scoutTile(session.token, targetTile.id, fromTile.id, 1);
+      setMessage(
+        `Gözcü raporu geldi: Lv${result.level} — ⚔️ ${Math.floor(result.troops)} asker, 🪙 +${result.goldPerHour}/sa`
+      );
+      refresh();
+      refreshMyTiles(session.token);
+      refreshSummary(session.token);
+      refreshReports(session.token);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setActionMode(null);
+      setPendingTarget(null);
+      setSelectedScreenPos(null);
+    }
   }
 
   async function handleConfirmAction() {
@@ -801,8 +857,6 @@ export default function App() {
                   SHOW_BUILDINGS && tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
                 const showNpc =
                   SHOW_BUILDINGS && tile.tileType === "NPC" && tileWidth >= ICON_MIN_WIDTH;
-                const isMine = tile.ownerId === session.playerId;
-                const isGuildmate = !isMine && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
                 // Eren'in isteği: gerçek oyuncu kaleleri artık sahipliğe göre
                 // değil SEVİYEYE göre görsel değiştiriyor (bkz.
                 // CASTLE_LEVEL_TIERS) -- sahiplik yanındaki renkli rozetten
@@ -817,14 +871,19 @@ export default function App() {
                 // sebep oluyordu -- komşu karolardaki kaleler üst üste
                 // biniyormuş gibi görünüyordu, bkz. Eren'in "üst üste
                 // binmeler var" uyarısı). Eren'in isteği: "kaleleri karenin
-                // içine ortala" -- dikey olarak karonun tam ortasında.
-                const castleBoxHeight = tileHeight * 0.6;
+                // içine ortala" -- dikey olarak karonun tam ortasında. Eren:
+                // "kaleleri de biraz daha hexleri doldurmaya yakın oranda
+                // büyütelim" -- 0.6/0.54 zaten güvenli üst sınıra (genişlik
+                // tileWidth'i aşmadan en fazla ~%63.3) yakındı, bu yüzden
+                // sadece küçük bir kademe yukarı çekildi (güvenlik payı
+                // korunarak, aksi halde komşu karolarla üst üste binme
+                // hatası geri gelirdi).
+                const castleBoxHeight = tileHeight * 0.62;
                 const castleBoxWidth = castleBoxHeight * CASTLE_IMAGE_ASPECT;
-                const npcBoxHeight = tileHeight * 0.54;
+                const npcBoxHeight = tileHeight * 0.58;
                 const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
                 const castleTop = (tileHeight - castleBoxHeight) / 2;
                 const npcTop = (tileHeight - npcBoxHeight) / 2;
-                const badgeSize = Math.max(8, castleBoxHeight * 0.32);
                 // Gözcü/casusluk sistemi: asker/altın bilgisi sadece kendi/
                 // klan kalelerinde ya da daha önce gözcülenmiş düşman/NPC
                 // kalelerinde gösterilir (tile.troops null ise hiç bilgi yok).
@@ -862,36 +921,24 @@ export default function App() {
                         yok. Üstüne serpiştirilmiş hiçbir obje de yok. */}
                     <div className="iso-ground" />
                     <div className={`iso-diamond ${selectedTile?.id === tile.id ? "selected" : ""}`} />
+                    {/* Sahiplik artık kalenin yanındaki ayrı bir rozetle değil
+                        (Eren: "oyuncunun kalelerinin yanındaki yeşil
+                        yuvarlağı kaldır"), doğrudan seviye etiketinin
+                        rengiyle anlaşılıyor -- bkz. aşağıdaki
+                        .iso-labels-layer: NPC gri, kendi/klan sarı, düşman
+                        oyuncu kırmızı. */}
                     {showCastle && (
-                      <>
-                        <img
-                          src={castleIcon}
-                          alt=""
-                          className="iso-castle"
-                          style={{
-                            width: castleBoxWidth,
-                            height: castleBoxHeight,
-                            left: (tileWidth - castleBoxWidth) / 2,
-                            top: castleTop,
-                          }}
-                        />
-                        {/* Sahiplik artık zeminin renginden değil, kalenin
-                            yanındaki bu küçük rozetten anlaşılıyor (yeşil =
-                            benim, mavi = klan arkadaşım, kırmızı = düşman)
-                            -- zemin her yerde aynı sürekli çim olduğu için
-                            "kare kare" satranç tahtası etkisi tamamen
-                            ortadan kalkıyor. */}
-                        <div
-                          className="ownership-badge"
-                          style={{
-                            background: isMine ? "#4caf50" : isGuildmate ? "#2196f3" : "#e53935",
-                            width: badgeSize,
-                            height: badgeSize,
-                            left: (tileWidth - castleBoxWidth) / 2 + castleBoxWidth - badgeSize * 0.7,
-                            top: castleTop - badgeSize * 0.35,
-                          }}
-                        />
-                      </>
+                      <img
+                        src={castleIcon}
+                        alt=""
+                        className="iso-castle"
+                        style={{
+                          width: castleBoxWidth,
+                          height: castleBoxHeight,
+                          left: (tileWidth - castleBoxWidth) / 2,
+                          top: castleTop,
+                        }}
+                      />
                     )}
                     {showNpc && (
                       <img
@@ -948,6 +995,20 @@ export default function App() {
                   if (!showLevelBadge) return null;
                   const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
                   const isNpcTile = tile.tileType === "NPC";
+                  // Eren: "oyuncunun kalelerinin yanındaki yeşil yuvarlağı
+                  // kaldır ... oyuncu kendisi sarı ve sadece düşman oyuncuyu
+                  // da kırmızı yap" -- sahiplik ayrı bir rozetle değil, bu
+                  // seviye etiketinin rengiyle gösteriliyor: NPC gri
+                  // (mevcut), kendi/klan sarı (varsayılan), düşman oyuncu
+                  // kırmızı (yeni).
+                  const isMine = tile.ownerId === session.playerId;
+                  const isGuildmate = !isMine && !!tile.ownerId && guildMemberIds.has(tile.ownerId);
+                  const isEnemyPlayer = !isNpcTile && !isMine && !isGuildmate;
+                  const badgeClass = isNpcTile
+                    ? "level-badge-npc"
+                    : isEnemyPlayer
+                    ? "level-badge-enemy"
+                    : "";
                   return (
                     <div
                       key={tile.id}
@@ -959,10 +1020,7 @@ export default function App() {
                         height: tileHeight,
                       }}
                     >
-                      <div
-                        className={`level-badge ${isNpcTile ? "level-badge-npc" : ""}`}
-                        style={{ left: tileWidth / 2 }}
-                      >
+                      <div className={`level-badge ${badgeClass}`} style={{ left: tileWidth / 2 }}>
                         Lv{tile.level}
                       </div>
                     </div>

@@ -46,22 +46,29 @@ playersRouter.post("/register", async (req, res) => {
     const now = Date.now();
     const production = productionForLevel(1, settings);
 
+    let homeX: number | null = null;
+    let homeY: number | null = null;
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       await client.query(
-        `INSERT INTO players (id, username, password_hash, token, created_at, season_points)
-         VALUES ($1, $2, $3, $4, $5, 0)`,
-        [id, username, passwordHash, token, now]
+        `INSERT INTO players (id, username, password_hash, token, created_at, season_points, home_tile_id)
+         VALUES ($1, $2, $3, $4, $5, 0, $6)`,
+        [id, username, passwordHash, token, now, startingTileId]
       );
-      await client.query(
+      const tileResult = await client.query<{ x: number; y: number }>(
         `UPDATE tiles
          SET owner_id = $1, tile_type = 'PLAYER', level = 1,
              gold_per_hour = $2, troops_per_hour = $3,
              stored_gold = 0, stored_troops = $4, last_collected_at = $5
-         WHERE id = $6`,
+         WHERE id = $6
+         RETURNING x, y`,
         [id, production.gold_per_hour, production.troops_per_hour, settings.starting_troops, now, startingTileId]
       );
+      if (tileResult.rows[0]) {
+        homeX = tileResult.rows[0].x;
+        homeY = tileResult.rows[0].y;
+      }
       await client.query("COMMIT");
     } catch (err) {
       await client.query("ROLLBACK");
@@ -70,7 +77,7 @@ playersRouter.post("/register", async (req, res) => {
       client.release();
     }
 
-    res.json({ playerId: id, username, token, startingTileId });
+    res.json({ playerId: id, username, token, startingTileId, homeX, homeY });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -100,7 +107,23 @@ playersRouter.post("/login", async (req, res) => {
     const newToken = randomUUID();
     await pool.query("UPDATE players SET token = $1 WHERE id = $2", [newToken, player.id]);
 
-    res.json({ playerId: player.id, username: player.username, token: newToken });
+    // Eren: "başlangıç her zaman ilk ana kalede sabit olmalı (her giriş
+    // için)" -- her login'de client'ın haritayı doğru kaleye ortalayabilmesi
+    // için ilk ana kalenin koordinatları da cevaba ekleniyor.
+    let homeX: number | null = null;
+    let homeY: number | null = null;
+    if (player.home_tile_id !== null) {
+      const { rows: homeRows } = await pool.query<{ x: number; y: number }>(
+        "SELECT x, y FROM tiles WHERE id = $1",
+        [player.home_tile_id]
+      );
+      if (homeRows[0]) {
+        homeX = homeRows[0].x;
+        homeY = homeRows[0].y;
+      }
+    }
+
+    res.json({ playerId: player.id, username: player.username, token: newToken, homeX, homeY });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });

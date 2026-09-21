@@ -44,11 +44,10 @@ export const SETTING_DEFS = [
     label: "NPC kampı oluşma olasılığı",
     description:
       "Yeni harita üretildiğinde adanın İÇ kısmındaki (kıyı hariç) her karenin NPC kampı olma ihtimali (0-1); geri kalanı boş kare olur (oyuncu başlangıç noktaları). Kıyı karolarında hiçbir zaman NPC/kale olmaz. Boş karelere saldırı olmadığı için ilerleme büyük ölçüde NPC fethine dayanır. Mevcut haritayı etkilemez (bkz. applyNpcBorderMigration / applyNpcDensityReductionMigration canlı haritayı bir kereliğine seyrekleştirir).",
-    // Sırasıyla 0.6, 0.3, 0.15, 0.08, 0.04 idi -- önceki 0.04'e düşürme hiç
-    // canlıya çıkmamıştı (git'e girmemiş), Eren hâlâ "üst üste binme/aşırı
-    // yoğun" diyordu -- bu yüzden 0.02'ye düşürüldü (Eren'in tekrarlayan
-    // isteği: "NPC'ler azalıcak, kaç sefer söyledim").
-    default: 0.02,
+    // Sırasıyla 0.6, 0.3, 0.15, 0.08, 0.04, 0.02 idi -- Eren yine "NPC'leri
+    // azalt ciddi oranda azalt" dedi, bu yüzden 0.01'e düşürüldü (bkz.
+    // applyNpcDensityReductionMigrationV3 canlı haritayı da seyrekleştirir).
+    default: 0.01,
   },
   {
     key: "starting_troops",

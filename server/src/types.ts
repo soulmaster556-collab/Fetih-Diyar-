@@ -10,6 +10,11 @@ export interface Player {
   gold_collected_at: number;
   // Admin panelinden yasaklanmış mı (bkz. routes/admin.ts).
   banned: boolean;
+  // Eren: "başlangıç her zaman ilk ana kalede sabit olmalı (her giriş
+  // için)" -- oyuncunun ilk ana kalesinin tile id'si, kayıt olurken set
+  // edilir ve login sırasında haritayı doğru yere ortalamak için
+  // kullanılır (bkz. routes/players.ts).
+  home_tile_id: number | null;
 }
 
 export type TileType = "NPC" | "PLAYER" | "EMPTY";

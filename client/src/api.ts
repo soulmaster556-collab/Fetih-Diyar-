@@ -48,6 +48,12 @@ export interface Session {
   username: string;
   token: string;
   startingTileId?: number;
+  // Eren: "başlangıç her zaman ilk ana kalede sabit olmalı (her giriş
+  // için)" -- ilk ana kalenin koordinatları, hem register hem login
+  // cevabında gelir (bkz. server routes/players.ts). Çok eski hesaplarda
+  // (home_tile_id backfill'i öncesi, ya da kale hiç yoksa) null olabilir.
+  homeX?: number | null;
+  homeY?: number | null;
 }
 
 // In production (Render static site) this is baked in at build time via

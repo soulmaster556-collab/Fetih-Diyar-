@@ -54,6 +54,15 @@ export async function initSchema() {
     );
   `);
 
+  // Eren: "başlangıç her zaman ilk ana kalede sabit olmalı (her giriş
+  // için)" -- oyuncunun ilk ana kalesinin tile id'si; kayıt olurken set
+  // edilir, login/register cevabında koordinatları (x,y) hesaplamak için
+  // kullanılır ki client her girişte haritayı doğru kaleye ortalayabilsin.
+  // (tiles tablosundan SONRA eklenir, çünkü REFERENCES tiles(id) veriyor.)
+  await pool.query(
+    `ALTER TABLE players ADD COLUMN IF NOT EXISTS home_tile_id INTEGER NULL REFERENCES tiles(id);`
+  );
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS battle_log (
       id SERIAL PRIMARY KEY,

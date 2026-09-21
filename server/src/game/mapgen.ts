@@ -556,3 +556,64 @@ export async function applyNpcDensityReductionMigration(settings: Settings) {
     `[migration] ${MIGRATION_NAME}: tamamlandı (${rows.length} fethedilmemiş NPC kampından ${clearIds.length} tanesi daha boşaltıldı).`
   );
 }
+
+// Üçüncü seyreltme turu: Eren "NPC'leri azalt ciddi oranda azalt" dedi --
+// applyNpcDensityReductionMigration (v2) zaten kalan kampların %40'ını
+// boşaltmıştı, bu geçiş kalan (fethedilmemiş) NPC kamplarının YARISINI daha
+// kaldırıp npc_spawn_chance ayarını da (hâlâ eski varsayılandaysa) 0.01'e
+// düşürüyor. Aynı şekilde TEK SEFERLİK, oyuncu verisine dokunmuyor.
+export async function applyNpcDensityReductionMigrationV3(settings: Settings) {
+  const MIGRATION_NAME = "npc_density_reduction_v3";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  const { rows } = await pool.query<{ id: number }>(
+    "SELECT id FROM tiles WHERE tile_type = 'NPC' AND owner_id IS NULL"
+  );
+
+  const clearIds = rows.filter(() => Math.random() < 0.5).map((r) => r.id);
+
+  if (clearIds.length > 0) {
+    const production = productionForLevel(1, settings);
+    await pool.query(
+      `UPDATE tiles
+       SET tile_type = 'EMPTY', level = 1, gold_per_hour = $1, troops_per_hour = 0, stored_troops = 0
+       WHERE id = ANY($2)`,
+      [production.gold_per_hour, clearIds]
+    );
+  }
+
+  // Eski varsayılan (0.02) hâlâ ayarlıysa yeni varsayılana (0.01) taşı --
+  // admin panelinden elle değiştirilmişse dokunma.
+  await pool.query(
+    "UPDATE game_settings SET value = 0.01 WHERE key = 'npc_spawn_chance' AND value = 0.02"
+  );
+
+  await markMigration(MIGRATION_NAME);
+  console.log(
+    `[migration] ${MIGRATION_NAME}: tamamlandı (${rows.length} fethedilmemiş NPC kampından ${clearIds.length} tanesi daha boşaltıldı).`
+  );
+}
+
+// Eren: "başlangıç her zaman ilk ana kalede sabit olmalı" -- bu özellik
+// eklenmeden önce kayıt olmuş oyuncuların home_tile_id'si NULL'dır. Bu
+// geçiş, elden geldiğince (en erken sahip olunan PLAYER karosu) geriye
+// dönük olarak doldurur; yeni kayıtlar zaten /register sırasında set
+// ediyor (bkz. routes/players.ts). TEK SEFERLİK, idempotent.
+export async function applyHomeTileBackfillMigration() {
+  const MIGRATION_NAME = "home_tile_backfill_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  const result = await pool.query(
+    `UPDATE players
+     SET home_tile_id = (
+       SELECT id FROM tiles
+       WHERE owner_id = players.id AND tile_type = 'PLAYER'
+       ORDER BY id ASC
+       LIMIT 1
+     )
+     WHERE home_tile_id IS NULL`
+  );
+
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı (${result.rowCount ?? 0} oyuncu güncellendi).`);
+}

@@ -8,6 +8,8 @@ import {
   applyRectSingleIslandMigration,
   applyNpcBorderMigration,
   applyNpcDensityReductionMigration,
+  applyNpcDensityReductionMigrationV3,
+  applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
 import { playersRouter } from "./routes/players.js";
@@ -64,8 +66,10 @@ async function main() {
 
   applyNpcBorderMigration(settings)
     .then(() => applyNpcDensityReductionMigration(settings))
+    .then(() => applyNpcDensityReductionMigrationV3(settings))
+    .then(() => applyHomeTileBackfillMigration())
     .catch((err) => {
-      console.error("[migration] npc geçişleri başarısız oldu:", err);
+      console.error("[migration] npc/home-tile geçişleri başarısız oldu:", err);
     });
 }
 

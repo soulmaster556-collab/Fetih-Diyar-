@@ -327,9 +327,10 @@ button:disabled {
   transition: background-color 0.1s ease;
 }
 
-.iso-tile-group:hover .iso-diamond {
-  background: rgba(255, 255, 255, 0.22);
-}
+/* Eren: "Haritada Mouse ile gezerken altıgenlerin üzerinde efek oluyor o
+   olmasın" -- hover'da beliren beyaz vurgu kaldırıldı. Seçili karo vurgusu
+   (.selected) ve ayrı bir davranış olan bilgi etiketi hover'ı (bkz.
+   .iso-tile-group:hover .tile-info-label) korunuyor. */
 
 .iso-diamond.selected {
   background: rgba(255, 213, 79, 0.45);
@@ -344,17 +345,6 @@ button:disabled {
      dikine doldurmaya çalışıp "uzun kule" hissi vermiyor. */
   object-fit: contain;
   object-position: bottom center;
-}
-
-/* Sahiplik artık zeminin renginden değil, kalenin yanındaki bu küçük yuvarlak
-   rozetten anlaşılıyor (yeşil = benim, kırmızı = düşman) -- bkz. App.tsx. */
-.ownership-badge {
-  position: absolute;
-  z-index: 2;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 4px rgba(31, 45, 58, 0.45);
-  pointer-events: none;
 }
 
 /* Zemin -- Eren: "zemini iptal et tek renk açık yeşil zemin koy, altıgenleri
@@ -452,6 +442,15 @@ button:disabled {
 .level-badge.level-badge-npc {
   background: rgba(158, 165, 173, 0.95);
   color: #2c3238;
+}
+
+/* Eren: "oyuncunun kalelerinin yanındaki yeşil yuvarlağı kaldır ... sadece
+   düşman oyuncuyu da kırmızı yap" -- sahiplik ayrı bir rozet yerine bu
+   seviye etiketinin rengiyle gösteriliyor: NPC gri (yukarıda), kendi/klan
+   sarı (varsayılan .level-badge), düşman oyuncu kırmızı (bu kural). */
+.level-badge.level-badge-enemy {
+  background: rgba(217, 58, 58, 0.95);
+  color: #fff5f2;
 }
 
 /* Sağdaki/soldaki kalıcı barlar kalktı -- "Krallığım" listesi ve "Seçili
