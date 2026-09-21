@@ -252,6 +252,23 @@ export function deleteAdminPlayer(adminKey: string, playerId: string) {
   }).then((r) => handle<{ ok: true }>(r));
 }
 
+// Eren: "Oyunda artık saldırılar zamanlamalı olsun" -- saldırı artık anında
+// sonuçlanmıyor, askerler yola çıkıyor (bkz. server game/attacks.ts) ve
+// sonuç arrivesAt'te (raporlar üzerinden) geliyor. Bu yüzden cevap artık bir
+// sonuç değil, bir "sipariş" (yolda giden ordu) bilgisi.
+export interface AttackOrder {
+  orderId: number;
+  fromTileId: number;
+  targetTileId: number;
+  fromX: number;
+  fromY: number;
+  targetX: number;
+  targetY: number;
+  troopsSent: number;
+  departedAt: number;
+  arrivesAt: number;
+}
+
 export function attackTile(
   token: string,
   targetTileId: number,
@@ -262,7 +279,30 @@ export function attackTile(
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ fromTileId, troopsSent }),
-  }).then((r) => handle<{ result: string; attackerPower: number; defenderPower: number }>(r));
+  }).then((r) => handle<AttackOrder>(r));
+}
+
+// Haritada gösterilecek, hâlâ yolda olan tüm saldırılar (kendi + klanınki --
+// bkz. server routes/tiles.ts GET /attacks/active). Animasyonlu saldırı
+// hattı bu listeyle beslenir.
+export interface ActiveAttack {
+  id: number;
+  attackerId: string;
+  attackerUsername: string;
+  fromX: number;
+  fromY: number;
+  targetX: number;
+  targetY: number;
+  troopsSent: number;
+  departedAt: number;
+  arrivesAt: number;
+  isMine: boolean;
+}
+
+export function fetchActiveAttacks(token: string) {
+  return fetch(`${BASE}/tiles/attacks/active`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<ActiveAttack[]>(r));
 }
 
 // Asker takviyesi -- hedef kendi kalenmiş gibi (askerler doğrudan
@@ -316,12 +356,21 @@ export interface GuildMember {
   joinedAt: number;
 }
 
+// Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun".
+export interface GuildPendingInvite {
+  id: number;
+  invitedUsername: string;
+  invitedByUsername: string;
+  createdAt: number;
+}
+
 export interface Guild {
   id: number;
   name: string;
   leaderId: string;
   memberCount: number;
   members: GuildMember[];
+  pendingInvites: GuildPendingInvite[];
 }
 
 export interface GuildListEntry {
@@ -358,6 +407,43 @@ export function joinGuild(token: string, guildId: number) {
 
 export function leaveGuild(token: string) {
   return fetch(`${BASE}/guilds/leave`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
+export function inviteToGuild(token: string, username: string) {
+  return fetch(`${BASE}/guilds/invite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ username }),
+  }).then((r) => handle<Guild>(r));
+}
+
+// Bana (henüz bir loncada olmasam bile) gelmiş, cevaplanmamış davetler.
+export interface ReceivedGuildInvite {
+  id: number;
+  guildId: number;
+  guildName: string;
+  invitedByUsername: string;
+  createdAt: number;
+}
+
+export function fetchMyGuildInvites(token: string) {
+  return fetch(`${BASE}/guilds/me/invites`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<ReceivedGuildInvite[]>(r));
+}
+
+export function acceptGuildInvite(token: string, inviteId: number) {
+  return fetch(`${BASE}/guilds/invites/${inviteId}/accept`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<Guild>(r));
+}
+
+export function declineGuildInvite(token: string, inviteId: number) {
+  return fetch(`${BASE}/guilds/invites/${inviteId}/decline`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   }).then((r) => handle<{ ok: true }>(r));
@@ -409,4 +495,28 @@ export function markReportsRead(token: string) {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   }).then((r) => handle<{ ok: true }>(r));
+}
+
+// Eren: "Sol üst tarafda uygun bir yere oyuncu profili bölümü olsun ...
+// içerisine görsel yüklenebilecek şekilde tasarım yap ... yuvarlak oyuncu
+// profil". Profil widget'ı bu ikisiyle besleniyor.
+export interface MyProfile {
+  playerId: string;
+  username: string;
+  avatarData: string | null;
+}
+
+export function fetchMyProfile(token: string) {
+  return fetch(`${BASE}/players/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<MyProfile>(r));
+}
+
+// avatarData: "data:image/..." base64 -- null/"" gönderilirse avatar kaldırılır.
+export function uploadAvatar(token: string, avatarData: string | null) {
+  return fetch(`${BASE}/players/me/avatar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ avatarData }),
+  }).then((r) => handle<{ ok: true; avatarData: string | null }>(r));
 }

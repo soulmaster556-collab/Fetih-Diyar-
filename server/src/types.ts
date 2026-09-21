@@ -15,6 +15,9 @@ export interface Player {
   // edilir ve login sırasında haritayı doğru yere ortalamak için
   // kullanılır (bkz. routes/players.ts).
   home_tile_id: number | null;
+  // Eren: "oyuncu profili... içerisine görsel yüklenebilicek şekilde" --
+  // küçük bir data-URL (base64), yoksa null (bkz. routes/players.ts).
+  avatar_data: string | null;
 }
 
 export type TileType = "NPC" | "PLAYER" | "EMPTY";

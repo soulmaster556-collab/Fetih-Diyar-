@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 import {
+  acceptGuildInvite,
   attackTile,
   createGuild,
+  declineGuildInvite,
+  fetchActiveAttacks,
   fetchLeaderboard,
   fetchMap,
   fetchMyGuild,
+  fetchMyGuildInvites,
+  fetchMyProfile,
   fetchMyReports,
   fetchMyTiles,
   fetchPlayerSummary,
+  inviteToGuild,
   joinGuild,
   leaveGuild,
   listGuilds,
@@ -19,10 +25,13 @@ import {
   reinforceTile,
   scoutTile,
   upgradeTile,
+  uploadAvatar,
+  type ActiveAttack,
   type Guild,
   type GuildListEntry,
   type LeaderboardResponse,
-  type PlayerSummary,
+  type MyProfile,
+  type ReceivedGuildInvite,
   type Report,
   type Session,
   type Tile,
@@ -155,6 +164,44 @@ function screenToWorld(sx: number, sy: number, tileWidth: number) {
   return { x, y };
 }
 
+// Eren: "içerisine görsel yüklenebilecek şekilde tasarım yap" (profil
+// fotoğrafı) -- yüklenen görsel her boyutta olabilir, sunucuya devasa bir
+// dosya göndermemek (ve avatar_data sütununu şişirmemek) için burada,
+// göndermeden ÖNCE tarayıcıda küçük bir kareye (cover-crop) küçültülüp
+// JPEG'e sıkıştırılıyor -- sonuç genelde birkaç KB, sunucudaki ~300kb
+// güvenlik sınırının (bkz. server players.ts MAX_AVATAR_DATA_URL_LENGTH)
+// çok altında kalıyor.
+function resizeImageToDataUrl(file: File, size: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Görsel okunamadı."));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Görsel yüklenemedi."));
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Bu tarayıcı görsel işlemeyi desteklemiyor."));
+          return;
+        }
+        // Kısa kenar referans alınıp ortadan kare kırpılıyor (cover), sonra
+        // hedef boyuta gerdiriliyor -- yükleyen kişinin fotoğrafı hangi
+        // oranda olursa olsun yuvarlak profil çerçevesine düzgün oturuyor.
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - side) / 2;
+        const sy = (img.naturalHeight - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(loadSession());
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -212,6 +259,20 @@ export default function App() {
   const [reports, setReports] = useState<Report[]>([]);
   const [reportFilter, setReportFilter] = useState<"all" | "attack" | "scout">("all");
   const unreadReportCount = useMemo(() => reports.filter((r) => r.readAt === null).length, [reports]);
+  // Eren: "saldırdığın kaleden saldırdığın kaleye gidildiğini belli eden bir
+  // saldırı hattı olsun ... hareketli olsun" -- yolda olan (kendi/klan
+  // ilgili) tüm saldırılar, haritada animasyonlu bir hat/işaret olarak
+  // gösteriliyor (bkz. aşağıdaki .attack-lines-layer render'ı).
+  const [activeAttacks, setActiveAttacks] = useState<ActiveAttack[]>([]);
+  const prevAttackIdsRef = useRef<Set<number>>(new Set());
+  // Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun" -- bana
+  // (henüz bir loncada olmasam bile) gelmiş, cevaplanmamış davetler.
+  const [receivedInvites, setReceivedInvites] = useState<ReceivedGuildInvite[]>([]);
+  const [guildInviteUsername, setGuildInviteUsername] = useState("");
+  // Eren: "Sol üst tarafda ... içerisine görsel yüklenebilecek şekilde
+  // tasarım yap ... yuvarlak oyuncu profil" -- üst menüdeki profil widget'ı.
+  const [profile, setProfile] = useState<MyProfile | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [tileWidthIndex, setTileWidthIndex] = useState(DEFAULT_TILE_WIDTH_INDEX);
   const tileWidth = TILE_WIDTHS[tileWidthIndex];
   // Sivri-uçlu altıgende yükseklik = genişlik × 2/√3 (bkz. isoCenter).
@@ -330,6 +391,35 @@ export default function App() {
     fetchMyReports(token).then(setReports).catch(() => {});
   };
 
+  // Yolda olan saldırılar -- liste küçülürse (bir saldırı sonuçlanmışsa)
+  // haritayı/kaleleri/altını/raporları hemen tazeliyoruz ki sonucu görmek
+  // için 3-10 saniyelik normal polling aralığını beklemeye gerek kalmasın.
+  const refreshActiveAttacks = (token: string) => {
+    fetchActiveAttacks(token)
+      .then((list) => {
+        const prevIds = prevAttackIdsRef.current;
+        const nextIds = new Set(list.map((a) => a.id));
+        const someResolved = Array.from(prevIds).some((id) => !nextIds.has(id));
+        prevAttackIdsRef.current = nextIds;
+        setActiveAttacks(list);
+        if (someResolved) {
+          refresh();
+          refreshMyTiles(token);
+          refreshSummary(token);
+          refreshReports(token);
+        }
+      })
+      .catch(() => {});
+  };
+
+  const refreshReceivedInvites = (token: string) => {
+    fetchMyGuildInvites(token).then(setReceivedInvites).catch(() => {});
+  };
+
+  const refreshProfile = (token: string) => {
+    fetchMyProfile(token).then(setProfile).catch(() => {});
+  };
+
   function scrollToWorld(x: number, y: number, smooth: boolean) {
     const el = viewportRef.current;
     if (!el) return;
@@ -377,6 +467,33 @@ export default function App() {
     refreshReports(session.token);
     const interval = setInterval(() => refreshReports(session.token), 10000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  // Eren: "Oyunda artık saldırılar zamanlamalı olsun ... hareketli olsun" --
+  // sunucudaki çözüm turu (bkz. index.ts) 2 saniyede bir çalıştığı için aynı
+  // sıklıkla çekmek, bir saldırı ulaşır ulaşmaz haritanın/hattın güncel
+  // kalmasını sağlıyor.
+  useEffect(() => {
+    if (!session) return;
+    prevAttackIdsRef.current = new Set();
+    refreshActiveAttacks(session.token);
+    const interval = setInterval(() => refreshActiveAttacks(session.token), 2000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  useEffect(() => {
+    if (!session) return;
+    refreshReceivedInvites(session.token);
+    const interval = setInterval(() => refreshReceivedInvites(session.token), 5000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  useEffect(() => {
+    if (!session) return;
+    refreshProfile(session.token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
 
@@ -548,6 +665,10 @@ export default function App() {
     setGuild(null);
     setActionMode(null);
     setPendingTarget(null);
+    setActiveAttacks([]);
+    prevAttackIdsRef.current = new Set();
+    setReceivedInvites([]);
+    setProfile(null);
     hasCenteredRef.current = false;
   }
 
@@ -686,12 +807,15 @@ export default function App() {
     const { type, fromTile, targetTile } = pendingTarget;
     try {
       if (type === "attack") {
-        const result = await attackTile(session.token, targetTile.id, fromTile.id, troopsInput);
-        setMessage(
-          result.result === "ATTACKER_WINS"
-            ? `Zafer! Kare ele geçirildi. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
-            : `Saldırı püskürtüldü. (Güç: ${Math.round(result.attackerPower)} vs ${Math.round(result.defenderPower)})`
-        );
+        // Eren: "Oyunda artık saldırılar zamanlamalı olsun. Direk tıkla
+        // saldır değil" -- saldırı artık anında sonuçlanmıyor, ordu yola
+        // çıkıyor (bkz. api.ts AttackOrder) ve sonuç yolda-hat animasyonu +
+        // rapor kutusuyla (bkz. .attack-lines-layer, refreshActiveAttacks)
+        // birkaç saniye sonra geliyor.
+        const order = await attackTile(session.token, targetTile.id, fromTile.id, troopsInput);
+        const etaSec = Math.max(1, Math.round((order.arrivesAt - order.departedAt) / 1000));
+        setMessage(`Ordu yola çıktı! ${etaSec} sn sonra hedefe ulaşacak.`);
+        refreshActiveAttacks(session.token);
       } else if (type === "scout") {
         const result = await scoutTile(session.token, targetTile.id, fromTile.id, troopsInput);
         setMessage(
@@ -731,7 +855,50 @@ export default function App() {
     const next = !showGuildPanel;
     closeFloatingPanels();
     setShowGuildPanel(next);
-    if (next && !guild) listGuilds().then(setAvailableGuilds).catch(() => {});
+    if (!next || !session) return;
+    if (!guild) listGuilds().then(setAvailableGuilds).catch(() => {});
+    refreshReceivedInvites(session.token);
+  }
+
+  async function handleInvitePlayer(e: React.FormEvent) {
+    e.preventDefault();
+    if (!session || !guildInviteUsername.trim()) return;
+    setError(null);
+    setMessage(null);
+    const invited = guildInviteUsername.trim();
+    try {
+      const g = await inviteToGuild(session.token, invited);
+      setGuild(g);
+      setGuildInviteUsername("");
+      setMessage(`${invited} loncaya davet edildi.`);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleAcceptInvite(inviteId: number) {
+    if (!session) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const g = await acceptGuildInvite(session.token, inviteId);
+      setGuild(g);
+      setMessage(`${g.name} loncasına katıldın!`);
+      refreshReceivedInvites(session.token);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleDeclineInvite(inviteId: number) {
+    if (!session) return;
+    setError(null);
+    try {
+      await declineGuildInvite(session.token, inviteId);
+      refreshReceivedInvites(session.token);
+    } catch (err) {
+      setError((err as Error).message);
+    }
   }
 
   function openLeaderboard() {
@@ -916,11 +1083,17 @@ export default function App() {
                 const hasIntel = tile.troops !== null;
                 const showInfoLabel = (showCastle || showNpc) && tileWidth >= LABEL_MIN_WIDTH && hasIntel;
                 const totalTroops = (tile.troops ?? 0) + (tile.reinforcementTroops ?? 0);
+                // Eren: "Boş veya dekorlara tıklayınca tepki olmasın ve
+                // açılan pencerede açılmasın oralar ölü alanlar." -- boş
+                // kareler artık tamamen "ölü alan": ne bilgi kartı açılır ne
+                // de (aksiyon modundayken) geçerli bir hedef olarak kabul
+                // edilir, tıklama tamamen yok sayılır.
+                const isDeadZone = tile.tileType === "EMPTY";
                 return (
                   <div
                     key={tile.id}
                     data-tile-id={tile.id}
-                    className="iso-tile-group"
+                    className={`iso-tile-group ${isDeadZone ? "iso-tile-dead" : ""}`}
                     style={{
                       left: cx - tileWidth / 2,
                       top: cy - tileHeight / 2,
@@ -928,6 +1101,7 @@ export default function App() {
                       height: tileHeight,
                     }}
                     onClick={(e) => {
+                      if (isDeadZone) return;
                       if (actionMode) {
                         handleTargetPick(tile, e.clientX, e.clientY);
                         return;
@@ -938,7 +1112,7 @@ export default function App() {
                       setError(null);
                       setSelectedScreenPos({ x: e.clientX, y: e.clientY });
                     }}
-                    title={`(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
+                    title={isDeadZone ? undefined : `(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
                   >
                     {/* Zemin -- düz açık yeşil taban rengi (bkz. .iso-ground)
                         korunuyor, ÜSTÜNE Eren'in "kenarlar kel kalmış"
@@ -1062,11 +1236,97 @@ export default function App() {
                   );
                 })}
               </div>
+
+              {/* Eren: "saldırdığın kaleden saldırdığın kaleye gidildiğini
+                  belli eden bir saldırı hattı olsun ... yolda giden bir şey
+                  hareketli olsun" -- yolda olan (kendi/klanla ilgili) her
+                  saldırı için kaynaktan hedefe kesikli bir hat + CSS Motion
+                  Path (offset-path) ile o hat üzerinde gerçek zamanlı
+                  ilerleyen bir işaret. Negatif animation-delay (geçen süre
+                  kadar geride başlatma) sayesinde ayrı bir JS animasyon
+                  döngüsüne (requestAnimationFrame) hiç gerek kalmadan --
+                  sayfa her yeniden render olduğunda ordunun O ANKİ gerçek
+                  konumundan devam ediyor. */}
+              <div className="attack-lines-layer">
+                <svg className="attack-line-svg">
+                  {activeAttacks.map((atk) => {
+                    const from = isoCenter(atk.fromX, atk.fromY, tileWidth);
+                    const to = isoCenter(atk.targetX, atk.targetY, tileWidth);
+                    return (
+                      <line
+                        key={atk.id}
+                        x1={from.cx}
+                        y1={from.cy}
+                        x2={to.cx}
+                        y2={to.cy}
+                        className={`attack-line-path ${atk.isMine ? "attack-line-mine" : "attack-line-enemy"}`}
+                      />
+                    );
+                  })}
+                </svg>
+                {activeAttacks.map((atk) => {
+                  const from = isoCenter(atk.fromX, atk.fromY, tileWidth);
+                  const to = isoCenter(atk.targetX, atk.targetY, tileWidth);
+                  const totalMs = Math.max(1, atk.arrivesAt - atk.departedAt);
+                  const elapsedMs = Math.min(totalMs, Math.max(0, Date.now() - atk.departedAt));
+                  const etaSec = Math.max(0, Math.round((atk.arrivesAt - Date.now()) / 1000));
+                  return (
+                    <div
+                      key={atk.id}
+                      className={`attack-line-marker ${atk.isMine ? "attack-line-marker-mine" : "attack-line-marker-enemy"}`}
+                      style={
+                        {
+                          offsetPath: `path('M ${from.cx} ${from.cy} L ${to.cx} ${to.cy}')`,
+                          animationDuration: `${totalMs}ms`,
+                          animationDelay: `-${elapsedMs}ms`,
+                        } as React.CSSProperties
+                      }
+                      title={`${atk.attackerUsername}: (${atk.fromX}, ${atk.fromY}) → (${atk.targetX}, ${atk.targetY}) · ${etaSec} sn`}
+                    >
+                      ⚔️
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
       <header className="topbar">
-        <h1>Fetih Diyarı</h1>
+        <div className="profile-widget">
+          <button
+            type="button"
+            className="profile-avatar-btn"
+            onClick={() => avatarInputRef.current?.click()}
+            title="Profil fotoğrafını değiştir"
+          >
+            {profile?.avatarData ? (
+              <img src={profile.avatarData} alt="" className="profile-avatar-img" />
+            ) : (
+              <span className="profile-avatar-fallback">{session.username.slice(0, 2).toUpperCase()}</span>
+            )}
+            <span className="profile-avatar-edit-badge">📷</span>
+          </button>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            className="profile-avatar-input"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file || !session) return;
+              setError(null);
+              try {
+                const dataUrl = await resizeImageToDataUrl(file, 160);
+                await uploadAvatar(session.token, dataUrl);
+                setProfile((p) => (p ? { ...p, avatarData: dataUrl } : p));
+              } catch (err) {
+                setError((err as Error).message);
+              }
+            }}
+          />
+          <span className="profile-widget-name">{session.username}</span>
+        </div>
         {summary && (
           <div className="summary-bar">
             <span className="summary-item summary-item-gold">
@@ -1104,6 +1364,7 @@ export default function App() {
             onClick={openGuildPanel}
           >
             🛡️ {guild ? guild.name : "Lonca"}
+            {receivedInvites.length > 0 ? ` (${receivedInvites.length})` : ""}
           </button>
           <button
             className={`kingdom-toggle ${showLeaderboard ? "active" : ""}`}
@@ -1117,7 +1378,6 @@ export default function App() {
           >
             📨 Raporlar{unreadReportCount > 0 ? ` (${unreadReportCount})` : ""}
           </button>
-          <span>{session.username}</span>
           <button onClick={handleLogout}>Çıkış</button>
         </div>
       </header>
@@ -1255,10 +1515,63 @@ export default function App() {
                   </li>
                 ))}
               </ul>
+
+              {/* Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun." */}
+              <p className="hint guild-section-heading">Oyuncu davet et</p>
+              <form onSubmit={handleInvitePlayer} className="guild-invite-form">
+                <input
+                  placeholder="Kullanıcı adı"
+                  value={guildInviteUsername}
+                  onChange={(e) => setGuildInviteUsername(e.target.value)}
+                  minLength={3}
+                  maxLength={20}
+                />
+                <button type="submit">Davet Et</button>
+              </form>
+
+              {guild.pendingInvites.length > 0 && (
+                <>
+                  <p className="hint guild-section-heading">Bekleyen davetler</p>
+                  <ul className="city-list">
+                    {guild.pendingInvites.map((inv) => (
+                      <li key={inv.id}>
+                        <div className="city-row">
+                          <div>
+                            <div>{inv.invitedUsername}</div>
+                            <div className="stats">{inv.invitedByUsername} davet etti</div>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
               <button onClick={handleLeaveGuild}>Loncadan Ayrıl</button>
             </div>
           ) : (
             <div>
+              {receivedInvites.length > 0 && (
+                <>
+                  <p className="hint guild-section-heading">Sana gelen davetler</p>
+                  <ul className="city-list">
+                    {receivedInvites.map((inv) => (
+                      <li key={inv.id}>
+                        <div className="city-row">
+                          <div>
+                            <div>{inv.guildName}</div>
+                            <div className="stats">{inv.invitedByUsername} davet etti</div>
+                          </div>
+                        </div>
+                        <div className="row-actions">
+                          <button onClick={() => handleAcceptInvite(inv.id)}>Kabul Et</button>
+                          <button className="icon-btn" onClick={() => handleDeclineInvite(inv.id)}>Reddet</button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               <form onSubmit={handleCreateGuild} className="login-form">
                 <input
                   placeholder="Yeni lonca adı"
@@ -1455,7 +1768,26 @@ export default function App() {
               )}
 
               {isMineSel && (
+                // Eren: "Kale üzerine gelince açılan menüyü kalenin altından
+                // kalenin sağına ve soluna uzuyacak şekilde yarım ay olarak
+                // yap. Ve yarım ayın çizgisinin üzerinede saldır, destek,
+                // gözcü, yükselt ekle." -- eski 2x2 petek düzeni yerine, dört
+                // eylem artık uçları yukarıda (kalenin iki yanı hizasında),
+                // ortası aşağıda (kalenin altında) olan bir hilal/yarım ay
+                // eğrisi üzerinde diziliyor. Eğrinin kendisi de altın,
+                // kesik çizgili bir hilal şeridiyle (bkz. .hex-actions-arc)
+                // görselleştiriliyor -- butonlar tam o çizginin üzerinde.
                 <div className="hex-actions">
+                  <svg className="hex-actions-arc" viewBox="0 0 260 150" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="hexActionsArcGradient" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="rgba(240, 180, 41, 0)" />
+                        <stop offset="50%" stopColor="rgba(240, 180, 41, 0.9)" />
+                        <stop offset="100%" stopColor="rgba(240, 180, 41, 0)" />
+                      </linearGradient>
+                    </defs>
+                    <path className="hex-actions-arc-path" d="M 20 30 Q 130 122 240 30" />
+                  </svg>
                   <button className="hex-action hex-action-attack" onClick={() => startAction("attack", selectedTile)}>
                     <span className="hex-action-shape"><span className="hex-action-icon">⚔️</span></span>
                     <span className="hex-action-label">Saldır</span>

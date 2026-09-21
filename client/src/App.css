@@ -139,18 +139,102 @@ button:disabled {
   pointer-events: none;
 }
 
-.topbar h1,
+.topbar .profile-widget,
 .topbar .summary-bar,
 .topbar .player-info {
   pointer-events: auto;
 }
 
-.topbar h1 {
-  font-size: 18px;
-  margin: 0;
+/* Eren: "Sol üst tarafda uygun bir yere oyuncu profili bölümü olsun ...
+   içerisine görsel yüklenebilecek şekilde tasarım yap. Fetih diyarı yazısını
+   kaldırabilirsin yuvarlak oyuncu profil ve tasarım biraz büyük olmalı." --
+   eski "Fetih Diyarı" başlığının yerini, üst menünün sol ucunda büyükçe
+   yuvarlak bir profil fotoğrafı + kullanıcı adı alıyor. Fotoğrafa tıklamak
+   dosya seçiciyi açıyor (bkz. App.tsx gizli input[type=file]).*/
+.profile-widget {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-avatar-btn {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  padding: 0;
+  flex-shrink: 0;
+  cursor: pointer;
+  background: linear-gradient(180deg, #24384a 0%, #17242f 100%);
+  border: 2px solid var(--hairline-gold);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 3px 10px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.profile-avatar-btn:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 5px 14px rgba(0, 0, 0, 0.45);
+}
+
+.profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.profile-avatar-fallback {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--gold-soft);
+  letter-spacing: 0.02em;
+}
+
+.profile-avatar-edit-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--teal-strong);
+  border: 2px solid var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.profile-avatar-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.profile-widget-name {
+  font-size: 16px;
+  font-weight: 700;
   color: var(--gold-soft);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
   letter-spacing: 0.02em;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .player-info {
@@ -311,6 +395,14 @@ button:disabled {
   /* Kale görseli karo sınırlarının dışına taşabiliyor (bilerek — Travian
      tarzı oyunlarda köy ikonları da altındaki tek bir karodan büyük çizilir). */
   overflow: visible;
+}
+
+/* Eren: "Boş veya dekorlara tıklayınca tepki olmasın ... oralar ölü
+   alanlar." -- boş kareler artık normal bir karo gibi "tıklanabilir"
+   görünmesin diye imleç normale dönüyor (tepkinin kendisi App.tsx'teki
+   onClick'te zaten tamamen engelleniyor, bu sadece görsel ipucu). */
+.iso-tile-group.iso-tile-dead {
+  cursor: default;
 }
 
 /* Artık zemin rengini TAŞIMIYOR (o iş terrain-layer'da) -- sadece hover/seçili
@@ -494,6 +586,92 @@ button:disabled {
 .level-badge.level-badge-enemy {
   background: linear-gradient(180deg, #e5484d, rgba(217, 58, 58, 0.95));
   color: #fff5f2;
+}
+
+/* Eren: "Oyunda artık saldırılar zamanlamalı olsun ... saldırdığın kaleden
+   saldırdığın kaleye gidildiğini belli eden bir saldırı hattı olsun ...
+   hareketli olsun" -- yolda olan her saldırı için: (1) kaynak-hedef arası
+   kesikli, hafif parlayan bir hat (SVG <line>), (2) o hat üzerinde CSS
+   Motion Path (offset-path) ile gerçek zamanlı ilerleyen bir asker işareti.
+   Katman tüm karoların/etiketlerin (z-index en fazla 5) ÜSTÜNDE, ama
+   tıklamaları asla yakalamasın diye pointer-events: none. */
+.attack-lines-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.attack-line-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.attack-line-path {
+  stroke-width: 2.5;
+  stroke-dasharray: 3 7;
+  stroke-linecap: round;
+  animation: attack-line-dash 1s linear infinite;
+}
+
+.attack-line-path.attack-line-mine {
+  stroke: rgba(255, 111, 97, 0.85);
+}
+
+.attack-line-path.attack-line-enemy {
+  stroke: rgba(255, 213, 79, 0.75);
+}
+
+@keyframes attack-line-dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* Yolda giden ordu işareti -- offset-path'in verdiği (x,y) noktasına
+   yerleşen küçük, parlayan bir madalyon. animation-delay App.tsx'te NEGATİF
+   olarak (geçen süre kadar) veriliyor ki her render'da ordunun o anki
+   gerçek konumundan devam etsin -- ayrı bir JS/requestAnimationFrame
+   döngüsüne gerek kalmadan tarayıcının kendi animasyon saatine güveniyoruz. */
+.attack-line-marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  offset-rotate: 0deg;
+  animation-name: attack-line-travel;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.5);
+}
+
+.attack-line-marker-mine {
+  background: radial-gradient(circle, rgba(255, 111, 97, 0.95), rgba(178, 58, 46, 0.9));
+  border: 1px solid rgba(255, 200, 190, 0.8);
+}
+
+.attack-line-marker-enemy {
+  background: radial-gradient(circle, rgba(255, 213, 79, 0.95), rgba(180, 130, 20, 0.9));
+  border: 1px solid rgba(255, 240, 200, 0.8);
+}
+
+@keyframes attack-line-travel {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
 }
 
 /* Sağdaki/soldaki kalıcı barlar kalktı -- "Krallığım" listesi ve "Seçili
@@ -823,6 +1001,35 @@ button:disabled {
 
 .hint {
   color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun." -- davet
+   formu ve alt başlıklar, panelin geri kalanıyla (login-form/city-list)
+   aynı görsel dilde ama biraz daha kompakt. */
+.guild-section-heading {
+  margin: 16px 0 6px;
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--teal-soft);
+}
+
+.guild-invite-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.guild-invite-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
   font-size: 13px;
 }
 
@@ -1921,20 +2128,41 @@ button:disabled {
   padding: 12px 14px 14px;
 }
 
-/* Eren: "Saldırı menüsü ... şuan verdiğim görsel tarzda olsun" -- referans
-   görseldeki gibi 2x2 "petek" düzeni (üst sıra hafif sola/sağa, alt sıra
-   ters yönde kaydırılmış) -- düz tek sıra yerine altıgenlerin gerçekten
-   birbirine kenetlenmiş gibi durduğu bir his veriyor. Butonlar da referanstaki
-   gibi belirgin biçimde büyütüldü. */
+/* Eren: "Kale üzerine gelince açılan menüyü kalenin altından kalenin sağına
+   ve soluna uzuyacak şekilde yarım ay olarak yap. Ve yarım ayın çizgisinin
+   üzerinede saldır, destek, gözcü, yükselt ekle." -- eski 2x2 "petek" ızgarası
+   yerine, dört buton artık bir yarım ay/hilal eğrisi üzerinde: uçlar (Saldır/
+   Yükselt) yukarıda -- kalenin iki yanı hizasında -- ortadakiler (Destek/
+   Gözcü) aşağıda -- kalenin altında -- yani bir "gülümseme"/hilal şekli
+   çiziyor. Eğrinin kendisi de altın, kesik çizgili bir hilal şeridiyle
+   görselleştiriliyor (bkz. App.tsx .hex-actions-arc SVG'si), butonlar tam o
+   çizginin üzerine oturuyor. */
 .hex-actions {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px 26px;
-  justify-items: center;
-  padding: 10px 4px 8px;
+  position: relative;
+  height: 150px;
+  margin: 4px 0 2px;
+}
+
+.hex-actions-arc {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.hex-actions-arc-path {
+  fill: none;
+  stroke: url(#hexActionsArcGradient);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 2 11;
 }
 
 .hex-action {
+  position: absolute;
+  top: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1944,12 +2172,17 @@ button:disabled {
   cursor: pointer;
   padding: 0;
   width: 78px;
+  transform: translateX(-50%);
 }
 
-.hex-action:nth-child(1) { transform: translateX(-4px); }
-.hex-action:nth-child(2) { transform: translateX(4px); }
-.hex-action:nth-child(3) { transform: translate(-4px, -6px); }
-.hex-action:nth-child(4) { transform: translate(4px, -6px); }
+/* Sırasıyla: Saldır (sol uç, yukarıda), Destek (sol-orta, aşağıda), Gözcü
+   (sağ-orta, aşağıda), Yükselt (sağ uç, yukarıda) -- Eren'in verdiği sırayla
+   ("saldır, destek, gözcü, yükselt") soldan sağa, hilalin çizgisi üzerinde.
+   nth-child 2'den başlıyor çünkü ilk çocuk artık dekoratif SVG (1). */
+.hex-action:nth-child(2) { left: 8%; top: 4px; }
+.hex-action:nth-child(3) { left: 34%; top: 68px; }
+.hex-action:nth-child(4) { left: 66%; top: 68px; }
+.hex-action:nth-child(5) { left: 92%; top: 4px; }
 
 .hex-action-shape {
   width: 66px;

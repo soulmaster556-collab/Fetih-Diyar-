@@ -383,6 +383,16 @@ adminRouter.delete("/players/:id", requireAdmin, async (req, res) => {
       await client.query("DELETE FROM tile_reinforcements WHERE from_player_id = $1", [id]);
     }
 
+    // Eren: "Oyunda artık saldırılar zamanlamalı olsun" -- hesap silinirken
+    // yolda olan (henüz sonuçlanmamış) saldırı siparişleri de temizlenmeli,
+    // yoksa attacker_id -> players FK ihlali yüzünden bu silme başarısız
+    // olur. Askerler zaten kayboluyor (tıpkı diğer kaynaklar gibi).
+    await client.query("DELETE FROM attack_orders WHERE attacker_id = $1", [id]);
+    await client.query(
+      "DELETE FROM guild_invites WHERE invited_player_id = $1 OR invited_by_id = $1",
+      [id]
+    );
+
     await client.query(
       `UPDATE tiles SET owner_id = NULL, tile_type = 'EMPTY', level = 1,
          gold_per_hour = 0, troops_per_hour = 0, stored_gold = 0, stored_troops = 0,

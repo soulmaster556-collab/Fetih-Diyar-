@@ -62,6 +62,27 @@ export const SETTING_DEFS = [
       "Farklı bir adadaki kareye saldırabilmek için izin verilen maksimum mesafe. Aynı adadaki komşu karelere bu sınırdan bağımsız her zaman saldırılabilir.",
     default: 15,
   },
+  {
+    key: "game_speed",
+    label: "Oyun hızı çarpanı",
+    description:
+      "Genel hız çarpanı: üretim (altın/asker) bu kat hızlı birikir, saldırı seyahat süresi bu kata bölünür kısalır. 1 = normal, 2 = iki kat hızlı sunucu.",
+    default: 1,
+  },
+  {
+    key: "attack_travel_seconds_per_tile",
+    label: "Saldırı: karo başına seyahat süresi (sn)",
+    description:
+      "Bir saldırının kaynak ile hedef arasındaki her 1 karolik mesafe için ne kadar sürede yol aldığı (saniye), oyun hızına bölünür. Saldırı artık anında sonuçlanmıyor -- bu süre kadar yolda kalıyor (bkz. attack_orders).",
+    default: 3,
+  },
+  {
+    key: "attack_min_travel_seconds",
+    label: "Saldırı: minimum seyahat süresi (sn)",
+    description:
+      "Çok yakın hedeflerde bile saldırının en az bu kadar sürede ulaşmasını sağlayan taban değer (yolda giderken animasyonun görünür olması için).",
+    default: 4,
+  },
 ] as const;
 
 export type SettingKey = (typeof SETTING_DEFS)[number]["key"];

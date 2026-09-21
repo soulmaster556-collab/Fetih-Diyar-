@@ -2,8 +2,8 @@ import { Router } from "express";
 import { pool } from "../db.js";
 import { authenticate, optionalAuthenticate } from "./players.js";
 import { computeLivePlayerGold, computeLiveTroops, productionForLevel, upgradeCost } from "../game/resources.js";
-import { getTotalGoldPerHour, settlePlayerGold } from "../game/economy.js";
-import { resolveCombat } from "../game/combat.js";
+import { getTotalGoldPerHour } from "../game/economy.js";
+import { travelDurationMs } from "../game/attacks.js";
 import { loadSettings } from "../game/settings.js";
 import { addReport } from "../game/reports.js";
 import type { Settings } from "../game/settings.js";
@@ -483,6 +483,14 @@ function canReach(from: TileRow, target: TileRow, settings: Settings) {
   return tileDistance(from, target) <= settings.naval_attack_range;
 }
 
+// Eren: "Oyunda artık saldırılar zamanlamalı olsun. Direk tıkla saldır değil
+// ve saldırdığın kaleden saldırdığın kaleye gidildiğini belli eden bir
+// saldırı hattı olsun" -- bu uç nokta artık çarpışmayı ANINDA çözmüyor,
+// sadece askerleri kaynak kaleden düşüp bir "yolda" (attack_orders) kaydı
+// açıyor ve o kaydın kendisini dönüyor. Asıl çarpışma askerler fiilen
+// ulaştığında arka planda çözülüyor (bkz. game/attacks.ts
+// resolveDueAttackOrders, index.ts'teki periyodik tur) -- sonuç saldırana
+// (ve savunuyorsa savunana) mesaj/rapor kutusuna düşüyor.
 tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
@@ -519,140 +527,87 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
       return res.status(400).json({ error: "Geçersiz asker sayısı." });
     }
 
-    // Savunma gücü artık sadece kalenin kendi garnizonu değil, klan
-    // arkadaşlarının o kaleye gönderdiği (sahiplenilemeyen) takviyeleri de
-    // içeriyor (Eren'in isteği: takviyeler savunmaya katkı sağlamalı).
-    const targetHomeLiveTroops = computeLiveTroops(targetTile, settings, now);
-    const { rows: reinforcementRows } = await pool.query<{ id: number; troops: number }>(
-      "SELECT id, troops FROM tile_reinforcements WHERE tile_id = $1",
-      [targetTile.id]
+    const durationMs = travelDurationMs(fromTile, targetTile, settings);
+    const arrivesAt = now + durationMs;
+
+    const { rows: orderRows } = await pool.query<{ id: number }>(
+      `INSERT INTO attack_orders
+         (attacker_id, from_tile_id, target_tile_id, from_x, from_y, target_x, target_y, troops_sent, departed_at, arrives_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id`,
+      [player.id, fromTile.id, targetTile.id, fromTile.x, fromTile.y, targetTile.x, targetTile.y, troopsSent, now, arrivesAt]
     );
-    const reinforcementTotal = reinforcementRows.reduce((sum, r) => sum + Number(r.troops), 0);
-    const targetTotalTroops = targetHomeLiveTroops + reinforcementTotal;
-    const combat = resolveCombat(troopsSent, targetTotalTroops, settings);
-
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-
-      await client.query(
-        "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
-        [fromLive - troopsSent, now, fromTile.id]
-      );
-
-      if (combat.attackerWins) {
-        // Fetih, hem saldıranın hem de (eğer varsa) eski sahibinin toplam
-        // altın/saat üretimini değiştirir — üretim hızı değişmeden hemen
-        // önce, ortak altın havuzlarını ESKİ hızla şu ana kadar işletip
-        // kalıcı hale getiriyoruz.
-        await settlePlayerGold(client, player, settings, now);
-        if (targetTile.tile_type === "PLAYER" && targetTile.owner_id) {
-          const { rows: ownerRows } = await client.query<Player>(
-            "SELECT * FROM players WHERE id = $1",
-            [targetTile.owner_id]
-          );
-          const previousOwner = ownerRows[0];
-          if (previousOwner) await settlePlayerGold(client, previousOwner, settings, now);
-        }
-
-        const production = productionForLevel(targetTile.level, settings);
-        await client.query(
-          `UPDATE tiles
-           SET owner_id = $1, tile_type = 'PLAYER',
-               gold_per_hour = $2, troops_per_hour = $3,
-               stored_troops = $4, last_collected_at = $5
-           WHERE id = $6`,
-          [player.id, production.gold_per_hour, production.troops_per_hour, combat.survivingAttackerTroops, now, targetTile.id]
-        );
-        // Kale el değiştirince orada konuşlanmış klan takviyeleri de kaybedilir.
-        await client.query("DELETE FROM tile_reinforcements WHERE tile_id = $1", [targetTile.id]);
-      } else {
-        // Savunan kazandı: hayatta kalan asker sayısını, savaş öncesi ev
-        // garnizonu ile takviyeler arasındaki orana göre paylaştırıyoruz --
-        // takviyeler tamamen dokunulmaz kalmıyor ama ayrıca "sahiplenilmiş"
-        // de olmuyor, sadece orantılı kayıp alıyor.
-        const ratio = targetTotalTroops > 0 ? combat.survivingDefenderTroops / targetTotalTroops : 0;
-        await client.query(
-          "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
-          [targetHomeLiveTroops * ratio, now, targetTile.id]
-        );
-        for (const r of reinforcementRows) {
-          const survivingTroops = Number(r.troops) * ratio;
-          if (survivingTroops < 1) {
-            await client.query("DELETE FROM tile_reinforcements WHERE id = $1", [r.id]);
-          } else {
-            await client.query("UPDATE tile_reinforcements SET troops = $1 WHERE id = $2", [survivingTroops, r.id]);
-          }
-        }
-      }
-
-      await client.query(
-        `INSERT INTO battle_log (attacker_id, defender_tile_id, attacker_power, defender_power, result, troops_sent, occurred_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          player.id,
-          targetTile.id,
-          combat.attackerPower,
-          combat.defenderPower,
-          combat.attackerWins ? "ATTACKER_WINS" : "DEFENDER_WINS",
-          troopsSent,
-          now,
-        ]
-      );
-
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
-
-    // Mesaj/rapor bölümü: saldıran her zaman, savunan (sahipli bir kaleyse)
-    // de bir bildirim alır. Rapor yazımı savaşın sonucunu etkilemesin diye
-    // ana transaction'dan SONRA, best-effort olarak yapılıyor.
-    const coordText = `(${targetTile.x}, ${targetTile.y})`;
-    if (combat.attackerWins) {
-      await addReport(
-        player.id,
-        "attack_won",
-        "Zafer!",
-        `${coordText} karesini ele geçirdin. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
-        now
-      ).catch(() => {});
-      if (targetTile.owner_id) {
-        await addReport(
-          targetTile.owner_id,
-          "defended_loss",
-          "Kalen ele geçirildi",
-          `${player.username}, ${coordText} karesindeki kaleni ele geçirdi. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
-          now
-        ).catch(() => {});
-      }
-    } else {
-      await addReport(
-        player.id,
-        "attack_lost",
-        "Saldırı püskürtüldü",
-        `${coordText} karesine saldırın başarısız oldu. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
-        now
-      ).catch(() => {});
-      if (targetTile.owner_id) {
-        await addReport(
-          targetTile.owner_id,
-          "defended_win",
-          "Saldırıyı savuşturdun",
-          `${player.username}, ${coordText} karesindeki kaleni ele geçirmeye çalıştı ama başarısız oldu. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
-          now
-        ).catch(() => {});
-      }
-    }
+    // Askerler yola çıktı -- kaynak kaleden hemen düşülüyor (ordunun geri
+    // kalanı yolda gidenler beklemeden büyümeye devam etsin diye
+    // last_collected_at da şimdiye çekiliyor, tıpkı takviye/gözcüde olduğu gibi).
+    await pool.query(
+      "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
+      [fromLive - troopsSent, now, fromTile.id]
+    );
 
     res.json({
-      result: combat.attackerWins ? "ATTACKER_WINS" : "DEFENDER_WINS",
-      attackerPower: combat.attackerPower,
-      defenderPower: combat.defenderPower,
+      orderId: orderRows[0].id,
+      fromTileId: fromTile.id,
+      targetTileId: targetTile.id,
+      fromX: fromTile.x,
+      fromY: fromTile.y,
+      targetX: targetTile.x,
+      targetY: targetTile.y,
+      troopsSent,
+      departedAt: now,
+      arrivesAt,
     });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
+// Eren: saldırı hattını haritada göstermek için istemcinin sık sık çektiği
+// "hâlâ yolda olan" saldırılar. Görüneni sadece kendi saldırıları ve
+// kendi/klan kalelerine gelen saldırılarla sınırlıyoruz -- düşmanın haritanın
+// tamamen başka bir ucundaki alakasız saldırısını görmesine gerek yok.
+tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    const guildIds = await fetchGuildMemberIds(player.id);
+    const relevantOwnerIds = [player.id, ...Array.from(guildIds)];
+    const { rows } = await pool.query<{
+      id: number;
+      attacker_id: string;
+      attacker_username: string;
+      from_x: number;
+      from_y: number;
+      target_x: number;
+      target_y: number;
+      troops_sent: number;
+      departed_at: number;
+      arrives_at: number;
+    }>(
+      `SELECT ao.id, ao.attacker_id, p.username AS attacker_username,
+              ao.from_x, ao.from_y, ao.target_x, ao.target_y,
+              ao.troops_sent, ao.departed_at, ao.arrives_at
+       FROM attack_orders ao
+       JOIN players p ON p.id = ao.attacker_id
+       WHERE ao.attacker_id = $1
+          OR ao.target_tile_id IN (SELECT id FROM tiles WHERE owner_id = ANY($2::text[]))`,
+      [player.id, relevantOwnerIds]
+    );
+    res.json(
+      rows.map((r) => ({
+        id: r.id,
+        attackerId: r.attacker_id,
+        attackerUsername: r.attacker_username,
+        fromX: r.from_x,
+        fromY: r.from_y,
+        targetX: r.target_x,
+        targetY: r.target_y,
+        troopsSent: Math.floor(Number(r.troops_sent)),
+        departedAt: Number(r.departed_at),
+        arrivesAt: Number(r.arrives_at),
+        isMine: r.attacker_id === player.id,
+      }))
+    );
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });

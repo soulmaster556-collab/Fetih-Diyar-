@@ -170,6 +170,56 @@ export async function initSchema() {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS player_reports_player_idx ON player_reports (player_id, created_at DESC);`
   );
+
+  // Eren: "Oyunda artık saldırılar zamanlamalı olsun... saldırdığın kaleden
+  // saldırdığın kaleye gidildiğini belli eden bir saldırı hattı olsun" --
+  // saldırı artık TEK bir istekte anında çözülmüyor, önce bu tabloya bir
+  // "yolda" kaydı düşülüyor (bkz. game/attacks.ts createAttackOrder), asıl
+  // çarpışma askerler hedefe ULAŞTIĞINDA (arrives_at geçince) arka planda
+  // çözülüyor (bkz. resolveDueAttackOrders, index.ts'teki periyodik tur).
+  // from_x/from_y/target_x/target_y bilerek DENORMALİZE edildi (tiles'a JOIN
+  // gerekmesin diye) -- istemci bu satırları animasyon hattı çizmek için sık
+  // sık çekiyor (bkz. GET /tiles/attacks/active).
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS attack_orders (
+      id SERIAL PRIMARY KEY,
+      attacker_id TEXT NOT NULL REFERENCES players(id),
+      from_tile_id INTEGER NOT NULL REFERENCES tiles(id),
+      target_tile_id INTEGER NOT NULL REFERENCES tiles(id),
+      from_x INTEGER NOT NULL,
+      from_y INTEGER NOT NULL,
+      target_x INTEGER NOT NULL,
+      target_y INTEGER NOT NULL,
+      troops_sent DOUBLE PRECISION NOT NULL,
+      departed_at BIGINT NOT NULL,
+      arrives_at BIGINT NOT NULL
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS attack_orders_arrives_idx ON attack_orders (arrives_at);`
+  );
+
+  // Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun" -- kullanıcı
+  // adıyla gönderilen, kabul/reddedilene kadar bekleyen basit bir davet
+  // kuyruğu. Bir oyuncunun aynı loncadan birden fazla bekleyen daveti
+  // olmasın diye (guild_id, invited_player_id) tekil.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS guild_invites (
+      id SERIAL PRIMARY KEY,
+      guild_id INTEGER NOT NULL REFERENCES guilds(id),
+      invited_player_id TEXT NOT NULL REFERENCES players(id),
+      invited_by_id TEXT NOT NULL REFERENCES players(id),
+      created_at BIGINT NOT NULL,
+      UNIQUE (guild_id, invited_player_id)
+    );
+  `);
+
+  // Eren: "sol üstte içerisine görsel yüklenebilicek şekilde oyuncu profili
+  // olsun" -- avatar küçük bir data-URL (base64) olarak doğrudan players
+  // satırında tutuluyor (ayrı dosya depolama/CDN kurmaya değecek kadar
+  // büyük bir ihtiyaç değil -- bkz. routes/players.ts avatar yükleme ucu,
+  // istemci tarafında zaten küçük bir kareye indirgenip sıkıştırılıyor).
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_data TEXT NULL;`);
 }
 
 export async function hasMigration(name: string): Promise<boolean> {

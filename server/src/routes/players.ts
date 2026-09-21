@@ -149,6 +149,46 @@ playersRouter.get("/me/summary", authenticate, async (req: any, res) => {
   }
 });
 
+// Eren: "sol üstte ... içerisine görsel yüklenebilecek şekilde tasarım yap
+// ... yuvarlak oyuncu profil" -- profil widget'ının kendi verisini (kullanıcı
+// adı + varsa avatar) çekmesi için basit bir uç nokta.
+playersRouter.get("/me", authenticate, async (req: any, res) => {
+  const player = req.player as Player;
+  res.json({
+    playerId: player.id,
+    username: player.username,
+    avatarData: player.avatar_data ?? null,
+  });
+});
+
+const MAX_AVATAR_DATA_URL_LENGTH = 400_000; // ~300kb ham veri (base64 şişkinliğiyle)
+
+playersRouter.post("/me/avatar", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    const avatarData = req.body?.avatarData;
+
+    // null/boş göndererek avatarı kaldırmaya da izin ver.
+    if (avatarData === null || avatarData === "") {
+      await pool.query("UPDATE players SET avatar_data = NULL WHERE id = $1", [player.id]);
+      return res.json({ ok: true, avatarData: null });
+    }
+
+    if (typeof avatarData !== "string" || !avatarData.startsWith("data:image/")) {
+      return res.status(400).json({ error: "Geçersiz görsel verisi." });
+    }
+    if (avatarData.length > MAX_AVATAR_DATA_URL_LENGTH) {
+      return res.status(413).json({ error: "Görsel çok büyük. Daha küçük bir fotoğraf dene." });
+    }
+
+    await pool.query("UPDATE players SET avatar_data = $1 WHERE id = $2", [avatarData, player.id]);
+    res.json({ ok: true, avatarData });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
 export async function authenticate(req: any, res: any, next: any) {
   try {
     const header = req.headers.authorization ?? "";
