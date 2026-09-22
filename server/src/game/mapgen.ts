@@ -368,6 +368,29 @@ export async function applyRectSingleIslandMigration() {
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita dikdörtgen tek ada olarak yeniden üretilecek.`);
 }
 
+// Eren: "Objelerin etrafında dönen tam 1 tur hex boş olucak... işlemlerden
+// sonra sunucuyu sıfırla" -- bu turdaki değişikliklerin (dağ dekoru
+// yeniden tasarımı, zoom, ışıltı) hiçbiri harita ÜRETİM formatını
+// değiştirmiyor (hâlâ aynı dikdörtgen tek ada, aynı hex sistemi) -- dekor
+// zaten tamamen CLIENT tarafında hesaplanıyor. Yine de doğrudan "sıfırla"
+// isteği geldiği için, yukarıdaki geçişlerle (hex/tek ada/dikdörtgen)
+// AYNI TRUNCATE deseniyle test verisini temizleyip temiz bir haritayla
+// yeniden başlıyoruz.
+export async function applyDecorRebalanceResetMigration() {
+  const MIGRATION_NAME = "decor_rebalance_reset_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: dekor/zoom güncellemesi sonrası test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita yeniden üretilecek.`);
+}
+
 export async function ensureMapGenerated(settings: Settings) {
   const { rows } = await pool.query<{ count: string }>("SELECT COUNT(*)::int as count FROM tiles");
   if (Number(rows[0].count) > 0) return;

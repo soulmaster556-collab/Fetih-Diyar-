@@ -6,6 +6,7 @@ import {
   applyHexGridConversionMigration,
   applyBigSingleIslandMigration,
   applyRectSingleIslandMigration,
+  applyDecorRebalanceResetMigration,
   applyNpcBorderMigration,
   applyNpcDensityReductionMigration,
   applyNpcDensityReductionMigrationV3,
@@ -37,6 +38,9 @@ async function main() {
   // Organik adadan düz dikdörtgen adaya geçiş + NPC yoğunluğunu bir kademe
   // daha düşürme -- yine ÖNCE ve senkron (bkz. yukarıdaki notlar).
   await applyRectSingleIslandMigration();
+  // Dağ dekoru yeniden tasarımı (tek-hex + 1 tur boşluk kuralı, zoom, ışıltı)
+  // sonrası doğrudan "sunucuyu sıfırla" isteği -- bkz. mapgen.ts yorumu.
+  await applyDecorRebalanceResetMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);

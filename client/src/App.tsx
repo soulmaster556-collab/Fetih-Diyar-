@@ -56,7 +56,12 @@ const VIEWPORT_MARGIN = 6;
 // engelliyor, ve varsayılan (72) eskisinden %56 daha büyük başlıyor ("daha
 // yakın plan"). Üst uca da bir sonraki adım (160) eklendi, yakınlaştırma
 // tavanı da birlikte yükselsin diye.
-const TILE_WIDTHS = [36, 52, 72, 100, 136, 160];
+// Eren (2. tur): "Oyun açılış ve standart oynanış ekranı şuan mevcut olandan
+// x2 zoom mesafesi daha yakın olucak." -- her seviye birebir 2 katına
+// çıkarıldı (varsayılan index AYNI kaldı, yani 72 -> 144), böylece hem
+// açılış hem de zoom in/out aralığının TAMAMI orantılı şekilde 2x yakınlaşmış
+// oluyor.
+const TILE_WIDTHS = [72, 104, 144, 200, 272, 320];
 // Varsayılan artık 72px (index 2) -- eski varsayılan (46) yerine, "daha yakın
 // plan" isteği için bir kademe büyütüldü.
 const DEFAULT_TILE_WIDTH_INDEX = 2;
@@ -135,39 +140,36 @@ function grassTextureForTile(x: number, y: number): string {
 }
 
 // ---------------------------------------------------------------------
-// Dağ / çoklu-hex dekor sistemi
+// Dağ / dekor sistemi
 // ---------------------------------------------------------------------
-// Eren: "dağ olayı ... çoklu hexliye yükleme" -- 5 benzersiz dağ görseli
-// gönderdi (3 kanyon/yarık tarzı, 2 sıradağ tarzı). Kale görselinin karo
-// dışına taşması gibi ama ÇOK daha büyük: her dağ TEK bir hex'e değil,
-// kök karoya bitişik birden fazla hex'e birden yayılan bir sprite.
-// "yönleri asimetrik yerleşebilir" notu üzerine her dağın ayak izi
-// BİLEREK simetrik olmayan bir hex kümesi -- server/src/game/mapgen.ts
-// HEX_DIRECTIONS'daki ([[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]]) 6 gerçek
-// komşu yönden seçilmiş bir alt küme, düzgün "çiçek" şekli değil.
+// Eren: "Yüklediğimiz dağ görsellerinde zeminde üstüste binme var ... her
+// bir kale 1 hex zeminde yer alıyor ve merkez hex'in etrafındaki komşu 6
+// hex'e hiçbirşey yerleşmemeli. Hem kaleler hemde tüm görseller için
+// geçerli bu. Objelerin etrafında dönen tam 1 tur hex boş olucak." -- eski
+// sistemde bir dağ, kök karoya bitişik BİRDEN FAZLA hex'e yayılan bir
+// footprint kullanıyordu; bu hem iki dağın (ya da bir dağ ile bir kalenin)
+// doğrudan yan yana/iç içe çizilmesine hem de dağ görselindeki (PNG'nin
+// kendi kayadan taşan açık gri zemin/gölge apronu) komşu hex'in farklı
+// tondaki çimiyle çarpışıp görünür bir "dikiş" gibi durmasına yol açıyordu.
+// Artık her dağ, kale ikonları gibi TEK bir mantıksal hex'e ait; görseli o
+// hex'in sınırlarından `scale` oranında TAŞARAK çiziliyor ama sadece bu
+// kökün 6 komşusunun (hem kale/NPC hem başka dağ için) HER ZAMAN boş
+// kalacağı garanti edildiği için (bkz. `occupied` kontrolü aşağıda) taşma
+// hiçbir zaman başka bir objeyle çakışmıyor.
 //
 // Yerleştirme sunucuya/DB'ye HİÇ dokunmadan tamamen CLIENT tarafında,
 // koordinata göre DETERMİNİSTİK yapılıyor (bkz. hashXY -- grassTextureForTile
 // ile aynı prensip: Math.random() değil, sayfa her açıldığında AYNI
-// karolarda aynı dağ çıksın). Bu yaklaşımın bilinçli tercih sebebi: harita
-// zaten CANLI ve üretilmiş -- mapgen.ts'e (sunucu, sadece YENİ üretilecek
-// haritaları etkiler) dokunmak burada hiçbir şey değiştirmezdi. Bir dağ,
-// ayak izindeki TÜM karolar o an "EMPTY" (boş) DEĞİLSE hiç yerleştirilmiyor
-// -- yani var olan bir NPC kampının veya oyuncu kalesinin üzerine asla
-// binmiyor, bu da NPC'lerin dağ karolarına "spawn olması" sorununu ayrıca
-// bir koda gerek kalmadan otomatik olarak engelliyor (bkz.
-// computePlacedMountains).
+// karolarda aynı dağ çıksın).
 type MountainDef = {
   id: string;
   img: string;
-  // Kök karoya göre komşu offsetleri (HEX_DIRECTIONS'ın bir alt kümesi).
-  footprint: [number, number][];
-  scale: number; // kapladığı kutuyu bu kadar büyüt (hafif taşma/zenginlik için)
+  scale: number; // görsel, kendi hex'inin kaç katı bir kutuya sığdırılıp ortalanacak (kale ikonlarındaki taşma payı gibi)
 };
 
 const MOUNTAIN_DEFS: MountainDef[] = [
-  { id: "range-a", img: "/decor/mountains/range-a.png", footprint: [[0, 0], [1, 0], [0, 1], [1, -1]], scale: 1.1 },
-  { id: "range-b", img: "/decor/mountains/range-b.png", footprint: [[0, 0], [-1, 0], [-1, 1], [0, 1], [1, 0]], scale: 1.1 },
+  { id: "range-a", img: "/decor/mountains/range-a.png", scale: 2.2 },
+  { id: "range-b", img: "/decor/mountains/range-b.png", scale: 2.2 },
 ];
 
 // Basit, hızlı, deterministik tam sayı hash'i (Math.random() DEĞİL -- aynı
@@ -179,10 +181,17 @@ function hashXY(x: number, y: number, seed: number): number {
   return h >>> 0;
 }
 
-// Yaklaşık her 60 boş karodan biri bir dağ ADAYI olarak seçiliyor -- ayak
-// izi tamamen boş çıkmayan adaylar elendiği için gerçek yoğunluk bundan
-// belirgin şekilde daha seyrek.
-const MOUNTAIN_DENSITY = 60;
+// server/src/game/mapgen.ts'teki HEX_DIRECTIONS ile birebir aynı 6 axial
+// komşu yön -- bir hex'in "1 tur"unu (6 komşusunu) bulmak için kullanılıyor.
+const HEX_DIRECTIONS: [number, number][] = [
+  [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1],
+];
+
+// Eren: "Dekorları daha az tut - haritaya orantılı şekilde dağıt." -- tek-hex
+// + 1 tur boşluk kuralı zaten adayların çoğunu eleyip yoğunluğu belirgin
+// şekilde azaltıyor, ama üstüne bu değer de eskisinden (60) ciddi oranda
+// yükseltildi ki sonuç harita genelinde seyrek/nadir kalsın.
+const MOUNTAIN_DENSITY = 240;
 
 type PlacedMountain = {
   key: string;
@@ -193,8 +202,16 @@ type PlacedMountain = {
 };
 
 function computePlacedMountains(tiles: Tile[]): PlacedMountain[] {
-  const byKey = new Map<string, Tile>();
-  for (const t of tiles) byKey.set(`${t.x},${t.y}`, t);
+  // Bir hex "işgal edilmiş" sayılır ki komşusuna YENİ bir dekor kökü
+  // yerleştirilemesin -- ya gerçek bir kale/NPC karosudur ya da daha önce
+  // bu döngüde bir dağın kökü olarak seçilmiştir. Kale-kale bitişikliği
+  // BİLEREK burada kısıtlanmıyor (oyuncular komşu kareyi fethederek
+  // genişler, bu normal oynanış) -- kural sadece dekorun kendisine ve
+  // dekorun kalelere/başka dekora olan mesafesine uygulanıyor.
+  const occupied = new Set<string>();
+  for (const t of tiles) {
+    if (t.tileType !== "EMPTY") occupied.add(`${t.x},${t.y}`);
+  }
 
   const candidates = tiles.filter(
     (t) => t.tileType === "EMPTY" && hashXY(t.x, t.y, 1) % MOUNTAIN_DENSITY === 0
@@ -203,20 +220,17 @@ function computePlacedMountains(tiles: Tile[]): PlacedMountain[] {
   // sırada çözülmesi için koordinataya göre sırala.
   candidates.sort((a, b) => a.x - b.x || a.y - b.y);
 
-  const claimed = new Set<string>();
   const placed: PlacedMountain[] = [];
   for (const t of candidates) {
+    const key = `${t.x},${t.y}`;
+    if (occupied.has(key)) continue;
+    const touchesOccupied = HEX_DIRECTIONS.some(([dx, dy]) => occupied.has(`${t.x + dx},${t.y + dy}`));
+    if (touchesOccupied) continue;
+
     const defIndex = hashXY(t.x, t.y, 2) % MOUNTAIN_DEFS.length;
     const def = MOUNTAIN_DEFS[defIndex];
-    const footprintKeys = def.footprint.map(([dx, dy]) => `${t.x + dx},${t.y + dy}`);
-    const allEmpty = footprintKeys.every((k) => {
-      const ft = byKey.get(k);
-      return !!ft && ft.tileType === "EMPTY" && !claimed.has(k);
-    });
-    if (!allEmpty) continue;
-    for (const k of footprintKeys) claimed.add(k);
-    const frontSortKey = Math.max(...def.footprint.map(([dx, dy]) => t.x + dx + (t.y + dy)));
-    placed.push({ key: `${t.x},${t.y}:${def.id}`, def, rootX: t.x, rootY: t.y, frontSortKey });
+    occupied.add(key);
+    placed.push({ key: `${key}:${def.id}`, def, rootX: t.x, rootY: t.y, frontSortKey: t.x + t.y });
   }
   return placed;
 }
@@ -923,17 +937,11 @@ export default function App() {
   // tutarlılık garanti ediliyor.
   const mountainScreens = useMemo(() => {
     return placedMountains.map((m) => {
-      const centers = m.def.footprint.map(([dx, dy]) => isoCenter(m.rootX + dx, m.rootY + dy, tileWidth));
-      const minCx = Math.min(...centers.map((c) => c.cx)) - tileWidth / 2;
-      const maxCx = Math.max(...centers.map((c) => c.cx)) + tileWidth / 2;
-      const minCy = Math.min(...centers.map((c) => c.cy)) - tileHeight / 2;
-      const maxCy = Math.max(...centers.map((c) => c.cy)) + tileHeight / 2;
-      const boxW = (maxCx - minCx) * m.def.scale;
-      const boxH = (maxCy - minCy) * m.def.scale;
-      const centerX = (minCx + maxCx) / 2;
-      const centerY = (minCy + maxCy) / 2;
-      const box: MountainScreenBox = { key: m.key, centerX, centerY, radius: (boxW + boxH) / 4 };
-      return { mountain: m, left: centerX - boxW / 2, top: centerY - boxH / 2, width: boxW, height: boxH, box };
+      const { cx, cy } = isoCenter(m.rootX, m.rootY, tileWidth);
+      const boxW = tileWidth * m.def.scale;
+      const boxH = tileHeight * m.def.scale;
+      const box: MountainScreenBox = { key: m.key, centerX: cx, centerY: cy, radius: (boxW + boxH) / 4 };
+      return { mountain: m, left: cx - boxW / 2, top: cy - boxH / 2, width: boxW, height: boxH, box };
     });
   }, [placedMountains, tileWidth, tileHeight]);
 
@@ -1536,9 +1544,10 @@ export default function App() {
                         .iso-labels-layer: NPC gri, kendi/klan sarı, düşman
                         oyuncu kırmızı. */}
                     {showCastle && (
-                      // Eren: "Sadece oyuncu kalelerine ışıltı ekle" -- glow
-                      // sadece burada (showCastle/PLAYER dalı), NPC kampları
-                      // (showNpc dalı, aşağıda) hiç dokunulmadı.
+                      // Eren (2. tur): "Tüm kale ve dekorlara da ışıltı ekle"
+                      // -- altın parıltı artık NPC kamplarında da var (bkz.
+                      // showNpc dalı), oyuncu kaleleri kendi altın tonunu
+                      // korudu.
                       <img
                         src={castleIcon}
                         alt=""
@@ -1555,7 +1564,7 @@ export default function App() {
                       <img
                         src={npcIcon}
                         alt=""
-                        className="iso-castle"
+                        className="iso-castle iso-npc-glow"
                         style={{
                           width: npcBoxWidth,
                           height: npcBoxHeight,
@@ -1586,24 +1595,23 @@ export default function App() {
                   </div>
                 );
               })}
-              {/* Dağ / çoklu-hex dekor katmanı -- bkz. yukarıdaki
-                  MOUNTAIN_DEFS/computePlacedMountains yorumu. Kale
-                  görsellerinin karo dışına taşması gibi ama çok daha büyük:
-                  her <img> kendi kapladığı TÜM hex'lerin ekran alanına
-                  sığacak şekilde konumlanıyor (bkz. mountainScreens),
-                  z-index'i de frontSortKey'e göre yukarıdaki karolarla AYNI
-                  numaralandırmada -- böylece dağın önünden geçen bir karo
-                  dağın üstüne, arkasındaki bir karo dağın altına doğru
-                  çiziliyor (painter's algorithm, bkz. sortedTiles yorumu).
-                  pointer-events:none -- tıklama her zaman altındaki (zaten
-                  "ölü alan" olan EMPTY) karoya gidiyor, ayrıca bir tıklama
-                  davranışı eklemeye gerek yok. */}
+              {/* Dağ / dekor katmanı -- bkz. yukarıdaki MOUNTAIN_DEFS/
+                  computePlacedMountains yorumu. Kale görsellerinin karo
+                  dışına taşması gibi: her <img> kendi kök hex'inin ekran
+                  alanına `scale` oranında taşarak konumlanıyor (bkz.
+                  mountainScreens), z-index'i de frontSortKey'e göre
+                  yukarıdaki karolarla AYNI numaralandırmada -- böylece dağın
+                  önünden geçen bir karo dağın üstüne, arkasındaki bir karo
+                  dağın altına doğru çiziliyor (painter's algorithm, bkz.
+                  sortedTiles yorumu). pointer-events:none -- tıklama her
+                  zaman altındaki (zaten "ölü alan" olan EMPTY) karoya
+                  gidiyor, ayrıca bir tıklama davranışı eklemeye gerek yok. */}
               {mountainScreens.map(({ mountain, left, top, width, height }) => (
                 <img
                   key={mountain.key}
                   src={mountain.def.img}
                   alt=""
-                  className="iso-mountain"
+                  className="iso-mountain iso-mountain-glow"
                   style={{
                     left,
                     top,
