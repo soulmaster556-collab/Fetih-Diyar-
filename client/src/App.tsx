@@ -133,6 +133,151 @@ function grassTextureForTile(x: number, y: number): string {
   const idx = (((x - y) % 3) + 3) % 3;
   return GRASS_TEXTURES[idx];
 }
+
+// ---------------------------------------------------------------------
+// Dağ / çoklu-hex dekor sistemi
+// ---------------------------------------------------------------------
+// Eren: "dağ olayı ... çoklu hexliye yükleme" -- 5 benzersiz dağ görseli
+// gönderdi (3 kanyon/yarık tarzı, 2 sıradağ tarzı). Kale görselinin karo
+// dışına taşması gibi ama ÇOK daha büyük: her dağ TEK bir hex'e değil,
+// kök karoya bitişik birden fazla hex'e birden yayılan bir sprite.
+// "yönleri asimetrik yerleşebilir" notu üzerine her dağın ayak izi
+// BİLEREK simetrik olmayan bir hex kümesi -- server/src/game/mapgen.ts
+// HEX_DIRECTIONS'daki ([[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]]) 6 gerçek
+// komşu yönden seçilmiş bir alt küme, düzgün "çiçek" şekli değil.
+//
+// Yerleştirme sunucuya/DB'ye HİÇ dokunmadan tamamen CLIENT tarafında,
+// koordinata göre DETERMİNİSTİK yapılıyor (bkz. hashXY -- grassTextureForTile
+// ile aynı prensip: Math.random() değil, sayfa her açıldığında AYNI
+// karolarda aynı dağ çıksın). Bu yaklaşımın bilinçli tercih sebebi: harita
+// zaten CANLI ve üretilmiş -- mapgen.ts'e (sunucu, sadece YENİ üretilecek
+// haritaları etkiler) dokunmak burada hiçbir şey değiştirmezdi. Bir dağ,
+// ayak izindeki TÜM karolar o an "EMPTY" (boş) DEĞİLSE hiç yerleştirilmiyor
+// -- yani var olan bir NPC kampının veya oyuncu kalesinin üzerine asla
+// binmiyor, bu da NPC'lerin dağ karolarına "spawn olması" sorununu ayrıca
+// bir koda gerek kalmadan otomatik olarak engelliyor (bkz.
+// computePlacedMountains).
+type MountainDef = {
+  id: string;
+  img: string;
+  // Kök karoya göre komşu offsetleri (HEX_DIRECTIONS'ın bir alt kümesi).
+  footprint: [number, number][];
+  scale: number; // kapladığı kutuyu bu kadar büyüt (hafif taşma/zenginlik için)
+};
+
+const MOUNTAIN_DEFS: MountainDef[] = [
+  { id: "range-a", img: "/decor/mountains/range-a.png", footprint: [[0, 0], [1, 0], [0, 1], [1, -1]], scale: 1.1 },
+  { id: "range-b", img: "/decor/mountains/range-b.png", footprint: [[0, 0], [-1, 0], [-1, 1], [0, 1], [1, 0]], scale: 1.1 },
+];
+
+// Basit, hızlı, deterministik tam sayı hash'i (Math.random() DEĞİL -- aynı
+// (x,y,seed) her zaman aynı sonucu vermeli, bkz. yukarıdaki not).
+function hashXY(x: number, y: number, seed: number): number {
+  let h = (x * 374761393 + y * 668265263 + seed * 2246822519) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return h >>> 0;
+}
+
+// Yaklaşık her 60 boş karodan biri bir dağ ADAYI olarak seçiliyor -- ayak
+// izi tamamen boş çıkmayan adaylar elendiği için gerçek yoğunluk bundan
+// belirgin şekilde daha seyrek.
+const MOUNTAIN_DENSITY = 60;
+
+type PlacedMountain = {
+  key: string;
+  def: MountainDef;
+  rootX: number;
+  rootY: number;
+  frontSortKey: number; // painter's algorithm sıralaması için (bkz. sortedTiles)
+};
+
+function computePlacedMountains(tiles: Tile[]): PlacedMountain[] {
+  const byKey = new Map<string, Tile>();
+  for (const t of tiles) byKey.set(`${t.x},${t.y}`, t);
+
+  const candidates = tiles.filter(
+    (t) => t.tileType === "EMPTY" && hashXY(t.x, t.y, 1) % MOUNTAIN_DENSITY === 0
+  );
+  // Çakışan adaylar arasındaki önceliğin her zaman aynı (deterministik)
+  // sırada çözülmesi için koordinataya göre sırala.
+  candidates.sort((a, b) => a.x - b.x || a.y - b.y);
+
+  const claimed = new Set<string>();
+  const placed: PlacedMountain[] = [];
+  for (const t of candidates) {
+    const defIndex = hashXY(t.x, t.y, 2) % MOUNTAIN_DEFS.length;
+    const def = MOUNTAIN_DEFS[defIndex];
+    const footprintKeys = def.footprint.map(([dx, dy]) => `${t.x + dx},${t.y + dy}`);
+    const allEmpty = footprintKeys.every((k) => {
+      const ft = byKey.get(k);
+      return !!ft && ft.tileType === "EMPTY" && !claimed.has(k);
+    });
+    if (!allEmpty) continue;
+    for (const k of footprintKeys) claimed.add(k);
+    const frontSortKey = Math.max(...def.footprint.map(([dx, dy]) => t.x + dx + (t.y + dy)));
+    placed.push({ key: `${t.x},${t.y}:${def.id}`, def, rootX: t.x, rootY: t.y, frontSortKey });
+  }
+  return placed;
+}
+
+// Bir saldırı hattının (from -> to) bir dağın kapladığı EKRAN dairesine
+// (merkez+yarıçap) çok yaklaşıp yaklaşmadığını kontrol edip, öyleyse dağı
+// atlayacak şekilde bükülmüş bir SVG path (quadratic Bézier) üretir. Eren'in
+// isteği ("Basit görsel eğri ... çizgi rota olayı dağın içinden geçmesin
+// yeter") gereği bu GERÇEK pathfinding DEĞİL -- sadece en çok engel olan TEK
+// dağa göre basit bir kavis.
+type MountainScreenBox = {
+  key: string;
+  centerX: number;
+  centerY: number;
+  radius: number;
+};
+
+function bendAttackPath(
+  fromX: number,
+  fromY: number,
+  toX: number,
+  toY: number,
+  mountains: MountainScreenBox[],
+  tileWidth: number
+): string {
+  const dx = toX - fromX;
+  const dy = toY - fromY;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1) return `M ${fromX} ${fromY} L ${toX} ${toY}`;
+
+  let best: { t: number; dist: number; box: MountainScreenBox } | null = null;
+  for (const box of mountains) {
+    const t = Math.max(0, Math.min(1, ((box.centerX - fromX) * dx + (box.centerY - fromY) * dy) / lenSq));
+    if (t < 0.06 || t > 0.94) continue; // kaynağa/hedefe çok yakınsa bükme (uçlar zaten karonun üzerinde)
+    const closestX = fromX + t * dx;
+    const closestY = fromY + t * dy;
+    const dist = Math.hypot(box.centerX - closestX, box.centerY - closestY);
+    if (dist < box.radius && (!best || dist < best.dist)) {
+      best = { t, dist, box };
+    }
+  }
+  if (!best) return `M ${fromX} ${fromY} L ${toX} ${toY}`;
+
+  const len = Math.sqrt(lenSq);
+  const perpX = -dy / len;
+  const perpY = dx / len;
+  const midX = (fromX + toX) / 2;
+  const midY = (fromY + toY) / 2;
+  const toBoxX = best.box.centerX - (fromX + best.t * dx);
+  const toBoxY = best.box.centerY - (fromY + best.t * dy);
+  // Dağın hangi tarafta olduğunun TERSİNE bük.
+  const side = perpX * toBoxX + perpY * toBoxY >= 0 ? -1 : 1;
+  const clearance = best.box.radius - best.dist + tileWidth * 0.9;
+  // Quadratic Bézier'in orta noktadaki sapması, kontrol noktasının kiriş
+  // ortasına göre sapmasının YARISI kadardır -- istenen boşluğu (clearance)
+  // elde etmek için kontrol noktasını 2 katı kadar itiyoruz.
+  const cpx = midX + perpX * side * clearance * 2;
+  const cpy = midY + perpY * side * clearance * 2;
+  return `M ${fromX} ${fromY} Q ${cpx} ${cpy} ${toX} ${toY}`;
+}
+
 // Üretim/asker etiketi çok küçük karolarda okunaksız kalacağı için sadece
 // yeterince yakınlaştırılmışken gösteriliyor.
 const LABEL_MIN_WIDTH = 40;
@@ -768,6 +913,30 @@ export default function App() {
     [tiles]
   );
 
+  // Dağ yerleşimi -- sadece o an yüklü (viewport'taki) karolara göre
+  // hesaplanıyor, bkz. computePlacedMountains yorumu.
+  const placedMountains = useMemo(() => computePlacedMountains(tiles), [tiles]);
+
+  // Her dağın kapladığı EKRAN dikdörtgenini/dairesini hesaplar -- hem dağ
+  // görselinin render boyutu/konumu hem de saldırı hattının bükülme kontrolü
+  // (bkz. bendAttackPath) AYNI bu veriyi kullanıyor, tek yerden hesaplanıp
+  // tutarlılık garanti ediliyor.
+  const mountainScreens = useMemo(() => {
+    return placedMountains.map((m) => {
+      const centers = m.def.footprint.map(([dx, dy]) => isoCenter(m.rootX + dx, m.rootY + dy, tileWidth));
+      const minCx = Math.min(...centers.map((c) => c.cx)) - tileWidth / 2;
+      const maxCx = Math.max(...centers.map((c) => c.cx)) + tileWidth / 2;
+      const minCy = Math.min(...centers.map((c) => c.cy)) - tileHeight / 2;
+      const maxCy = Math.max(...centers.map((c) => c.cy)) + tileHeight / 2;
+      const boxW = (maxCx - minCx) * m.def.scale;
+      const boxH = (maxCy - minCy) * m.def.scale;
+      const centerX = (minCx + maxCx) / 2;
+      const centerY = (minCy + maxCy) / 2;
+      const box: MountainScreenBox = { key: m.key, centerX, centerY, radius: (boxW + boxH) / 4 };
+      return { mountain: m, left: centerX - boxW / 2, top: centerY - boxH / 2, width: boxW, height: boxH, box };
+    });
+  }, [placedMountains, tileWidth, tileHeight]);
+
   // Klan arkadaşlarımın oyuncu kimlikleri -- takviye hedefinin geçerli olup
   // olmadığını (kendi kalem ya da klan arkadaşımın kalesi) anlamak için.
   const guildMemberIds = useMemo(() => new Set((guild?.members ?? []).map((m) => m.playerId)), [guild]);
@@ -1191,44 +1360,46 @@ export default function App() {
   if (!session) {
     return (
       <div className="login-screen">
-        <h1>Fetih Diyarı</h1>
-        <p className="subtitle">Million Lords tarzı, timer'sız fetih prototipi</p>
-        <div className="auth-tabs">
-          <button
-            className={authMode === "login" ? "active" : ""}
-            onClick={() => { setAuthMode("login"); setError(null); }}
-            type="button"
-          >
-            Giriş Yap
-          </button>
-          <button
-            className={authMode === "register" ? "active" : ""}
-            onClick={() => { setAuthMode("register"); setError(null); }}
-            type="button"
-          >
-            Kayıt Ol
-          </button>
+        <h1 className="sr-only">Valerion</h1>
+        <div className="login-card">
+          <p className="subtitle">Timer'sız fetih dünyasına hoş geldin</p>
+          <div className="auth-tabs">
+            <button
+              className={authMode === "login" ? "active" : ""}
+              onClick={() => { setAuthMode("login"); setError(null); }}
+              type="button"
+            >
+              Giriş Yap
+            </button>
+            <button
+              className={authMode === "register" ? "active" : ""}
+              onClick={() => { setAuthMode("register"); setError(null); }}
+              type="button"
+            >
+              Kayıt Ol
+            </button>
+          </div>
+          <form onSubmit={handleAuthSubmit} className="login-form">
+            <input
+              placeholder="Kullanıcı adı"
+              value={usernameInput}
+              onChange={(e) => setUsernameInput(e.target.value)}
+              minLength={3}
+              maxLength={20}
+              required
+            />
+            <input
+              type="password"
+              placeholder="Şifre (en az 6 karakter)"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              minLength={6}
+              required
+            />
+            <button type="submit">{authMode === "login" ? "Giriş Yap" : "Krallığını Kur"}</button>
+          </form>
+          {error && <p className="error">{error}</p>}
         </div>
-        <form onSubmit={handleAuthSubmit} className="login-form">
-          <input
-            placeholder="Kullanıcı adı"
-            value={usernameInput}
-            onChange={(e) => setUsernameInput(e.target.value)}
-            minLength={3}
-            maxLength={20}
-            required
-          />
-          <input
-            type="password"
-            placeholder="Şifre (en az 6 karakter)"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            minLength={6}
-            required
-          />
-          <button type="submit">{authMode === "login" ? "Giriş Yap" : "Krallığını Kur"}</button>
-        </form>
-        {error && <p className="error">{error}</p>}
       </div>
     );
   }
@@ -1318,6 +1489,18 @@ export default function App() {
                       top: cy - tileHeight / 2,
                       width: tileWidth,
                       height: tileHeight,
+                      // Eren'in dağ isteği için: her karo artık kendi (x+y)
+                      // sırasına göre EXPLICIT bir z-index taşıyor (eskiden
+                      // hepsi düz z-index:1'di, sıralama sadece DOM sırasına
+                      // dayanıyordu). Böylece aşağıdaki ayrı dağ katmanı,
+                      // kendi frontSortKey'ine göre AYNI numaralandırmayla
+                      // araya girip bazı karoların ÖNÜNDE bazılarının
+                      // ARKASINDA görünebiliyor (painter's algorithm iki
+                      // katman arasında da geçerli oluyor). Üst sınır ~1000
+                      // (bkz. App.css .iso-labels-layer/.attack-lines-layer
+                      // -- onlar bilerek çok daha yüksek bir z-index'te,
+                      // "her zaman en üstte" garantisi bozulmasın diye).
+                      zIndex: 10 + tile.x + tile.y,
                     }}
                     onClick={(e) => {
                       if (isDeadZone) return;
@@ -1403,6 +1586,33 @@ export default function App() {
                   </div>
                 );
               })}
+              {/* Dağ / çoklu-hex dekor katmanı -- bkz. yukarıdaki
+                  MOUNTAIN_DEFS/computePlacedMountains yorumu. Kale
+                  görsellerinin karo dışına taşması gibi ama çok daha büyük:
+                  her <img> kendi kapladığı TÜM hex'lerin ekran alanına
+                  sığacak şekilde konumlanıyor (bkz. mountainScreens),
+                  z-index'i de frontSortKey'e göre yukarıdaki karolarla AYNI
+                  numaralandırmada -- böylece dağın önünden geçen bir karo
+                  dağın üstüne, arkasındaki bir karo dağın altına doğru
+                  çiziliyor (painter's algorithm, bkz. sortedTiles yorumu).
+                  pointer-events:none -- tıklama her zaman altındaki (zaten
+                  "ölü alan" olan EMPTY) karoya gidiyor, ayrıca bir tıklama
+                  davranışı eklemeye gerek yok. */}
+              {mountainScreens.map(({ mountain, left, top, width, height }) => (
+                <img
+                  key={mountain.key}
+                  src={mountain.def.img}
+                  alt=""
+                  className="iso-mountain"
+                  style={{
+                    left,
+                    top,
+                    width,
+                    height,
+                    zIndex: 10 + mountain.frontSortKey,
+                  }}
+                />
+              ))}
               {/* Seviye rozetleri -- Eren'in ekran görüntüsünde "Lv4"
                   yazılarının yarısı kesik görünüyordu. Sebep: yukarıdaki her
                   .iso-tile-group kendi z-index'i (1) yüzünden kendi
@@ -1471,13 +1681,23 @@ export default function App() {
                   {activeAttacks.map((atk) => {
                     const from = isoCenter(atk.fromX, atk.fromY, tileWidth);
                     const to = isoCenter(atk.targetX, atk.targetY, tileWidth);
+                    // Eren: "çizgi rota olayı dağın içinden geçmesin yeter,
+                    // basit görsel eğri" -- düz çizgi yerine, araya bir dağ
+                    // giriyorsa (bkz. bendAttackPath) hafif kavisli bir
+                    // Bézier path. Gerçek pathfinding DEĞİL, bilerek basit.
+                    const d = bendAttackPath(
+                      from.cx,
+                      from.cy,
+                      to.cx,
+                      to.cy,
+                      mountainScreens.map((m) => m.box),
+                      tileWidth
+                    );
                     return (
-                      <line
+                      <path
                         key={atk.id}
-                        x1={from.cx}
-                        y1={from.cy}
-                        x2={to.cx}
-                        y2={to.cy}
+                        d={d}
+                        fill="none"
                         className={`attack-line-path ${atk.isMine ? "attack-line-mine" : "attack-line-enemy"}`}
                       />
                     );
@@ -1486,6 +1706,18 @@ export default function App() {
                 {activeAttacks.map((atk) => {
                   const from = isoCenter(atk.fromX, atk.fromY, tileWidth);
                   const to = isoCenter(atk.targetX, atk.targetY, tileWidth);
+                  // Marker'ın izlediği yol da SVG'deki ile birebir aynı
+                  // (bkz. yukarıdaki d hesaplaması) -- yoksa asker ikonu
+                  // çizgiden bağımsız, dağın içinden düz gidiyormuş gibi
+                  // görünürdü.
+                  const d = bendAttackPath(
+                    from.cx,
+                    from.cy,
+                    to.cx,
+                    to.cy,
+                    mountainScreens.map((m) => m.box),
+                    tileWidth
+                  );
                   // Eren: "51sn diyor fakat ... hedefe çok hızlı ulaşıyor" --
                   // ham Date.now() yerine sunucuyla senkronize edilmiş "şu an"
                   // (bkz. clockOffsetRef) kullanılıyor ki markör GERÇEKTEN
@@ -1500,7 +1732,7 @@ export default function App() {
                       className={`attack-line-marker ${atk.isMine ? "attack-line-marker-mine" : "attack-line-marker-enemy"}`}
                       style={
                         {
-                          offsetPath: `path('M ${from.cx} ${from.cy} L ${to.cx} ${to.cy}')`,
+                          offsetPath: `path('${d}')`,
                           animationDuration: `${totalMs}ms`,
                           animationDelay: `-${elapsedMs}ms`,
                         } as React.CSSProperties

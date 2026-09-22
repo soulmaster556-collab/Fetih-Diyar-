@@ -521,7 +521,7 @@ export default function AdminPanel() {
     return (
       <div className="admin-login">
         <div className="admin-login-card">
-          <h1>Fetih Diyarı — Yönetim</h1>
+          <h1>Valerion — Yönetim</h1>
           <form onSubmit={handleUnlock}>
             <input
               type="password"
@@ -542,7 +542,7 @@ export default function AdminPanel() {
   return (
     <div className="admin-panel">
       <header className="admin-header">
-        <h1>Fetih Diyarı — Yönetim</h1>
+        <h1>Valerion — Yönetim</h1>
         <div className="admin-header-actions">
           <a href="/">← Oyuna dön</a>
           <button className="admin-logout" onClick={handleLogout}>
