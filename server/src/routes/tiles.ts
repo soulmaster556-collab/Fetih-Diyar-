@@ -101,14 +101,14 @@ async function sameGuild(playerIdA: string, playerIdB: string): Promise<boolean>
 // arkadaşlarından gelen, sahiplenilemeyen (sadece savunma için) takviye
 // askerleri -- bu askerler `troops` alanına dahil DEĞİL, ayrı gösteriliyor.
 //
-// Gözcü/casusluk sistemi (Eren'in isteği): `vis` verilmişse (harita
-// görünümü GET /) kendi/klan kaleleri hâlâ CANLI bilgiyle gösterilir, ama
-// düşman oyuncu ya da NPC kaleleri sadece o kareye daha önce gözcü
-// gönderilmişse (scout_reports'ta bir kayıt varsa) görünür -- ve o zaman da
-// CANLI değil, gözcünün gönderildiği ANDAKİ donmuş bilgiyle. `vis`
-// verilmezse (upgrade/reinforce/attack/scout gibi doğrudan eylem yanıtları,
-// veya GET /me) hep tam görünür -- zaten oyuncunun kendi eylemiyle ilgili
-// bir kareyi görüyor. Seviye (level) her zaman herkese açık.
+// Gözcü/casusluk sistemi: `vis` verilmişse (harita görünümü GET /)
+// kendi/klan kaleleri hâlâ CANLI bilgiyle gösterilir, ama düşman oyuncu ya
+// da NPC kaleleri sadece o kareye daha önce gözcü gönderilmişse
+// (scout_reports'ta bir kayıt varsa) görünür -- ve o zaman da CANLI değil,
+// gözcünün gönderildiği ANDAKİ donmuş bilgiyle. `vis` verilmezse
+// (upgrade/reinforce/attack/scout gibi doğrudan eylem yanıtları, veya GET
+// /me) hep tam görünür -- zaten oyuncunun kendi eylemiyle ilgili bir kareyi
+// görüyor. Seviye (level) her zaman herkese açık.
 function serializeTile(
   tile: TileRow & { owner_username?: string | null },
   settings: Settings,
@@ -152,10 +152,9 @@ function serializeTile(
     y: tile.y,
     islandId: tile.island_id,
     ownerId: tile.owner_id,
-    // Eren: yeni altıgen aksiyon menüsündeki üst "banner" için -- kale
-    // sahibinin kullanıcı adı, seviye gibi her zaman herkese açık (istihbarat
-    // gerekmiyor, sadece KİM'in kalesi olduğunu gösteriyor -- asker/altın
-    // gibi hassas bilgiler hâlâ gözcü/klan kuralına tabi).
+    // Kale menüsü banner'ı için kale sahibinin kullanıcı adı -- seviye gibi
+    // her zaman herkese açık (sadece KİM'in kalesi olduğunu gösteriyor;
+    // asker/altın gibi hassas bilgiler hâlâ gözcü/klan kuralına tabi).
     ownerUsername: tile.owner_username ?? null,
     tileType: tile.tile_type,
     level: tile.level,
@@ -204,9 +203,8 @@ tilesRouter.get("/", optionalAuthenticate, async (req: any, res) => {
     const now = Date.now();
     const settings = await loadSettings();
     const bbox = parseBoundingBox(req);
-    // Eren'in isteği: yeni aksiyon menüsü banner'ında kalenin sahibinin adı
-    // görünüyor -- players tablosuna LEFT JOIN ile tek sorguda ekleniyor
-    // (N+1 sorgu yok, boş/NPC karolarda owner_id NULL olduğu için
+    // Kale sahibinin adı players tablosuna LEFT JOIN ile tek sorguda
+    // ekleniyor (N+1 sorgu yok, boş/NPC karolarda owner_id NULL olduğu için
     // owner_username de doğal olarak NULL geliyor).
     const { rows } = bbox
       ? await pool.query<TileRow & { owner_username: string | null }>(
@@ -309,13 +307,13 @@ tilesRouter.post("/:id/upgrade", authenticate, async (req: any, res) => {
   }
 });
 
-// Asker takviyesi (Madde: klan arkadaşlarına destek). İki durum var:
+// Asker takviyesi (klan arkadaşlarına destek). İki durum var:
 //  1) Hedef KENDİ kalen -> askerler doğrudan hedefin stored_troops'una
 //     karışır (zaten senin ordun, aynı krallık içi yeniden konuşlanma).
 //  2) Hedef bir KLAN ARKADAŞININ kalesi -> askerler hedefin stored_troops'una
-//     KARIŞMAZ (Eren'in isteği: "sahiplenemezler, sadece savunma için") --
-//     ayrı bir tile_reinforcements satırı olarak tutulur, savunma gücüne
-//     eklenir ve gönderen istediği an geri çağırabilir (bkz. /recall).
+//     KARIŞMAZ (sahiplenilemez, sadece savunma için) -- ayrı bir
+//     tile_reinforcements satırı olarak tutulur, savunma gücüne eklenir ve
+//     gönderen istediği an geri çağırabilir (bkz. /recall).
 // Şimdilik anında ve mesafe sınırı yok — mesafeye bağlı süre/menzil kısıtı
 // ileride saldırı/casusluk gibi özelliklerle birlikte eklenecek.
 tilesRouter.post("/:id/reinforce", authenticate, async (req: any, res) => {
@@ -462,9 +460,9 @@ tilesRouter.post("/reinforcements/:id/recall", authenticate, async (req: any, re
   }
 });
 
-// Eren: harita altıgene çevrildi -- x,y artık axial hex koordinatı (q,r),
-// düz Öklid mesafesi (Math.hypot) artık YANLIŞ sonuç verir (axial eksenler
-// birbirine dik değil). Standart axial hex mesafe formülü kullanılıyor --
+// x,y axial hex koordinatı (q,r) -- düz Öklid mesafesi (Math.hypot) YANLIŞ
+// sonuç verir (axial eksenler birbirine dik değil). Standart axial hex
+// mesafe formülü kullanılıyor --
 // bkz. https://www.redblobgames.com/grids/hexagons/#distances-axial
 function tileDistance(a: TileRow, b: TileRow) {
   const dq = a.x - b.x;
@@ -472,22 +470,19 @@ function tileDistance(a: TileRow, b: TileRow) {
   return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
 }
 
-// BUG FİX (Eren): naval_attack_range sadece FARKLI adadaki bir kareye
-// saldırırken (deniz aşımı) uygulanmalı -- aynı adadaki herhangi bir kareye
-// (komşu olsun olmasın) HER ZAMAN, bu sınırdan tamamen bağımsız
-// saldırılabilmeli. Önceki sürüm aynı adada da "isAdjacent" (sadece bitişik
-// karo) şartı arıyordu, bu da aynı adadaki uzak bir NPC'ye ulaşılamaması
-// gibi "mesafe sınırı" hissi veren bir kısıtlamaya yol açıyordu.
+// naval_attack_range sadece FARKLI adadaki bir kareye saldırırken (deniz
+// aşımı) uygulanır -- aynı adadaki herhangi bir kareye (komşu olsun olmasın)
+// HER ZAMAN, bu sınırdan tamamen bağımsız saldırılabilir. (Eski sürüm aynı
+// adada da sadece bitişik karo şartı arıyordu -- bug'dı.)
 function canReach(from: TileRow, target: TileRow, settings: Settings) {
   if (from.island_id === target.island_id) return true;
   return tileDistance(from, target) <= settings.naval_attack_range;
 }
 
-// Eren: "Saldırı Emri sayfasında süre görünmeli ki oyuncu ne kadar sürede
-// gideceğini bilmeli." -- asker sayısını onaylamadan ÖNCE, tahmini seyahat
-// süresini gösterebilmek için. Sunucudaki travelDurationMs ile BİREBİR aynı
-// formülü kullanıyor (istemcide ayrıca kopyalanmıyor ki iki taraf asla
-// birbirinden sapmasın) -- hiçbir asker göndermez, sadece hesaplar.
+// Asker sayısını onaylamadan ÖNCE tahmini seyahat süresini gösterebilmek
+// için. Sunucudaki travelDurationMs ile BİREBİR aynı formülü kullanıyor
+// (istemcide ayrıca kopyalanmıyor ki iki taraf asla birbirinden sapmasın)
+// -- hiçbir asker göndermez, sadece hesaplar.
 tilesRouter.get("/attack-eta", authenticate, async (req: any, res) => {
   try {
     const fromTileId = Number(req.query?.fromTileId);
@@ -508,14 +503,12 @@ tilesRouter.get("/attack-eta", authenticate, async (req: any, res) => {
   }
 });
 
-// Eren: "Oyunda artık saldırılar zamanlamalı olsun. Direk tıkla saldır değil
-// ve saldırdığın kaleden saldırdığın kaleye gidildiğini belli eden bir
-// saldırı hattı olsun" -- bu uç nokta artık çarpışmayı ANINDA çözmüyor,
-// sadece askerleri kaynak kaleden düşüp bir "yolda" (attack_orders) kaydı
-// açıyor ve o kaydın kendisini dönüyor. Asıl çarpışma askerler fiilen
-// ulaştığında arka planda çözülüyor (bkz. game/attacks.ts
-// resolveDueAttackOrders, index.ts'teki periyodik tur) -- sonuç saldırana
-// (ve savunuyorsa savunana) mesaj/rapor kutusuna düşüyor.
+// Zamanlı saldırı: bu uç nokta çarpışmayı ANINDA çözmüyor, sadece askerleri
+// kaynak kaleden düşüp bir "yolda" (attack_orders) kaydı açıyor ve o
+// kaydın kendisini dönüyor. Asıl çarpışma askerler fiilen ulaştığında arka
+// planda çözülüyor (bkz. game/attacks.ts resolveDueAttackOrders, index.ts'teki
+// periyodik tur) -- sonuç saldırana (ve savunuyorsa savunana) mesaj/rapor
+// kutusuna düşüyor.
 tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
@@ -591,10 +584,10 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
   }
 });
 
-// Eren: saldırı hattını haritada göstermek için istemcinin sık sık çektiği
-// "hâlâ yolda olan" saldırılar. Görüneni sadece kendi saldırıları ve
-// kendi/klan kalelerine gelen saldırılarla sınırlıyoruz -- düşmanın haritanın
-// tamamen başka bir ucundaki alakasız saldırısını görmesine gerek yok.
+// Saldırı hattını haritada göstermek için istemcinin sık sık çektiği "hâlâ
+// yolda olan" saldırılar. Görüneni sadece kendi saldırıları ve kendi/klan
+// kalelerine gelen saldırılarla sınırlıyoruz -- düşmanın haritanın tamamen
+// başka bir ucundaki alakasız saldırısını görmesine gerek yok.
 tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
@@ -621,17 +614,13 @@ tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
           OR ao.target_tile_id IN (SELECT id FROM tiles WHERE owner_id = ANY($2::text[]))`,
       [player.id, relevantOwnerIds]
     );
-    // Eren: "51sn diyor fakat ... hedefe çok hızlı ulaşıyor" -- animasyon
-    // istemcinin KENDİ saat'ine (Date.now()) göre "ne kadar yol alındığını"
-    // hesaplıyordu; istemcinin saati sunucununkinden birkaç saniye/dakika
-    // ileri/geri olabilir (özellikle farklı makine/saat dilimi), bu da
-    // markörün ya anında hedefte belirmesine ya da hiç hareket etmeden
-    // beklemesine sebep oluyordu. Çözüm: sunucunun KENDİ "şu an"ını da
-    // (serverNow) her cevaba ekliyoruz -- istemci bunu kendi Date.now()'ı ile
-    // karşılaştırıp bir "saat farkı" (clock offset) çıkarıyor ve elapsed/eta
-    // hesaplarında ham Date.now() yerine hep bunu kullanıyor (bkz. App.tsx
-    // clockOffsetRef). Böylece iki taraf da hep AYNI zaman çizgisine göre
-    // konuşmuş oluyor.
+    // İstemcinin saati sunucununkinden birkaç saniye/dakika ileri/geri
+    // olabilir; animasyon ham Date.now()'a göre hesaplanınca markör ya
+    // anında hedefte beliriyor ya da hiç hareket etmiyordu. Çözüm: sunucunun
+    // KENDİ "şu an"ını da (serverNow) her cevaba ekliyoruz -- istemci bunu
+    // kendi Date.now()'ı ile karşılaştırıp bir "saat farkı" (clock offset)
+    // çıkarıyor ve elapsed/eta hesaplarında hep bunu kullanıyor (bkz. client
+    // App.tsx clockOffsetRef).
     res.json({
       serverNow: Date.now(),
       attacks: rows.map((r) => ({
@@ -659,8 +648,7 @@ tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
 // takviyeleri, altın/asker üretimi) öğrenirsin. Gönderilen askerler bir
 // keşif/istihbarat maliyeti olarak tüketilir (MVP: risksiz, her zaman
 // başarılı -- yakalanma/keşfedilme mekaniği yok). Rapor `scout_reports`'a
-// UPSERT edilir: aynı kareye tekrar gözcü göndermeden bilgi GÜNCELLENMEZ
-// (Eren'in isteği).
+// UPSERT edilir: aynı kareye tekrar gözcü göndermeden bilgi GÜNCELLENMEZ.
 tilesRouter.post("/:id/scout", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;

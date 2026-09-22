@@ -1,9 +1,9 @@
 import { pool } from "../db.js";
 
-// "Mesaj ve rapor bölümü" (Eren'in isteği): saldırı sonuçları, gözcü
-// raporları ve gözetlendiğine dair bildirimler gibi olaylar her oyuncunun
-// kendi kutusuna düşer. Şimdilik hazır (Türkçe) başlık/metin ile tutuluyor
-// -- ayrı bir yapılandırılmış şema yerine basit tutmak için bilerek böyle.
+// Mesaj/rapor kutusu: saldırı sonuçları, gözcü raporları ve gözetlendiğine
+// dair bildirimler her oyuncunun kendi kutusuna düşer. Şimdilik hazır
+// (Türkçe) başlık/metin ile tutuluyor -- ayrı bir yapılandırılmış şema
+// yerine basit tutmak için bilerek böyle.
 export type ReportType =
   | "attack_won"
   | "attack_lost"

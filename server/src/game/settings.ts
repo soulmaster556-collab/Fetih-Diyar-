@@ -44,8 +44,8 @@ export const SETTING_DEFS = [
     label: "NPC kampı oluşma olasılığı",
     description:
       "Yeni harita üretildiğinde adanın İÇ kısmındaki (kıyı hariç) her karenin NPC kampı olma ihtimali (0-1); geri kalanı boş kare olur (oyuncu başlangıç noktaları). Kıyı karolarında hiçbir zaman NPC/kale olmaz. Boş karelere saldırı olmadığı için ilerleme büyük ölçüde NPC fethine dayanır. Mevcut haritayı etkilemez (bkz. applyNpcBorderMigration / applyNpcDensityReductionMigration canlı haritayı bir kereliğine seyrekleştirir).",
-    // Sırasıyla 0.6, 0.3, 0.15, 0.08, 0.04, 0.02 idi -- Eren yine "NPC'leri
-    // azalt ciddi oranda azalt" dedi, bu yüzden 0.01'e düşürüldü (bkz.
+    // Sırasıyla 0.6, 0.3, 0.15, 0.08, 0.04, 0.02 idi -- NPC yoğunluğu
+    // ciddi oranda azaltılsın diye 0.01'e düşürüldü (bkz.
     // applyNpcDensityReductionMigrationV3 canlı haritayı da seyrekleştirir).
     default: 0.01,
   },
@@ -74,9 +74,8 @@ export const SETTING_DEFS = [
     label: "Saldırı: karo başına seyahat süresi (sn)",
     description:
       "Bir saldırının kaynak ile hedef arasındaki her 1 karolik mesafe için ne kadar sürede yol aldığı (saniye), oyun hızına bölünür. Saldırı artık anında sonuçlanmıyor -- bu süre kadar yolda kalıyor (bkz. attack_orders).",
-    // Eren: "Bu zaman ayarlarını x3 daha yavaşlat." -- eski değer 3'tü.
-    // (Canlıdaki değer de admin panelinden/DB'den aynı şekilde güncellendi,
-    // bu default sadece SIFIRDAN kurulan bir ortam için geçerli.)
+    // x3 yavaşlatıldı (eski değer 3). Canlıdaki değer admin panelinden/DB'den
+    // ayrıca güncellendi, bu default sadece SIFIRDAN kurulan ortam için.
     default: 9,
   },
   {
@@ -84,7 +83,7 @@ export const SETTING_DEFS = [
     label: "Saldırı: minimum seyahat süresi (sn)",
     description:
       "Çok yakın hedeflerde bile saldırının en az bu kadar sürede ulaşmasını sağlayan taban değer (yolda giderken animasyonun görünür olması için).",
-    // Eren: "Bu zaman ayarlarını x3 daha yavaşlat." -- eski değer 4'tü.
+    // x3 yavaşlatıldı (eski değer 4).
     default: 12,
   },
 ] as const;

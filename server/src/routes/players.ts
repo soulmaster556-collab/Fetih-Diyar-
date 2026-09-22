@@ -107,9 +107,8 @@ playersRouter.post("/login", async (req, res) => {
     const newToken = randomUUID();
     await pool.query("UPDATE players SET token = $1 WHERE id = $2", [newToken, player.id]);
 
-    // Eren: "başlangıç her zaman ilk ana kalede sabit olmalı (her giriş
-    // için)" -- her login'de client'ın haritayı doğru kaleye ortalayabilmesi
-    // için ilk ana kalenin koordinatları da cevaba ekleniyor.
+    // Her login'de client'ın haritayı ana kaleye ortalayabilmesi için ilk
+    // ana kalenin koordinatları da cevaba ekleniyor.
     let homeX: number | null = null;
     let homeY: number | null = null;
     if (player.home_tile_id !== null) {
@@ -149,9 +148,8 @@ playersRouter.get("/me/summary", authenticate, async (req: any, res) => {
   }
 });
 
-// Eren: "sol üstte ... içerisine görsel yüklenebilecek şekilde tasarım yap
-// ... yuvarlak oyuncu profil" -- profil widget'ının kendi verisini (kullanıcı
-// adı + varsa avatar) çekmesi için basit bir uç nokta.
+// Profil widget'ının kendi verisini (kullanıcı adı + varsa avatar) çekmesi
+// için basit bir uç nokta.
 playersRouter.get("/me", authenticate, async (req: any, res) => {
   const player = req.player as Player;
   res.json({

@@ -10,13 +10,12 @@ export interface Player {
   gold_collected_at: number;
   // Admin panelinden yasaklanmış mı (bkz. routes/admin.ts).
   banned: boolean;
-  // Eren: "başlangıç her zaman ilk ana kalede sabit olmalı (her giriş
-  // için)" -- oyuncunun ilk ana kalesinin tile id'si, kayıt olurken set
-  // edilir ve login sırasında haritayı doğru yere ortalamak için
-  // kullanılır (bkz. routes/players.ts).
+  // Oyuncunun ilk ana kalesinin tile id'si, kayıt olurken set edilir ve
+  // login sırasında haritayı ana kaleye ortalamak için kullanılır (bkz.
+  // routes/players.ts).
   home_tile_id: number | null;
-  // Eren: "oyuncu profili... içerisine görsel yüklenebilicek şekilde" --
-  // küçük bir data-URL (base64), yoksa null (bkz. routes/players.ts).
+  // Profil fotoğrafı: küçük bir data-URL (base64), yoksa null (bkz.
+  // routes/players.ts).
   avatar_data: string | null;
 }
 

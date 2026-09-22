@@ -51,12 +51,11 @@ async function main() {
       origin: allowedOrigins.length > 0 ? allowedOrigins : true,
     })
   );
-  // Eren: "sol üstte içerisine görsel yüklenebilecek şekilde tasarım yap"
-  // (profil fotoğrafı) -- avatar base64 olarak JSON gövdesinde geliyor,
-  // varsayılan 100kb limiti küçük bir resim için bile yetmez. 3mb, makul
-  // boyutta küçültülmüş bir kare fotoğrafı (client tarafında zaten
-  // küçültülüyor) rahatça karşılar; asıl sıkı sınır avatar endpoint'inin
-  // kendisinde (bkz. players.ts) ayrıca uygulanıyor.
+  // Profil fotoğrafı base64 olarak JSON gövdesinde geliyor, varsayılan
+  // 100kb limiti küçük bir resim için bile yetmez. 3mb, makul boyutta
+  // küçültülmüş bir kare fotoğrafı (client tarafında zaten küçültülüyor)
+  // rahatça karşılar; asıl sıkı sınır avatar endpoint'inin kendisinde (bkz.
+  // players.ts) ayrıca uygulanıyor.
   app.use(express.json({ limit: "3mb" }));
 
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -75,13 +74,13 @@ async function main() {
     console.log(`Fetih Diyarı sunucusu http://localhost:${PORT} adresinde çalışıyor`);
   });
 
-  // Eren: "Oyunda artık saldırılar zamanlamalı olsun" -- kaynak-üretim gibi
-  // "isteğe bağlı hesapla" (lazy accrual) yerine burada gerçek bir periyodik
-  // tur gerekiyor, çünkü kale el değiştirmesi kimse haritaya bakmasa/istek
-  // atmasa bile askerler ulaştığı AN gerçekleşmeli. 2 saniyelik aralık,
-  // saldırı seyahat sürelerinin (en az birkaç saniye, bkz. settings
-  // attack_min_travel_seconds) hemen ardından sonucun gelmesi için yeterince
-  // sık, ama sunucuyu meşgul etmeyecek kadar seyrek.
+  // Zamanlı saldırılar: kaynak-üretim gibi "isteğe bağlı hesapla" (lazy
+  // accrual) yerine burada gerçek bir periyodik tur gerekiyor, çünkü kale el
+  // değiştirmesi kimse haritaya bakmasa/istek atmasa bile askerler ulaştığı
+  // AN gerçekleşmeli. 2 saniyelik aralık, saldırı seyahat sürelerinin (en az
+  // birkaç saniye, bkz. settings attack_min_travel_seconds) hemen ardından
+  // sonucun gelmesi için yeterince sık, ama sunucuyu meşgul etmeyecek kadar
+  // seyrek.
   setInterval(() => {
     resolveDueAttackOrders().catch((err) => {
       console.error("[attack] resolveDueAttackOrders turu başarısız oldu:", err);

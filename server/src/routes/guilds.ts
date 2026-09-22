@@ -13,8 +13,8 @@ interface GuildRow {
   flag_id: number;
 }
 
-// Eren: "10 adet lonca bayrağı ekle" -- geçerli bayrak kimliği 1-10, aralık
-// dışı/eksik gelirse 1'e (varsayılan) düşülüyor.
+// Geçerli bayrak kimliği 1-10, aralık dışı/eksik gelirse 1'e (varsayılan)
+// düşülüyor.
 const VALID_FLAG_IDS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 function normalizeFlagId(value: unknown): number {
   const n = Number(value);
@@ -40,10 +40,10 @@ async function serializeGuild(guild: GuildRow) {
      ORDER BY gm.joined_at ASC`,
     [guild.id]
   );
-  // Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun" -- herhangi bir
-  // üye kendi loncasının hâlâ bekleyen (kabul/red edilmemiş) davetlerini
-  // görebilsin diye lonca detayına gömülü (aynı kişiyi iki kere davet etmeye
-  // çalışınca da bu liste sayesinde "zaten davet edilmiş" fark edilebiliyor).
+  // Herhangi bir üye kendi loncasının hâlâ bekleyen (kabul/red edilmemiş)
+  // davetlerini görebilsin diye lonca detayına gömülü (aynı kişiyi iki kere
+  // davet etmeye çalışınca da bu liste sayesinde "zaten davet edilmiş" fark
+  // edilebiliyor).
   const { rows: inviteRows } = await pool.query<{
     id: number;
     invited_username: string;
@@ -221,10 +221,10 @@ guildsRouter.post("/leave", authenticate, async (req: any, res) => {
 });
 
 // -----------------------------------------------------------------------
-// Davet sistemi -- Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun".
-// Herhangi bir üye (lider olması şart değil -- küçük/gündelik bir oyunda
-// üyelerin de arkadaşını davet edebilmesi daha pratik) kullanıcı adıyla
-// davet gönderebilir; davet edilen kişi kendi tarafında kabul/red eder.
+// Davet sistemi -- herhangi bir üye (lider olması şart değil -- küçük/
+// gündelik bir oyunda üyelerin de arkadaşını davet edebilmesi daha pratik)
+// kullanıcı adıyla davet gönderebilir; davet edilen kişi kendi tarafında
+// kabul/red eder.
 // -----------------------------------------------------------------------
 
 guildsRouter.post("/invite", authenticate, async (req: any, res) => {

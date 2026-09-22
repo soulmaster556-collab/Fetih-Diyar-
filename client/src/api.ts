@@ -48,10 +48,9 @@ export interface Session {
   username: string;
   token: string;
   startingTileId?: number;
-  // Eren: "başlangıç her zaman ilk ana kalede sabit olmalı (her giriş
-  // için)" -- ilk ana kalenin koordinatları, hem register hem login
-  // cevabında gelir (bkz. server routes/players.ts). Çok eski hesaplarda
-  // (home_tile_id backfill'i öncesi, ya da kale hiç yoksa) null olabilir.
+  // İlk ana kalenin koordinatları, hem register hem login cevabında gelir
+  // (bkz. server routes/players.ts). Çok eski hesaplarda (home_tile_id
+  // backfill'i öncesi, ya da kale hiç yoksa) null olabilir.
   homeX?: number | null;
   homeY?: number | null;
 }
@@ -252,10 +251,9 @@ export function deleteAdminPlayer(adminKey: string, playerId: string) {
   }).then((r) => handle<{ ok: true }>(r));
 }
 
-// Eren: "Oyunda artık saldırılar zamanlamalı olsun" -- saldırı artık anında
-// sonuçlanmıyor, askerler yola çıkıyor (bkz. server game/attacks.ts) ve
-// sonuç arrivesAt'te (raporlar üzerinden) geliyor. Bu yüzden cevap artık bir
-// sonuç değil, bir "sipariş" (yolda giden ordu) bilgisi.
+// Saldırı anında sonuçlanmıyor, askerler yola çıkıyor (bkz. server
+// game/attacks.ts) ve sonuç arrivesAt'te (raporlar üzerinden) geliyor. Bu
+// yüzden cevap bir sonuç değil, bir "sipariş" (yolda giden ordu) bilgisi.
 export interface AttackOrder {
   orderId: number;
   fromTileId: number;
@@ -284,9 +282,8 @@ export function attackTile(
   }).then((r) => handle<AttackOrder>(r));
 }
 
-// Eren: "Saldırı Emri sayfasında süre görünmeli" -- asker sayısı onaylanmadan
-// ÖNCE tahmini seyahat süresini göstermek için (bkz. server tiles.ts
-// GET /attack-eta). Sunucudaki formülle birebir aynı sonucu verir.
+// Asker sayısı onaylanmadan ÖNCE tahmini seyahat süresini göstermek için
+// (bkz. server tiles.ts GET /attack-eta). Sunucudaki formülle birebir aynı.
 export function fetchAttackEta(token: string, fromTileId: number, targetTileId: number) {
   const params = new URLSearchParams({ fromTileId: String(fromTileId), targetTileId: String(targetTileId) });
   return fetch(`${BASE}/tiles/attack-eta?${params.toString()}`, {
@@ -376,7 +373,7 @@ export interface GuildMember {
   joinedAt: number;
 }
 
-// Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun".
+// Lonca davetleri.
 export interface GuildPendingInvite {
   id: number;
   invitedUsername: string;
@@ -412,9 +409,7 @@ export function fetchMyGuild(token: string) {
   }).then((r) => handle<Guild | null>(r));
 }
 
-// Eren: "10 adet lonca bayrağı ekle ... lonca kurulumunda olsun
-// seçilebilmeli" -- flagId opsiyonel, verilmezse sunucu 1'i (varsayılan)
-// kullanıyor.
+// flagId (1-10) opsiyonel, verilmezse sunucu 1'i (varsayılan) kullanıyor.
 export function createGuild(token: string, name: string, flagId?: number) {
   return fetch(`${BASE}/guilds`, {
     method: "POST",
@@ -522,9 +517,8 @@ export function markReportsRead(token: string) {
   }).then((r) => handle<{ ok: true }>(r));
 }
 
-// Eren: "Sol üst tarafda uygun bir yere oyuncu profili bölümü olsun ...
-// içerisine görsel yüklenebilecek şekilde tasarım yap ... yuvarlak oyuncu
-// profil". Profil widget'ı bu ikisiyle besleniyor.
+// Oyuncu profili (avatar) -- üst menüdeki profil widget'ı bu ikisiyle
+// besleniyor.
 export interface MyProfile {
   playerId: string;
   username: string;

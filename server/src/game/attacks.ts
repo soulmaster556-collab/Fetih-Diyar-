@@ -7,14 +7,11 @@ import type { Settings } from "./settings.js";
 import { loadSettings } from "./settings.js";
 import type { Player, TileRow } from "../types.js";
 
-// Eren: "Oyunda artık saldırılar zamanlamalı olsun. Direk tıkla saldır değil
-// ve saldırdığın kaleden saldırdığın kaleye gidildiğini belli eden bir
-// saldırı hattı olsun ... hareketli olsun" -- bu dosya saldırının ARTIK
-// anında değil, bir "yolda" (attack_orders) kaydı olarak yaşadığı yeni akışın
-// tamamını taşıyor: süre hesabı + askerler ulaştığında (arrives_at geçince)
-// asıl çarpışmanın çözülmesi. Eski senkron /attack ucundaki çarpışma mantığı
-// birebir buraya taşındı, tek fark artık `now` "isteğin geldiği an" değil
-// "askerlerin fiilen ulaştığı an".
+// Zamanlı saldırı akışının tamamı: saldırı anında değil, bir "yolda"
+// (attack_orders) kaydı olarak yaşıyor -- süre hesabı + askerler
+// ulaştığında (arrives_at geçince) asıl çarpışmanın çözülmesi. Eski senkron
+// /attack ucundaki çarpışma mantığı birebir buraya taşındı, tek fark artık
+// `now` "isteğin geldiği an" değil "askerlerin fiilen ulaştığı an".
 
 export interface AttackOrderRow {
   id: number;

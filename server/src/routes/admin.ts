@@ -54,10 +54,8 @@ adminRouter.post("/settings", requireAdmin, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Oyuncular bölümü -- Eren'in isteği: "admin panelini daha profesyonel yap,
-// oyuncular bölümü ekle, oyuncuların bilgileri ve oyunculara müdahale
-// edilebilecek şeyler ekle". Liste + detay + birkaç müdahale (altın ayarla,
-// kale başına asker ayarla, şifre sıfırla, banla/kaldır, loncadan at, hesabı
+// Oyuncular bölümü -- liste + detay + birkaç müdahale (altın ayarla, kale
+// başına asker ayarla, şifre sıfırla, banla/kaldır, loncadan at, hesabı
 // sil) -- hepsi requireAdmin ile aynı ADMIN_KEY duvarının arkasında.
 // ---------------------------------------------------------------------------
 
@@ -383,10 +381,10 @@ adminRouter.delete("/players/:id", requireAdmin, async (req, res) => {
       await client.query("DELETE FROM tile_reinforcements WHERE from_player_id = $1", [id]);
     }
 
-    // Eren: "Oyunda artık saldırılar zamanlamalı olsun" -- hesap silinirken
-    // yolda olan (henüz sonuçlanmamış) saldırı siparişleri de temizlenmeli,
-    // yoksa attacker_id -> players FK ihlali yüzünden bu silme başarısız
-    // olur. Askerler zaten kayboluyor (tıpkı diğer kaynaklar gibi).
+    // Hesap silinirken yolda olan (henüz sonuçlanmamış) saldırı siparişleri
+    // de temizlenmeli, yoksa attacker_id -> players FK ihlali yüzünden bu
+    // silme başarısız olur. Askerler zaten kayboluyor (tıpkı diğer kaynaklar
+    // gibi).
     await client.query("DELETE FROM attack_orders WHERE attacker_id = $1", [id]);
     await client.query(
       "DELETE FROM guild_invites WHERE invited_player_id = $1 OR invited_by_id = $1",

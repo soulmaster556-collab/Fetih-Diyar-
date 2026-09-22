@@ -28,10 +28,8 @@ function formatNumber(n: number) {
 }
 
 // -----------------------------------------------------------------------
-// Oyuncu detay/müdahale ekranı -- Eren'in isteği: "oyuncuların bilgileri ve
-// oyunculara müdahale edilebilecek şeyler ekle". Uygulamanın geri kalanında
-// zaten kullanılan .modal-overlay/.modal-screen deseniyle (bkz. App.css,
-// leaderboard/raporlar) aynı dilde, ayrı bir ekran olarak açılıyor.
+// Oyuncu detay/müdahale ekranı -- uygulamanın geri kalanındaki
+// .modal-overlay/.modal-screen deseniyle (bkz. App.css) ayrı bir ekran.
 // -----------------------------------------------------------------------
 function PlayerDetailModal({
   adminKey,
@@ -474,10 +472,8 @@ function SettingsTab({ adminKey }: { adminKey: string }) {
 }
 
 // -----------------------------------------------------------------------
-// Kök bileşen -- giriş ekranı + sekmeli (Ayarlar / Oyuncular) düzen. Eren:
-// "admin panelini daha profesyonel yap" -- eski tek beyaz form yerine artık
-// oyunun kendi lacivert/altın arayüz diliyle (bkz. App.css .admin-*) aynı
-// aileden, sekmeli bir kontrol paneli.
+// Kök bileşen -- giriş ekranı + sekmeli (Ayarlar / Oyuncular) düzen, oyunun
+// lacivert/altın arayüz diliyle (bkz. App.css .admin-*).
 // -----------------------------------------------------------------------
 export default function AdminPanel() {
   const [adminKey, setAdminKey] = useState(() => sessionStorage.getItem(ADMIN_KEY_STORAGE) ?? "");

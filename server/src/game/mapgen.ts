@@ -3,7 +3,7 @@ import { productionForLevel } from "./resources.js";
 import type { Settings } from "./settings.js";
 import type { TileType } from "../types.js";
 
-// Not: WORLD_SIZE burada ve client/src/App.tsx'te birebir aynı olmalı —
+// Not: WORLD_SIZE burada ve client/src/game/constants.ts'te birebir aynı olmalı —
 // ikisi de izometrik/harita hesaplarında kullanıyor.
 const WORLD_SIZE = 200;
 
@@ -18,11 +18,9 @@ const WORLD_SIZE = 200;
 // gibi görünmesini engelleyen doğal boşluklar.
 const GRID_COLS = 6;
 const GRID_ROWS = 6;
-// Eren'in isteği: "tek ve büyük ada" -- test aşamasında artık birden çok
-// küçük ada yerine TEK büyük bir test adası üretiliyor (birkaç kişi aynı
-// anda test edecek, sıkışmasınlar diye geniş tutuluyor; harita yine de
-// tamamı tek ekranda görünmeyecek kadar büyük -- kaydırma/uzaklaştırma hâlâ
-// gerekiyor, ama varsayılan yakınlıkta hiçbir yönde deniz görünmemeli).
+// Test aşamasında birden çok küçük ada yerine TEK büyük bir ada üretiliyor
+// (birkaç kişi aynı anda test edecek, sıkışmasınlar diye geniş; varsayılan
+// yakınlıkta hiçbir yönde deniz görünmemeli).
 // ISLAND_COUNT === 1 olduğunda generateIslandLayout() yukarıdaki
 // GRID_COLS×GRID_ROWS hücre sistemini tamamen atlayıp doğrudan
 // generateRectangleIsland()'ı çağırıyor (düz kenarlı dikdörtgen, bkz. o
@@ -44,14 +42,11 @@ const MAX_SEED_ATTEMPTS_PER_ISLAND = 80;
 // ISLAND_COUNT > 1 organik moduna aitse kullanılıyor.)
 const MAX_GROWTH_STALLS = 1200;
 
-// Eren: "ada dediğimiz olay dikdörtgene yakın simetrik olsun, bilgisayar
-// ekranını (yatay monitör) düşün" -- organik/yuvarlak büyüyen tek-ada
-// algoritması tamamen kaldırıldı, yerine düz kenarlı, geniş bir DİKDÖRTGEN
-// kara kütlesi geldi (bkz. generateRectangleIsland). 80×52 oranı, hex
-// satırlarının ekranda %75 sıkışmasını (bkz. App.tsx isoCenter) hesaba
-// katarak yaklaşık 16:9'luk bir monitör görünümü verecek şekilde seçildi.
-// Toplam ~4160 karo, önceki organik adayla (3500-5000 hedefi) aynı
-// büyüklük sınıfında.
+// Ada düz kenarlı, geniş bir DİKDÖRTGEN kara kütlesi (bkz.
+// generateRectangleIsland) -- yatay monitöre benzesin diye. 80×52 oranı, hex
+// satırlarının ekranda %75 sıkışmasını (bkz. client game/hexMath.ts
+// isoCenter) hesaba katarak yaklaşık 16:9'luk bir görünüm veriyor. Toplam
+// ~4160 karo.
 const RECT_ISLAND_WIDTH = 80;
 const RECT_ISLAND_HEIGHT = 52;
 
@@ -97,9 +92,8 @@ function key(x: number, y: number) {
   return `${x},${y}`;
 }
 
-// Eren: haritayı altıgene çeviriyoruz -- x,y artık axial hex koordinatı
-// (q,r). Kare gridin 8 komşusu yerine bir altıgenin gerçek 6 komşusu var;
-// bu sabit yön listesi standart axial komşuluk formülü (bkz.
+// x,y axial hex koordinatı (q,r). Bir altıgenin 6 komşusu var; bu sabit
+// yön listesi standart axial komşuluk formülü (bkz.
 // https://www.redblobgames.com/grids/hexagons/ -- "axial direction vectors").
 const HEX_DIRECTIONS: [number, number][] = [
   [1, 0],
@@ -161,7 +155,7 @@ function pickGrowthOrigin(
 }
 
 // Dünyanın tam ortasında, düz kenarlı bir RECT_ISLAND_WIDTH×RECT_ISLAND_HEIGHT
-// dikdörtgeni dolduruyor. Axial hex koordinatlarında (bkz. App.tsx isoCenter:
+// dikdörtgeni dolduruyor. Axial hex koordinatlarında (bkz. client game/hexMath.ts isoCenter:
 // cx = tileWidth*(x + y/2)) düz bir x aralığını sabit tutup satır (y)
 // arttıkça x'i olduğu gibi bırakırsak ekranda PARALELKENAR (her satır bir
 // öncekinden sağa kaymış) elde ederiz. Bunun yerine her satırın x
@@ -201,10 +195,10 @@ function generateRectangleIsland(): LandTile[] {
  * islands visually and mechanically separate even though they now sit right
  * next to each other with only a thin strip of water between them.
  *
- * Eren: "tek ve büyük ada" isteğinden beri ISLAND_COUNT===1 iken bu organik
- * büyütme hiç çalışmıyor -- bkz. generateRectangleIsland (düz dikdörtgen).
- * Adayı ileride tekrar birden fazla parçaya bölmek istenirse ISLAND_COUNT'u
- * 10'a çıkarmak bu fonksiyonu tekrar devreye sokar.
+ * ISLAND_COUNT===1 iken bu organik büyütme hiç çalışmıyor -- bkz.
+ * generateRectangleIsland (düz dikdörtgen). Adayı ileride tekrar birden
+ * fazla parçaya bölmek istenirse ISLAND_COUNT'u 10'a çıkarmak bu fonksiyonu
+ * tekrar devreye sokar.
  */
 function generateIslandLayout(): LandTile[] {
   const allTiles: LandTile[] = ISLAND_COUNT === 1 ? generateRectangleIsland() : [];
@@ -279,7 +273,7 @@ function generateIslandLayout(): LandTile[] {
 
   // Kıyı hesaplama: bir karo, aynı adaya ait OLMAYAN (farklı ada ya da boş
   // deniz) en az bir komşusu varsa kıyı sayılır. Kale/NPC bu karolarda asla
-  // yerleşmemeli (Eren'in isteği) -- sadece adanın iç kısmı yerleşime açık.
+  // yerleşmemeli -- sadece adanın iç kısmı yerleşime açık.
   for (const tile of allTiles) {
     for (const [nx, ny] of neighbors6(tile.x, tile.y)) {
       if (occupied.get(key(nx, ny)) !== tile.islandId) {
@@ -292,15 +286,14 @@ function generateIslandLayout(): LandTile[] {
   return allTiles;
 }
 
-// Eren'in isteği: "sadece haritayı altıgene çevirelim". Kare gridin x,y'si
-// ile altıgenin axial q,r'si aynı iki tamsayı kolonunda tutuluyor (bkz.
-// db.ts) ama komşuluk/mesafe anlamları tamamen farklı -- eski kare haritada
-// üretilmiş adaların hex komşuluğuna göre şekli bozuk/kopuk görünürdü. Bu
-// yüzden (Eren'in de kabul ettiği gibi) test haritasını TEK SEFERLİK olarak
-// tamamen sıfırlıyoruz: hem karoları hem de hesapları (test kayıtları)
-// temizleyip ensureMapGenerated'ın yeni hex-komşuluklu adaları sıfırdan
-// üretmesine izin veriyoruz. schema_migrations ile korunduğu için sunucu
-// her yeniden başladığında bir daha ÇALIŞMAZ.
+// Kare gridden hex'e geçiş: x,y ile axial q,r aynı iki tamsayı kolonunda
+// tutuluyor (bkz. db.ts) ama komşuluk/mesafe anlamları tamamen farklı --
+// eski kare haritada üretilmiş adaların hex komşuluğuna göre şekli
+// bozuk/kopuk görünürdü. Bu yüzden test haritası TEK SEFERLİK olarak
+// tamamen sıfırlanıyor: hem karolar hem de hesaplar (test kayıtları)
+// temizlenip ensureMapGenerated'ın yeni adaları sıfırdan üretmesine izin
+// veriliyor. schema_migrations ile korunduğu için sunucu her yeniden
+// başladığında bir daha ÇALIŞMAZ.
 export async function applyHexGridConversionMigration() {
   const MIGRATION_NAME = "hex_grid_conversion_v1";
   if (await hasMigration(MIGRATION_NAME)) return;
@@ -316,11 +309,9 @@ export async function applyHexGridConversionMigration() {
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita hex olarak yeniden üretilecek.`);
 }
 
-// Eren'in isteği: "Tek ve büyük ada yapıcaz, sağa sola kaydırabilelim, birkaç
-// kişi test yapacağız sıkışmamalıyız" -- ISLAND_COUNT 10'dan 1'e indirildi ve
-// tek adanın hedef boyutu büyütüldü (bkz. SINGLE_ISLAND_MIN/MAX_SIZE). Bu da
-// koordinatların anlamını değiştirmiyor (hâlâ aynı hex sistemi) ama önceki
-// 10-adalı test haritasıyla artık uyuşmuyor, o yüzden hex geçişindeki gibi
+// Tek büyük ada geçişi: ISLAND_COUNT 10'dan 1'e indirildi ve tek adanın
+// hedef boyutu büyütüldü (bkz. SINGLE_ISLAND_MIN/MAX_SIZE). Koordinat
+// sistemi aynı ama önceki 10-adalı test haritasıyla uyuşmuyor, o yüzden
 // tek seferlik bir sıfırlama daha gerekiyor. Adayı ileride tekrar birden
 // fazla parçaya bölmek istersek: ISLAND_COUNT'u eski haline getirip yeni bir
 // migration adıyla (v3, v4, ...) aynı deseni tekrarlamak yeterli.
@@ -339,9 +330,7 @@ export async function applyBigSingleIslandMigration() {
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita tek büyük ada olarak yeniden üretilecek.`);
 }
 
-// Eren: "şu adayı kaldırsak normal bir ekran olsa... bu ada işi can sıktı" +
-// "ada dikdörtgene yakın simetrik olsun, yatay monitör gibi düşün" + "NPC'ler
-// azalıcak" -- organik/yuvarlak büyüyen tek-ada algoritması tamamen
+// Dikdörtgen ada geçişi: organik/yuvarlak büyüyen tek-ada algoritması
 // kaldırıldı (bkz. generateRectangleIsland), aynı zamanda npc_spawn_chance
 // bir kademe daha düşürülüyor. Koordinat sistemi yine değişmedi ama önceki
 // organik test haritasıyla uyuşmuyor, o yüzden bir kez daha tam sıfırlama
@@ -368,14 +357,10 @@ export async function applyRectSingleIslandMigration() {
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita dikdörtgen tek ada olarak yeniden üretilecek.`);
 }
 
-// Eren: "Objelerin etrafında dönen tam 1 tur hex boş olucak... işlemlerden
-// sonra sunucuyu sıfırla" -- bu turdaki değişikliklerin (dağ dekoru
-// yeniden tasarımı, zoom, ışıltı) hiçbiri harita ÜRETİM formatını
-// değiştirmiyor (hâlâ aynı dikdörtgen tek ada, aynı hex sistemi) -- dekor
-// zaten tamamen CLIENT tarafında hesaplanıyor. Yine de doğrudan "sıfırla"
-// isteği geldiği için, yukarıdaki geçişlerle (hex/tek ada/dikdörtgen)
-// AYNI TRUNCATE deseniyle test verisini temizleyip temiz bir haritayla
-// yeniden başlıyoruz.
+// Elle istenen test verisi sıfırlaması -- bu turdaki değişiklikler (dağ
+// dekoru, zoom, ışıltı) harita ÜRETİM formatını değiştirmiyor (dekor
+// tamamen CLIENT tarafında), ama yukarıdaki geçişlerle AYNI TRUNCATE
+// deseniyle test verisi temizlenip temiz bir haritayla yeniden başlanıyor.
 export async function applyDecorRebalanceResetMigration() {
   const MIGRATION_NAME = "decor_rebalance_reset_v1";
   if (await hasMigration(MIGRATION_NAME)) return;
@@ -412,7 +397,7 @@ export async function ensureMapGenerated(settings: Settings) {
 
       for (const tile of chunk) {
         // Kıyı karolarında (adanın dış sınırından 1 kare) asla NPC kampı
-        // oluşmaz -- sadece adanın iç kısmı NPC'ye açık (Eren'in isteği).
+        // oluşmaz -- sadece adanın iç kısmı NPC'ye açık.
         const isNpc = !tile.isCoastal && Math.random() < settings.npc_spawn_chance;
         const level = isNpc ? 1 + Math.floor(Math.random() * 3) : 1;
         const production = productionForLevel(level, settings);
@@ -465,8 +450,8 @@ export async function pickRandomEmptyTile(): Promise<number | null> {
 // (schema_migrations ile korunan) geçiş: hiçbir oyuncu verisini silmez,
 // sadece henüz kimsenin fethetmediği (owner_id NULL) NPC kamplarını
 // düzenler -- kıyıdakileri boşaltır (yeni kural: kıyıda asla NPC olmaz) ve
-// iç kısımdakilerin bir kısmını da seyrekleştirir (Eren'in "NPC'ler
-// azalsın" isteği). Oyuncuların zaten sahip olduğu hiçbir kareye dokunmaz.
+// iç kısımdakilerin bir kısmını da seyrekleştirir. Oyuncuların zaten sahip
+// olduğu hiçbir kareye dokunmaz.
 export async function applyNpcBorderMigration(settings: Settings) {
   const MIGRATION_NAME = "npc_border_buffer_v1";
   if (await hasMigration(MIGRATION_NAME)) return;
@@ -543,11 +528,11 @@ export async function applyNpcBorderMigration(settings: Settings) {
   );
 }
 
-// İkinci seyreltme turu: Eren "NPC'ler azalıcak" isteğini tekrarladı --
-// applyNpcBorderMigration zaten kıyıdakileri ve iç kısmın yarısını
-// boşaltmıştı, bu geçiş kalan (fethedilmemiş) NPC kamplarının bir kısmını
-// daha kaldırıp npc_spawn_chance ayarını da (hâlâ eski varsayılandaysa)
-// düşürüyor. Aynı şekilde TEK SEFERLİK, oyuncu verisine dokunmuyor.
+// İkinci NPC seyreltme turu: applyNpcBorderMigration zaten kıyıdakileri ve
+// iç kısmın yarısını boşaltmıştı, bu geçiş kalan (fethedilmemiş) NPC
+// kamplarının bir kısmını daha kaldırıp npc_spawn_chance ayarını da (hâlâ
+// eski varsayılandaysa) düşürüyor. Aynı şekilde TEK SEFERLİK, oyuncu
+// verisine dokunmuyor.
 export async function applyNpcDensityReductionMigration(settings: Settings) {
   const MIGRATION_NAME = "npc_density_reduction_v2";
   if (await hasMigration(MIGRATION_NAME)) return;
@@ -580,11 +565,11 @@ export async function applyNpcDensityReductionMigration(settings: Settings) {
   );
 }
 
-// Üçüncü seyreltme turu: Eren "NPC'leri azalt ciddi oranda azalt" dedi --
-// applyNpcDensityReductionMigration (v2) zaten kalan kampların %40'ını
-// boşaltmıştı, bu geçiş kalan (fethedilmemiş) NPC kamplarının YARISINI daha
-// kaldırıp npc_spawn_chance ayarını da (hâlâ eski varsayılandaysa) 0.01'e
-// düşürüyor. Aynı şekilde TEK SEFERLİK, oyuncu verisine dokunmuyor.
+// Üçüncü NPC seyreltme turu: applyNpcDensityReductionMigration (v2) zaten
+// kalan kampların %40'ını boşaltmıştı, bu geçiş kalan (fethedilmemiş) NPC
+// kamplarının YARISINI daha kaldırıp npc_spawn_chance ayarını da (hâlâ eski
+// varsayılandaysa) 0.01'e düşürüyor. Aynı şekilde TEK SEFERLİK, oyuncu
+// verisine dokunmuyor.
 export async function applyNpcDensityReductionMigrationV3(settings: Settings) {
   const MIGRATION_NAME = "npc_density_reduction_v3";
   if (await hasMigration(MIGRATION_NAME)) return;
@@ -617,11 +602,10 @@ export async function applyNpcDensityReductionMigrationV3(settings: Settings) {
   );
 }
 
-// Eren: "başlangıç her zaman ilk ana kalede sabit olmalı" -- bu özellik
-// eklenmeden önce kayıt olmuş oyuncuların home_tile_id'si NULL'dır. Bu
-// geçiş, elden geldiğince (en erken sahip olunan PLAYER karosu) geriye
-// dönük olarak doldurur; yeni kayıtlar zaten /register sırasında set
-// ediyor (bkz. routes/players.ts). TEK SEFERLİK, idempotent.
+// home_tile_id eklenmeden önce kayıt olmuş oyuncuların home_tile_id'si
+// NULL'dır. Bu geçiş, elden geldiğince (en erken sahip olunan PLAYER
+// karosu) geriye dönük olarak doldurur; yeni kayıtlar zaten /register
+// sırasında set ediyor (bkz. routes/players.ts). TEK SEFERLİK, idempotent.
 export async function applyHomeTileBackfillMigration() {
   const MIGRATION_NAME = "home_tile_backfill_v1";
   if (await hasMigration(MIGRATION_NAME)) return;

@@ -30,8 +30,7 @@ export async function initSchema() {
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS gold DOUBLE PRECISION NOT NULL DEFAULT 0;`);
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS gold_collected_at BIGINT NOT NULL DEFAULT 0;`);
 
-  // Admin panelinden bir oyuncuyu yasaklayabilme (Eren'in isteği: "oyunculara
-  // müdahale edilebilecek şeyler ekle") -- yasaklı oyuncunun mevcut token'ı
+  // Admin panelinden oyuncu yasaklama -- yasaklı oyuncunun mevcut token'ı
   // ban anında döndürülür (bkz. routes/admin.ts) ve authenticate/login bu
   // bayrağı kontrol edip erişimi reddeder (bkz. routes/players.ts).
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false;`);
@@ -54,10 +53,9 @@ export async function initSchema() {
     );
   `);
 
-  // Eren: "başlangıç her zaman ilk ana kalede sabit olmalı (her giriş
-  // için)" -- oyuncunun ilk ana kalesinin tile id'si; kayıt olurken set
-  // edilir, login/register cevabında koordinatları (x,y) hesaplamak için
-  // kullanılır ki client her girişte haritayı doğru kaleye ortalayabilsin.
+  // Oyuncunun ilk ana kalesinin tile id'si; kayıt olurken set edilir,
+  // login/register cevabında koordinatları (x,y) hesaplamak için kullanılır
+  // ki client her girişte haritayı ana kaleye ortalayabilsin.
   // (tiles tablosundan SONRA eklenir, çünkü REFERENCES tiles(id) veriyor.)
   await pool.query(
     `ALTER TABLE players ADD COLUMN IF NOT EXISTS home_tile_id INTEGER NULL REFERENCES tiles(id);`
@@ -85,8 +83,8 @@ export async function initSchema() {
 
   // Kare, adasının dış kıyısında mı (en az bir komşusu farklı bir adaya ya
   // da haritanın dışına düşüyor mu)? Kale/NPC yerleşimi bu karolarda asla
-  // olmamalı (Eren'in isteği) -- hem yeni harita üretiminde hem de mevcut
-  // canlı haritaya uygulanan tek seferlik göç (migration) bu alanı kullanır.
+  // olmamalı -- hem yeni harita üretiminde hem de mevcut canlı haritaya
+  // uygulanan tek seferlik göç (migration) bu alanı kullanır.
   await pool.query(`ALTER TABLE tiles ADD COLUMN IF NOT EXISTS is_coastal BOOLEAN NOT NULL DEFAULT false;`);
 
   // Lonca (klan) sistemi -- basit: bir oyuncu en fazla bir loncaya üye olur.
@@ -98,11 +96,10 @@ export async function initSchema() {
       created_at BIGINT NOT NULL
     );
   `);
-  // Eren: "oyuna aynı şekilde aynı stilde ama farklı görselleri olan 10 adet
-  // lonca bayrağı ekle, lonca kurulumunda seçilebilmeli" -- bayrağın kendisi
-  // sabit bir SVG şablonu + renk/amblem (bkz. client App.tsx GUILD_FLAG_DEFS),
-  // burada sadece hangi bayrağın seçildiği (1-10) saklanıyor. Eski loncalar
-  // için varsayılan 1.
+  // Lonca bayrağı: görselin kendisi client'ta sabit bir SVG şablonu +
+  // renk/amblem (bkz. client game/guildFlags.ts GUILD_FLAG_DEFS), burada
+  // sadece hangi bayrağın seçildiği (1-10) saklanıyor. Eski loncalar için
+  // varsayılan 1.
   await pool.query(`ALTER TABLE guilds ADD COLUMN IF NOT EXISTS flag_id INTEGER NOT NULL DEFAULT 1;`);
 
   await pool.query(`
@@ -139,11 +136,10 @@ export async function initSchema() {
   `);
 
   // Gözcü/casusluk sistemi: bir oyuncunun bir kareye gönderdiği en SON
-  // gözcü raporunun anlık görüntüsü (asker/üretim). Eren'in isteği:
-  // "gözlendiği bilgi kalıcak, yeni bilgi için yine casus gönderilmesi
-  // gerekicek" -- yani bilgi CANLI değil, bir sonraki gözcüye kadar dondu.
-  // Bu yüzden (scout_player_id, tile_id) başına TEK satır tutulup yeni
-  // gözcü göndermede üzerine yazılıyor (UPSERT), geçmiş raporlar birikmiyor.
+  // gözcü raporunun anlık görüntüsü (asker/üretim). Bilgi CANLI değil, bir
+  // sonraki gözcüye kadar donmuş kalır. Bu yüzden (scout_player_id,
+  // tile_id) başına TEK satır tutulup yeni gözcüde üzerine yazılıyor
+  // (UPSERT), geçmiş raporlar birikmiyor.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS scout_reports (
       id SERIAL PRIMARY KEY,
@@ -177,15 +173,14 @@ export async function initSchema() {
     `CREATE INDEX IF NOT EXISTS player_reports_player_idx ON player_reports (player_id, created_at DESC);`
   );
 
-  // Eren: "Oyunda artık saldırılar zamanlamalı olsun... saldırdığın kaleden
-  // saldırdığın kaleye gidildiğini belli eden bir saldırı hattı olsun" --
-  // saldırı artık TEK bir istekte anında çözülmüyor, önce bu tabloya bir
-  // "yolda" kaydı düşülüyor (bkz. game/attacks.ts createAttackOrder), asıl
-  // çarpışma askerler hedefe ULAŞTIĞINDA (arrives_at geçince) arka planda
-  // çözülüyor (bkz. resolveDueAttackOrders, index.ts'teki periyodik tur).
-  // from_x/from_y/target_x/target_y bilerek DENORMALİZE edildi (tiles'a JOIN
-  // gerekmesin diye) -- istemci bu satırları animasyon hattı çizmek için sık
-  // sık çekiyor (bkz. GET /tiles/attacks/active).
+  // Zamanlı saldırılar: saldırı TEK bir istekte anında çözülmüyor, önce bu
+  // tabloya bir "yolda" kaydı düşülüyor (bkz. game/attacks.ts
+  // createAttackOrder), asıl çarpışma askerler hedefe ULAŞTIĞINDA
+  // (arrives_at geçince) arka planda çözülüyor (bkz. resolveDueAttackOrders,
+  // index.ts'teki periyodik tur). from_x/from_y/target_x/target_y bilerek
+  // DENORMALİZE edildi (tiles'a JOIN gerekmesin diye) -- istemci bu
+  // satırları animasyon hattı çizmek için sık sık çekiyor (bkz. GET
+  // /tiles/attacks/active).
   await pool.query(`
     CREATE TABLE IF NOT EXISTS attack_orders (
       id SERIAL PRIMARY KEY,
@@ -205,10 +200,9 @@ export async function initSchema() {
     `CREATE INDEX IF NOT EXISTS attack_orders_arrives_idx ON attack_orders (arrives_at);`
   );
 
-  // Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun" -- kullanıcı
-  // adıyla gönderilen, kabul/reddedilene kadar bekleyen basit bir davet
-  // kuyruğu. Bir oyuncunun aynı loncadan birden fazla bekleyen daveti
-  // olmasın diye (guild_id, invited_player_id) tekil.
+  // Lonca davetleri -- kullanıcı adıyla gönderilen, kabul/reddedilene kadar
+  // bekleyen basit bir davet kuyruğu. Bir oyuncunun aynı loncadan birden
+  // fazla bekleyen daveti olmasın diye (guild_id, invited_player_id) tekil.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS guild_invites (
       id SERIAL PRIMARY KEY,
@@ -220,11 +214,10 @@ export async function initSchema() {
     );
   `);
 
-  // Eren: "sol üstte içerisine görsel yüklenebilicek şekilde oyuncu profili
-  // olsun" -- avatar küçük bir data-URL (base64) olarak doğrudan players
-  // satırında tutuluyor (ayrı dosya depolama/CDN kurmaya değecek kadar
-  // büyük bir ihtiyaç değil -- bkz. routes/players.ts avatar yükleme ucu,
-  // istemci tarafında zaten küçük bir kareye indirgenip sıkıştırılıyor).
+  // Profil fotoğrafı -- avatar küçük bir data-URL (base64) olarak doğrudan
+  // players satırında tutuluyor (ayrı dosya depolama/CDN kurmaya değecek
+  // kadar büyük bir ihtiyaç değil -- bkz. routes/players.ts avatar yükleme
+  // ucu, istemci tarafında zaten küçük bir kareye indirgenip sıkıştırılıyor).
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_data TEXT NULL;`);
 }
 

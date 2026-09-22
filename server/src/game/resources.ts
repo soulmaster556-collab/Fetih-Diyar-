@@ -12,8 +12,8 @@ const HOUR_MS = 60 * 60 * 1000;
  * yüzden askerler hâlâ karo (tile) bazında hesaplanır.
  */
 export function computeLiveTroops(tile: TileRow, settings: Settings, now: number = Date.now()) {
-  // Eren: "admin paneline oyun hızı yönetimini ekle" -- game_speed üretimi
-  // doğrudan hızlandırır (2 = biriken asker/altın 2 kat hızlı artar).
+  // game_speed üretimi doğrudan hızlandırır (2 = biriken asker/altın 2 kat
+  // hızlı artar). Admin panelinden ayarlanır.
   const elapsedHours = Math.max(0, (now - tile.last_collected_at) / HOUR_MS) * settings.game_speed;
   const capHours = settings.resource_cap_hours;
 

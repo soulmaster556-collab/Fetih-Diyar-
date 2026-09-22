@@ -2,11 +2,9 @@
   box-sizing: border-box;
 }
 
-/* Eren'in isteği: "oyunun genel tasarımını da renklendir, pencereler olsun
-   üst menü olsun" -- yeni kale görsellerindeki lacivert/gece-mavisi taş +
-   turkuaz + altın paletini tüm arayüze (üst menü, panelller, kartlar,
-   butonlar) taşıyan tek bir renk sistemi. Böylece kaleler ile arayüz artık
-   aynı görsel dile ait hissediyor -- eskiden her şey düz beyaz/açık maviydi. */
+/* Renk sistemi -- kale görsellerindeki lacivert/gece-mavisi taş + turkuaz +
+   altın paletini tüm arayüze (üst menü, paneller, kartlar, butonlar)
+   taşıyor, böylece kaleler ile arayüz aynı görsel dile ait. */
 :root {
   --ink: #101b26;
   --panel-1: #16222f;
@@ -176,9 +174,8 @@ button:disabled {
   overflow: hidden;
 }
 
-/* Eren: "üstteki bölümüde daha efektif daha 3D havasında düzenle" -- üst
-   menü artık düz beyaz bir bant değil, hafif cilalı/kabartma ("HUD")
-   hissi veren gradyan + gölye katmanlı bir şerit. */
+/* Üst menü: hafif cilalı/kabartma ("HUD") hissi veren gradyan + gölge
+   katmanlı bir şerit. */
 .topbar {
   position: absolute;
   top: 0;
@@ -199,24 +196,18 @@ button:disabled {
   pointer-events: auto;
 }
 
-/* Eren: "Sol üst tarafda uygun bir yere oyuncu profili bölümü olsun ...
-   içerisine görsel yüklenebilecek şekilde tasarım yap. Fetih diyarı yazısını
-   kaldırabilirsin yuvarlak oyuncu profil ve tasarım biraz büyük olmalı." --
-   eski "Fetih Diyarı" başlığının yerini, üst menünün sol ucunda büyükçe
-   yuvarlak bir profil fotoğrafı + kullanıcı adı alıyor. Fotoğrafa tıklamak
-   dosya seçiciyi açıyor (bkz. App.tsx gizli input[type=file]).*/
+/* Üst menünün sol ucunda büyükçe yuvarlak profil fotoğrafı + kullanıcı
+   adı. Fotoğrafa tıklamak dosya seçiciyi açıyor (bkz. TopBar.tsx gizli
+   input[type=file]). */
 .profile-widget {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-/* Eren (3. tur): "Sol üstteki profil yuvarlağını büyüt biraz oradaki mavi
-   bardan dışarı çıksın." -- 58px -> 76px büyütüldü. .topbar'ın kendi
-   yüksekliği içeriğe göre belirleniyor (sabit height yok) ve arka planı
-   aşağı doğru şeffaflaşan bir gradyan (bkz. .topbar), bu yüzden büyüyen
-   avatarın alt kısmı doğal olarak barın "koyu" bölgesinin dışına, solan
-   kısma taşıyor -- ekstra negatif margin gerekmedi. */
+/* .topbar'ın yüksekliği içeriğe göre belirleniyor ve arka planı aşağı
+   doğru şeffaflaşıyor -- bu yüzden avatarın alt kısmı doğal olarak barın
+   dışına taşıyor, ekstra negatif margin gerekmiyor. */
 .profile-avatar-btn {
   position: relative;
   width: 76px;
@@ -307,10 +298,9 @@ button:disabled {
 
 /* Kabartma/cilalı buton hissi: üstte parlak vurgu, altta koyu "kenar"
    gölgesi -- basılınca (active/tıklama) o kenar payı azalıp buton bir
-   tık aşağı iner, gerçek bir fiziksel düğmeye basılmış gibi.
-   Eren: "oyunun genel tasarımını renklendir, üst menü olsun" -- düğmeler
-   artık beyaz-üstü-gri değil, kale görselleriyle aynı lacivert/turkuaz
-   camsı yüzey; seçili (active) durum turkuaz/altın parıltıyla öne çıkıyor. */
+   tık aşağı iner, gerçek bir fiziksel düğmeye basılmış gibi. Yüzey kale
+   görselleriyle aynı lacivert/turkuaz cam; seçili (active) durum
+   turkuaz/altın parıltıyla öne çıkıyor. */
 .kingdom-toggle {
   background: linear-gradient(180deg, #24384a 0%, #17242f 100%);
   color: var(--text-bright);
@@ -345,9 +335,8 @@ button:disabled {
     0 4px 10px rgba(0, 0, 0, 0.3);
 }
 
-/* Madde 1: tek yerde toplam altın/asker üretimi + ortak altın havuzu.
-   Her rakam artık kendi "kristal/rozet" kutucuğunda -- cilalı kabartma
-   hissi veren iç/dış gölgelerle (Eren: "daha 3D havasında"). */
+/* Toplam altın/asker üretimi + ortak altın havuzu. Her rakam kendi
+   "kristal/rozet" kutucuğunda, iç/dış gölgelerle kabartma hissi. */
 .summary-bar {
   display: flex;
   gap: 8px;
@@ -476,10 +465,8 @@ button:disabled {
   filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.45));
 }
 
-/* Eren: "Boş veya dekorlara tıklayınca tepki olmasın ... oralar ölü
-   alanlar." -- boş kareler artık normal bir karo gibi "tıklanabilir"
-   görünmesin diye imleç normale dönüyor (tepkinin kendisi App.tsx'teki
-   onClick'te zaten tamamen engelleniyor, bu sadece görsel ipucu). */
+/* Boş kareler "ölü alan": imleç normale dönüyor (tıklamanın kendisi
+   MapView'daki onClick'te engelleniyor, bu sadece görsel ipucu). */
 .iso-tile-group.iso-tile-dead {
   cursor: default;
 }
@@ -491,29 +478,25 @@ button:disabled {
 .iso-diamond {
   position: absolute;
   inset: 0;
-  /* Eren: haritayı altıgene çevirdik -- eski baklava (rhombus) kırpma yerine
-     sivri-uçlu (pointy-top) altıgen köşe noktaları (bkz. App.tsx isoCenter). */
+  /* Sivri-uçlu (pointy-top) altıgen köşe noktaları (bkz. hexMath.ts
+     isoCenter). */
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
   background: transparent;
   transition: background-color 0.1s ease;
 }
 
-/* Eren: "Haritada Mouse ile gezerken altıgenlerin üzerinde efek oluyor o
-   olmasın" -- hover'da beliren beyaz vurgu kaldırıldı. Seçili karo vurgusu
-   (.selected) ve ayrı bir davranış olan bilgi etiketi hover'ı (bkz.
-   .iso-tile-group:hover .tile-info-label) korunuyor. */
+/* Hover'da karo vurgusu bilerek yok. Seçili karo vurgusu (.selected) ve
+   bilgi etiketi hover'ı (bkz. .iso-tile-group:hover .tile-info-label)
+   ayrı davranışlar. */
 
-/* Eren: "Karenin üzerine basınca çıkan sarı şeyi istemiyorum" -- eski sarı
-   dolgu vurgusu kaldırıldı. Seçili karoyu artık ayrı bir renkli katman değil,
-   TIKLAMA HİSSİYATININ KENDİSİ (aşağıdaki .iso-tile-group:active) belli
-   ediyor -- tıpkı üst menüdeki butonlara basınca olduğu gibi. */
+/* Seçili karo için ayrı renkli dolgu yok -- tıklama hissiyatının kendisi
+   (aşağıdaki .iso-tile-group:active) yeterli. */
 .iso-diamond.selected {
   background: transparent;
 }
 
-/* Eren: "kalelere de uygula ve tıklanabilen heryere uygula" -- üst menü
-   butonlarındaki (.kingdom-toggle:active) hafif "bas ve geri yaylan" hissini
-   tüm tıklanabilir yüzeylere (karolar dahil) genelleştiren tek bir kural. */
+/* Üst menü butonlarındaki hafif "bas ve geri yaylan" hissini tüm
+   tıklanabilir yüzeylere (karolar dahil) genelleştiren tek kural. */
 button:not(:disabled),
 .iso-tile-group:not(.iso-tile-dead) {
   transition: transform 0.08s ease;
@@ -538,13 +521,10 @@ button:not(:disabled):active {
   object-position: bottom center;
 }
 
-/* Eren: "Sadece oyuncu kalelerine ışıltı ekle" (1. tur), sonra "Tüm kale ve
-   dekorlara da ışıltı ekle" (2. tur) -- her obje türü artık kendi rengiyle
-   yumuşak, yavaşça nefes alan bir parıltıya sahip: oyuncu kaleleri altın
-   (Valerion kristal/taç temasıyla uyumlu), NPC kampları lav setinin
-   turuncu-kızılıyla, dağ dekorları ise buz/kristal turkuazıyla. drop-shadow
-   kullanıyoruz (box-shadow değil) çünkü görseller şeffaf PNG -- drop-shadow
-   gerçek siluete göre yayılıyor, dikdörtgen kutuya göre değil. */
+/* Her obje türü kendi rengiyle yavaşça nefes alan bir parıltıya sahip:
+   oyuncu kaleleri altın, NPC kampları turuncu-kızıl, dağ dekorları buz/
+   kristal turkuaz. box-shadow değil drop-shadow kullanılıyor çünkü
+   görseller şeffaf PNG -- drop-shadow gerçek siluete göre yayılıyor. */
 .iso-castle-glow {
   animation: castle-glow-pulse 2.6s ease-in-out infinite;
 }
@@ -584,22 +564,15 @@ button:not(:disabled):active {
   }
 }
 
-/* Zemin -- Eren: "zemini iptal et tek renk açık yeşil zemin koy, altıgenleri
-   görmek istemiyorum -- dümdüz tek renk açık yeşil". Doku/fotoğraf tamamen
-   kaldırıldı (bir dokunun en ufak ton farkı bile komşu karo sınırlarında bal
-   peteği deseni gibi görünüyordu) -- artık düz TEK renk background-color.
-   Karo altıgen şekline clip-path ile kırpılıyor ki komşu karolar arasında
-   hiçbir çizgi/dikiş görünmesin. */
+/* Zemin -- düz TEK renk background-color (doku/fotoğraf zemin, komşu karo
+   sınırlarında bal peteği deseni gibi görünüyordu). Karo altıgen şekline
+   clip-path ile kırpılıyor ki komşu karolar arasında dikiş görünmesin. */
 .iso-ground {
   position: absolute;
-  /* Eren: "altıgen kesişim yerlerinde dikey boşluk çizgileri oluyor" --
-     komşu karoların clip-path'li altıgenleri, tarayıcının alt piksel
-     yuvarlamasından dolayı bazen 1px'in altında boşluk bırakıyor, altından
-     da .map-viewport'un mavi deniz zemini görünüyordu (tam olarak o dikey
-     çizgiler). Zemin artık tek düz renk olduğu için bu 1px'lik "taşma"yı her
-     yöne uygulayıp komşu karolarla hafifçe üst üste bindirmek tamamen
-     güvenli -- aynı renk üst üste bindiği için görünmez, ama alttaki mavi
-     asla sızmıyor. */
+  /* Tarayıcının alt piksel yuvarlaması clip-path'li komşu altıgenler
+     arasında 1px'in altında boşluk bırakıp alttaki mavi zemini dikey çizgi
+     gibi gösteriyordu. Zemin tek renk olduğu için 1px taşırıp komşularla
+     hafifçe üst üste bindirmek güvenli -- mavi asla sızmıyor. */
   inset: -1px;
   z-index: 0;
   pointer-events: none;
@@ -624,13 +597,10 @@ button:not(:disabled):active {
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
 
-/* Seviye rozeti katmanı -- bkz. App.tsx .iso-labels-layer yorumu. Bu katman
-   tüm .iso-tile-group'ların VE .iso-mountain'ların üstünde durur ki hiçbir
-   karonun/dağın zemini/kalesi bir rozetin üstüne binemesin. Eren'in dağ
-   isteği için karoların z-index'i artık koordinata göre değişen bir aralık
-   kullanıyor (10 + x + y, WORLD_SIZE=200 için üst sınır ~410) -- bu yüzden
-   eski sabit 5 değeri yetersiz kalırdı, 500'e çıkarıldı (yine de rahat bir
-   pay bırakacak şekilde, olası ileride daha büyük bir haritada bile). */
+/* Seviye rozeti katmanı -- tüm .iso-tile-group'ların VE .iso-mountain'ların
+   üstünde durur ki hiçbir karo/dağ bir rozetin üstüne binemesin. Karoların
+   z-index'i 10 + x + y (WORLD_SIZE=200 için üst sınır ~410), bu yüzden
+   bu katman 500'de. */
 .iso-labels-layer {
   position: absolute;
   inset: 0;
@@ -642,13 +612,10 @@ button:not(:disabled):active {
   position: absolute;
 }
 
-/* Kale/NPC'nin üstündeki "orada" (haritada, tıklamadan görünen) küçük
-   üretim/asker etiketi. Karonun üst ucunun biraz üstünde, ortalanmış. Artık
-   sadece gözcülenmiş (ya da kendi/klan) kalelerde görünüyor -- bkz. App.tsx
-   hasIntel/showInfoLabel. Eren: "üretim bilgileri sabit olmamalı, mouse ile
-   üzerine gelince görünebilir" -- bu yüzden varsayılan gizli, sadece karo
-   üzerine gelince (hover) beliriyor. Seviye rozeti bundan ayrı ve her zaman
-   görünür kalıyor (aşağıdaki .level-badge). */
+/* Kale/NPC'nin üstündeki küçük üretim/asker etiketi -- sadece gözcülenmiş
+   (ya da kendi/klan) kalelerde (bkz. MapView hasIntel/showInfoLabel).
+   Varsayılan gizli, sadece karo üzerine gelince (hover) beliriyor. Seviye
+   rozeti bundan ayrı ve her zaman görünür (aşağıdaki .level-badge). */
 .tile-info-label {
   position: absolute;
   top: -18px;
@@ -675,20 +642,12 @@ button:not(:disabled):active {
   opacity: 1;
 }
 
-/* Seviye rozeti -- gözcüye bağlı değil, her zaman görünür (Eren: "Haritada
-   kalelerin üzerine levellerini yazalım"). Bilgi etiketinin biraz üstünde
-   durur ki ikisi de görünürken üst üste binmesin. Sarı/altın = oyuncu
-   kalesi (kendi/klan/düşman fark etmez), gri = NPC kampı (Eren: "npc
-   ninkiler gri olabilir level tabelaları"). */
-/* Eren: "level yazılarını kalelere yakınlaştır veya farklı stil ayarla" --
-   kaleler büyüdüğü için (bkz. App.tsx castleBoxHeight 0.62->0.82) eski sabit
-   -34px boşluk artık kalenin tepesiyle rozet arasında gereksiz büyük bir
-   boşluk bırakıyordu; -22px'e çekildi (hover'da beliren .tile-info-label
-   -18px'te olduğu için tam üst üste binmesin diye birkaç piksel pay
-   bırakıldı). Ayrıca yuvarlak hap yerine oyunun hex
-   temasıyla eşleşen küçük, sivri-altlı bir "flama" şekli verildi (bkz.
-   .hex-menu-level-shield ile aynı aile) -- farklı ve daha "oyun içi rozet"
-   hissi veren bir stil. */
+/* Seviye rozeti -- gözcüye bağlı değil, her zaman görünür. Bilgi
+   etiketinin biraz üstünde durur ki ikisi üst üste binmesin. Sarı/altın =
+   oyuncu kalesi, gri = NPC kampı. */
+/* -22px: kalenin tepesine yakın, ama hover'da beliren .tile-info-label
+   (-18px) ile üst üste binmeyecek kadar pay var. Şekil, hex temasıyla
+   eşleşen sivri-altlı küçük bir "flama" (bkz. .hex-menu-level-shield). */
 .level-badge {
   position: absolute;
   top: -22px;
@@ -711,23 +670,20 @@ button:not(:disabled):active {
   color: #2c3238;
 }
 
-/* Eren: "oyuncunun kalelerinin yanındaki yeşil yuvarlağı kaldır ... sadece
-   düşman oyuncuyu da kırmızı yap" -- sahiplik ayrı bir rozet yerine bu
-   seviye etiketinin rengiyle gösteriliyor: NPC gri (yukarıda), kendi/klan
-   sarı (varsayılan .level-badge), düşman oyuncu kırmızı (bu kural). */
+/* Sahiplik seviye etiketinin rengiyle gösteriliyor: NPC gri (yukarıda),
+   kendi/klan sarı (varsayılan .level-badge), düşman oyuncu kırmızı (bu
+   kural). */
 .level-badge.level-badge-enemy {
   background: linear-gradient(180deg, #e5484d, rgba(217, 58, 58, 0.95));
   color: #fff5f2;
 }
 
-/* Eren: "Oyunda artık saldırılar zamanlamalı olsun ... saldırdığın kaleden
-   saldırdığın kaleye gidildiğini belli eden bir saldırı hattı olsun ...
-   hareketli olsun" -- yolda olan her saldırı için: (1) kaynak-hedef arası
-   kesikli, hafif parlayan bir hat (SVG <line>), (2) o hat üzerinde CSS
-   Motion Path (offset-path) ile gerçek zamanlı ilerleyen bir asker işareti.
-   Katman tüm karoların/dağların/etiketlerin ÜSTÜNDE (bkz. yukarıdaki
-   .iso-labels-layer notu, aynı sebeple z-index 6'dan 501'e çıkarıldı), ama
-   tıklamaları asla yakalamasın diye pointer-events: none. */
+/* Yolda olan her saldırı için: (1) kaynak-hedef arası kesikli, hafif
+   parlayan bir hat (SVG path), (2) o hat üzerinde CSS Motion Path
+   (offset-path) ile gerçek zamanlı ilerleyen bir asker işareti. Katman
+   tüm karoların/dağların/etiketlerin ÜSTÜNDE (z-index 501, bkz.
+   .iso-labels-layer notu), ama tıklamaları yakalamasın diye
+   pointer-events: none. */
 .attack-lines-layer {
   position: absolute;
   inset: 0;
@@ -810,12 +766,10 @@ button:not(:disabled):active {
 /* Sağdaki/soldaki kalıcı barlar kalktı -- "Krallığım" listesi ve "Seçili
    Kare" bilgisi artık ihtiyaç oldukça beliren, üstteki menü/tıklanan karoya
    göre konumlanan yüzen kartlar (bkz. App.tsx kingdom-dropdown / tile-card). */
-/* Eren (3. tur): "Tüm açılan pencereler 3d gibi boyutlu olsun" -- tüm
-   pop-up panellerin (bu ikisi + aşağıdaki .modal-screen) ortak "3D" reçetesi:
-   1) kalınca, hafif parlak bir dış çerçeve, 2) üst iç kenarda ince bir ışık
-   şeridi (sanki panel kabartmalı/oyulmuş), 3) alt iç kenarda koyu bir gölge
-   (derinlik), 4) daha güçlü/katmanlı dış gölge. Tek bir --panel-3d-shadow
-   değişkeni yerine her yerde aynı deseni tekrar yazıyoruz çünkü border-radius
+/* Tüm pop-up panellerin (bu ikisi + aşağıdaki .modal-screen) ortak "3D"
+   reçetesi: 1) kalınca, hafif parlak dış çerçeve, 2) üst iç kenarda ince
+   ışık şeridi, 3) alt iç kenarda koyu gölge, 4) katmanlı dış gölge. Ortak
+   bir değişken yerine her yerde tekrar yazılıyor çünkü border-radius
    farklı (12px vs 16px) -- inset gölgelerin görünürlüğü radius'a duyarlı. */
 .kingdom-dropdown,
 .tile-card {
@@ -842,9 +796,8 @@ button:not(:disabled):active {
   max-height: min(70vh, 560px);
 }
 
-/* Eren: "belkide oyuncu 100'lerce kale sahibi olucak" -- Krallığım listesi
-   bir tablo görünümüne geçtiği için (arama/sıralama/sayfalama sığsın diye)
-   normal 300px yerine biraz daha geniş bir panel kullanıyor. */
+/* Krallığım listesi tablo görünümünde (arama/sıralama/sayfalama sığsın
+   diye) normal 300px yerine biraz daha geniş bir panel kullanıyor. */
 .kingdom-dropdown-wide {
   width: 420px;
 }
@@ -967,8 +920,7 @@ button:not(:disabled):active {
   background: rgba(255, 255, 255, 0.12);
 }
 
-/* Eren: "10 adet lonca bayrağı ekle ... lonca kurulumunda olsun
-   seçilebilmeli" -- yeni lonca formundaki 10 küçük bayrak seçici kart. */
+/* Yeni lonca formundaki 10 küçük bayrak seçici kart. */
 .guild-flag-picker {
   display: flex;
   flex-wrap: wrap;
@@ -1189,9 +1141,8 @@ button:not(:disabled):active {
   font-size: 13px;
 }
 
-/* Eren: "Lonca bölümünü geliştir oyuncu davet falan olsun." -- davet
-   formu ve alt başlıklar, panelin geri kalanıyla (login-form/city-list)
-   aynı görsel dilde ama biraz daha kompakt. */
+/* Lonca davet formu ve alt başlıklar -- panelin geri kalanıyla
+   (login-form/city-list) aynı görsel dilde ama biraz daha kompakt. */
 .guild-section-heading {
   margin: 16px 0 6px;
   font-weight: 700;
@@ -1305,11 +1256,9 @@ button:not(:disabled):active {
   font-weight: 600;
 }
 
-/* Admin paneli -- Eren: "admin panelini daha profesyonel yap, oyuncular
-   bölümü ekle, oyunculara müdahale edilebilecek şeyler ekle". Eski panel
-   düz beyaz/açık mavi bir form ekranıydı; artık oyunun geri kalanıyla aynı
-   lacivert/altın/turkuaz temayı (bkz. :root, .modal-screen, .kingdom-table)
-   kullanan, sekmeli (Oyuncular / Ayarlar) tam bir kontrol paneli. */
+/* Admin paneli -- oyunun geri kalanıyla aynı lacivert/altın/turkuaz
+   temayı (bkz. :root, .modal-screen, .kingdom-table) kullanan, sekmeli
+   (Oyuncular / Ayarlar) kontrol paneli. */
 .admin-login {
   height: 100vh;
   display: flex;
@@ -1763,10 +1712,8 @@ button:not(:disabled):active {
   padding: 5px 9px;
 }
 
-/* Eren: "Liderlik panosu öne ayrı ekran olarak çıksın" / "Mesajlar
-   raporlar bölümü de öne ayrı ekran olarak açılsın... profesyonel bir
-   şekilde tasarla" -- ikisi de artık haritanın üstüne koyu bir perde
-   (backdrop) ile açılan, ortalanmış, kendi başına bir "ekran". */
+/* Liderlik/Raporlar/Lonca -- haritanın üstüne koyu bir perde (backdrop)
+   ile açılan, ortalanmış, kendi başına bir "ekran". */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1788,8 +1735,7 @@ button:not(:disabled):active {
   background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel-1) 100%);
   border: 1.5px solid rgba(255, 255, 255, 0.16);
   border-radius: 16px;
-  /* Eren (3. tur): "Tüm açılan pencereler 3d gibi boyutlu olsun" -- bkz.
-     .tile-card/.kingdom-dropdown'daki aynı reçete. */
+  /* 3D panel reçetesi -- bkz. .tile-card/.kingdom-dropdown. */
   box-shadow:
     0 26px 60px rgba(0, 0, 0, 0.58),
     0 2px 0 rgba(0, 0, 0, 0.4),
@@ -2052,7 +1998,7 @@ button:not(:disabled):active {
 }
 
 /* Kendi kalenin eylem menüsü -- her eylem türü kendi rengiyle ayırt
-   ediliyor (Eren: "Saldırı menüsünü daha profesyonel hale getir"). */
+   ediliyor. */
 .castle-actions button.castle-action-attack {
   background: #fdeee9;
   border-color: #f3c3b3;
@@ -2093,9 +2039,7 @@ button:not(:disabled):active {
   background: #cdf0d5;
 }
 
-/* Saldır/Destek/Gözcü onay kartı -- rota özeti + hızlı yüzde butonları ile
-   daha profesyonel bir akış (Eren: "Saldırı menüsünü daha profesyonel hale
-   getir"). */
+/* Saldır/Destek/Gözcü onay kartı -- rota özeti + hızlı yüzde butonları. */
 .pending-action-card .tile-card-header h2 {
   text-transform: none;
   font-size: 15px;
@@ -2202,14 +2146,13 @@ button:not(:disabled):active {
   background: var(--gold-strong);
 }
 
-/* ---- Yeni altıgen kale menüsü (Eren'in referans görseline benzer mantık:
-   üstte oyuncu/klan/level banner'ı, altta altıgen şekilli eylem butonları). */
+/* ---- Altıgen kale menüsü: üstte oyuncu/klan/level banner'ı, altta
+   altıgen şekilli eylem butonları. */
 .hex-menu {
   padding: 0;
   border: 1.5px solid var(--hairline-gold);
-  /* Eren (3. tur): "Tüm açılan pencereler 3d gibi boyutlu olsun" -- .tile-card
-     tabanındaki 3D reçeteyle aynı katmanlar (üst ışık şeridi + alt iç gölge),
-     üstüne bu panele özel altın parıltı halkası eklendi. */
+  /* .tile-card tabanındaki 3D reçeteyle aynı katmanlar (üst ışık şeridi +
+     alt iç gölge), üstüne bu panele özel altın parıltı halkası. */
   box-shadow:
     0 20px 40px rgba(0, 0, 0, 0.55),
     0 2px 0 rgba(0, 0, 0, 0.4),
@@ -2242,11 +2185,8 @@ button:not(:disabled):active {
   border-color: var(--danger);
 }
 
-/* Eren: "Saldırı menüsü ... şuan verdiğim görsel tarzda olsun" -- referans
-   görselde üstte oyulmuş/kabartma hissi veren koyu lacivert bir "hap" banner
-   (isim + rütbe kalkanı + lonca rozeti), altında canlı renkli altıgen aksiyon
-   düğmeleri var. Aynı ruh burada da: banner artık yuvarlak uçlu, biraz daha
-   derin bir gradyan + altın çerçeve ile "oyulmuş" bir kapsül gibi duruyor. */
+/* Banner: yuvarlak uçlu, derin gradyan + altın çerçeveyle "oyulmuş" bir
+   kapsül (isim + rütbe kalkanı + lonca rozeti). */
 .hex-menu-banner {
   display: flex;
   align-items: center;
@@ -2327,21 +2267,16 @@ button:not(:disabled):active {
   padding: 12px 14px 14px;
 }
 
-/* Eren: "Kale üzerine gelince açılan menüyü kalenin altından kalenin sağına
-   ve soluna uzuyacak şekilde yarım ay olarak yap. Ve yarım ayın çizgisinin
-   üzerinede saldır, destek, gözcü, yükselt ekle." -- eski 2x2 "petek" ızgarası
-   yerine, dört buton artık bir yarım ay/hilal eğrisi üzerinde: uçlar (Saldır/
-   Yükselt) yukarıda -- kalenin iki yanı hizasında -- ortadakiler (Destek/
-   Gözcü) aşağıda -- kalenin altında -- yani bir "gülümseme"/hilal şekli
-   çiziyor. Eğrinin kendisi de altın, kesik çizgili bir hilal şeridiyle
-   görselleştiriliyor (bkz. App.tsx .hex-actions-arc SVG'si), butonlar tam o
-   çizginin üzerine oturuyor. */
+/* Dört buton bir hilal eğrisi üzerinde: uçlar (Saldır/Yükselt) yukarıda
+   -- kalenin iki yanı hizasında -- ortadakiler (Destek/Gözcü) aşağıda --
+   kalenin altında. Eğrinin kendisi bir bar olarak çiziliyor (bkz.
+   TileMenu.tsx .hex-actions-arc SVG'si), butonlar o çizginin üzerine
+   oturuyor. */
 .hex-actions {
   position: relative;
-  /* Eren (3. tur): "Saldırı menüsünü daha ufalt" -- 150px'ten 118px'e
-     küçültüldü; SVG viewBox'ı da (bkz. App.tsx) 260x118 olarak birebir bu
-     yüksekliğe eşleniyor ki bar/buton konumlarını px cinsinden hesaplamak
-     kolay olsun (bkz. .hex-action nth-child yorumu). */
+  /* 118px -- SVG viewBox'ı da (bkz. TileMenu.tsx) 260x118 olarak birebir
+     bu yüksekliğe eşleniyor ki bar/buton konumlarını px cinsinden
+     hesaplamak kolay olsun (bkz. .hex-action nth-child yorumu). */
   height: 118px;
   margin: 4px 0 2px;
   /* Kapsayıcı .hex-menu-floating pointer-events:none olduğu için (bkz.
@@ -2370,11 +2305,9 @@ button:not(:disabled):active {
   overflow: visible;
 }
 
-/* Eren (3. tur): "Bu 4 ikonu birbirine bağlayan kalın bir bar ekle" -- eski
-   ince kesik-çizgili altın hilal yerine, iki path üst üste bindirilerek
-   kalın, cilalı bir metal "kemer/bar" çiziliyor: gövde (koyu-açık gradyan,
-   kalın stroke) + üstüne ince beyaz "parlama" şeridi (hafif yukarı kaydırılmış
-   ikinci path, cam/metal yüzeyin üstten ışık alması hissi için). */
+/* İki path üst üste bindirilerek kalın, cilalı bir metal "bar": gövde
+   (koyu-açık gradyan, kalın stroke) + üstüne ince beyaz "parlama" şeridi
+   (hafif yukarı kaydırılmış ikinci path). */
 .hex-actions-bar-body {
   fill: none;
   stroke: url(#hexActionsBarGradient);
@@ -2420,13 +2353,11 @@ button:not(:disabled):active {
 }
 
 /* Sırasıyla: Saldır (sol uç, yukarıda), Destek (sol-orta, aşağıda), Gözcü
-   (sağ-orta, aşağıda), Yükselt (sağ uç, yukarıda) -- Eren'in verdiği sırayla
-   ("saldır, destek, gözcü, yükselt") soldan sağa, hilalin çizgisi üzerinde.
-   nth-child 2'den başlıyor çünkü ilk çocuk artık dekoratif SVG (1). */
-/* Eren (3. tur): "ikonlar bardan dışarı taşıcak şekilde olmalı hem
-   aşağıdan hem yukarıdan" -- top değerleri, barın (bkz. App.tsx path'i
-   "M 16 24 Q 130 84 244 24") o x noktasındaki y'sine göre HESAPLANDI ki
-   altıgen rozetin (48px yüksek) dikey ortası tam barın üzerine denk gelsin:
+   (sağ-orta, aşağıda), Yükselt (sağ uç, yukarıda). nth-child 2'den
+   başlıyor çünkü ilk çocuk dekoratif SVG. */
+/* top değerleri, barın (bkz. TileMenu.tsx path'i "M 16 24 Q 130 84 244 24")
+   o x noktasındaki y'sine göre HESAPLANDI ki altıgen rozetin (48px yüksek)
+   dikey ortası tam barın üzerine denk gelsin:
    uç butonlarda (Saldır/Yükselt, x≈16/244) bar y=24 -> top=0 (merkez 0+24=24);
    orta butonlarda (Destek/Gözcü, x≈88/172) bar y≈50 -> top=26 (merkez 26+24=50).
    Böylece rozetin üst yarısı barın üstünde, alt yarısı altında kalıyor. */
@@ -2436,7 +2367,6 @@ button:not(:disabled):active {
 .hex-action:nth-child(5) { left: 92%; top: 0px; }
 
 .hex-action-shape {
-  /* Eren (3. tur): "Saldırı menüsünü daha ufalt" -- 66x58 -> 54x48. */
   width: 54px;
   height: 48px;
   clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
@@ -2467,10 +2397,8 @@ button:not(:disabled):active {
   display: block;
 }
 
-/* Eren (3. tur): "saldır destek gözcü gibi yazılarıda daha görünür yap
-   rengini de değiştir" -- soluk gri yerine parlak altın + koyu bir dış
-   çizgi/gölge (metinle aynı görünmesi için text-shadow ile iki yönde
-   "stroke" taklidi) böylece yeşil zemine karşı her zaman okunur. */
+/* Parlak altın metin + iki yönlü text-shadow ile "stroke" taklidi --
+   yeşil zemine karşı her zaman okunur. */
 .hex-action-label {
   font-size: 11.5px;
   font-weight: 800;
@@ -2484,21 +2412,18 @@ button:not(:disabled):active {
     0 2px 4px rgba(0, 0, 0, 0.6);
 }
 
-/* Eren (2. tur): "saldır destek gözcü yükselt gibi ikonlarda 3D boyutlu
-   olucak" -- referans görseldeki gibi parlak/cilalı (glossy) bir 3D his
-   vermek için her rengin üstüne bir radial-gradient "ışık yansıması" ve
-   daha güçlü kabartma gölgeleri eklendi. Bu, ayrı bir ::before/::after katmanı
-   yerine doğrudan arka plana katmanlanmış bir gradyan olarak uygulanıyor ki
-   ikon her zaman en üstte, net kalsın. */
+/* Parlak/cilalı (glossy) 3D his: her rengin üstüne radial-gradient "ışık
+   yansıması" + kabartma gölgeleri. Ayrı ::before/::after katmanı yerine
+   doğrudan arka plana katmanlanmış gradyan -- ikon her zaman en üstte,
+   net kalsın. */
 .hex-action-attack .hex-action-shape {
   background:
     radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0) 48%),
     linear-gradient(180deg, var(--danger), var(--danger-strong));
 }
 
-/* Eren (3. tur): "altında çıkan maviyi kaldır" -- Destek rozeti maviydi,
-   yerine zırh/çelik temalı bir bronz-gümüş gradyanı geldi (mavi tamamen
-   kaldırıldı, palette artık kırmızı/bronz/altın/yeşil). */
+/* Destek rozeti: zırh/çelik temalı bronz-gümüş gradyanı (palette mavi
+   bilerek yok: kırmızı/bronz/altın/yeşil). */
 .hex-action-reinforce .hex-action-shape {
   background:
     radial-gradient(120% 90% at 30% 12%, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0) 48%),
@@ -2517,14 +2442,11 @@ button:not(:disabled):active {
     linear-gradient(180deg, #4bd07f, var(--good));
 }
 
-/* Eren: "Sana altına yarım ay yap ve mini menüleri üzerine yerleştir dedim
-   ama sen hala kare penceredesin ... Screenshot_19'deki menü tasarımını
-   istiyorum" -- kendi kalen için artık .tile-card/.hex-menu'nun dikdörtgen
-   arka planı/border'ı/gölgesi/padding'i tamamen YOK. Sadece küçük yuvarlak
-   "mini" bilgi hapları ve altında doğrudan harita üzerinde yüzen hilal
-   aksiyon menüsü var. Kapsayıcının kendisi tamamen şeffaf ve tıklamaları
-   geçirir (pointer-events: none) -- sadece haplar/butonlar tıklanabilir
-   (pointer-events: auto) ki boş alanlarda haritaya tıklama engellenmesin. */
+/* Kendi kalen için .tile-card/.hex-menu'nun dikdörtgen arka planı/
+   border'ı/gölgesi/padding'i YOK -- sadece küçük yuvarlak bilgi hapları ve
+   altında harita üzerinde yüzen hilal menü. Kapsayıcı şeffaf ve
+   tıklamaları geçirir (pointer-events: none), sadece haplar/butonlar
+   tıklanabilir (pointer-events: auto). */
 .hex-menu-floating {
   position: fixed;
   z-index: 25;
