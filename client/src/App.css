@@ -437,6 +437,44 @@ button:disabled {
   position: relative;
 }
 
+/* FAZ 1 -- sürekli dünya zemini (bkz. game/worldRegions.ts). .iso-map'in
+   TAMAMINI kaplayan TEK katman -- hex başına ayrı zemin YOK, bu yüzden
+   hex sınırlarında asla dikiş/tekrar deseni oluşmaz. z-index sabit 0,
+   .iso-tile-group'ların (10+) HER ZAMAN altında -- painter's algorithm'a
+   katılmıyor (bkz. MapView.tsx yorumu). */
+.world-terrain {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Geniş, yumuşak geçişli biyom lekeleri -- background-image JS tarafında
+   anchor listesinden üretilen bir radial-gradient dizisi (bkz.
+   buildBiomeBackground). Taban rengi burada sabit -- lekelerin kapsamadığı
+   (çok nadir) bir nokta kalırsa çıplak mavi/boşluk yerine düz çayır rengi
+   görünsün diye. */
+.world-terrain-biome {
+  position: absolute;
+  inset: 0;
+  background-color: #9ccc65;
+}
+
+/* İnce gren/doku katmanı, biyom lekelerinin TAM üstünde -- yakın zoomda
+   zeminin çıplak düz renk gibi görünmesini engelliyor. mix-blend-mode ile
+   alttaki biyom rengini karartıp/aydınlatıp doku hissi veriyor, kendi rengi
+   yok (bkz. worldRegions.ts TERRAIN_GRAIN_BACKGROUND -- SVG feTurbulence,
+   PNG asset değil). background-size tileWidth'e göre JS'te hesaplanıyor ki
+   zoom değişince doku taneciği de orantılı büyüsün/küçülsün. */
+.world-terrain-grain {
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+}
+
 .iso-tile-group {
   position: absolute;
   cursor: pointer;
@@ -542,6 +580,37 @@ button:not(:disabled):active {
   animation: npc-glow-pulse 2.6s ease-in-out infinite;
 }
 
+/* FAZ 2 -- Castle Scene PROTOTİPİ (bkz. components/CastleScene.tsx,
+   game/castleScenes.ts). Bilerek AYRI bir z-index sistemi kurmuyor: bu
+   sınıflar hep .iso-castle'ın (z-index:1, yukarısı) OLDUĞU stacking
+   context'in (.iso-tile-group) içinde, position:absolute + z-index:auto
+   ile duruyor -- CSS'in kendi kuralı gereği z-index:1'in HER ZAMAN
+   altında kalıyorlar (DOM sırası önemsiz), yani "behind" prop'lar için ek
+   koda gerek yok. Sadece bayrak (görsel olarak kalenin ÜSTÜNDE durmalı)
+   z-index:2 ile bilerek kale'nin üstüne çıkıyor. */
+.castle-scene-prop {
+  position: absolute;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-size: contain;
+  background-position: bottom center;
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.35));
+}
+
+.castle-scene-shadow {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0) 72%);
+}
+
+.castle-scene-flag {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
+}
+
 @keyframes npc-glow-pulse {
   0%, 100% {
     filter: drop-shadow(0 0 5px rgba(255, 111, 64, 0.55)) drop-shadow(0 0 11px rgba(255, 111, 64, 0.3));
@@ -564,38 +633,9 @@ button:not(:disabled):active {
   }
 }
 
-/* Zemin -- düz TEK renk background-color (doku/fotoğraf zemin, komşu karo
-   sınırlarında bal peteği deseni gibi görünüyordu). Karo altıgen şekline
-   clip-path ile kırpılıyor ki komşu karolar arasında dikiş görünmesin. */
-.iso-ground {
-  position: absolute;
-  /* Tarayıcının alt piksel yuvarlaması clip-path'li komşu altıgenler
-     arasında 1px'in altında boşluk bırakıp alttaki mavi zemini dikey çizgi
-     gibi gösteriyordu. Zemin tek renk olduğu için 1px taşırıp komşularla
-     hafifçe üst üste bindirmek güvenli -- mavi asla sızmıyor. */
-  inset: -1px;
-  z-index: 0;
-  pointer-events: none;
-  background-color: #9ccc65;
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-}
-
-/* Çim topağı dokusu -- .iso-ground'un (düz renk) TAM üstünde, aynı boyut/
-   kırpma. Görsel App.tsx'te grassTextureForTile() ile üç varyanttan
-   (a/b/c) axial koordinata göre seçiliyor ki komşu karolar asla aynı
-   görseli almasın (bkz. App.tsx'teki GRASS_TEXTURES yorumu). background-size
-   100% 100% -- doku zaten oyunun tam sivri-uçlu altıgen oranında üretildi
-   (bkz. doku üretim script'i), bu yüzden gerdirme deforme etmiyor. */
-.iso-ground-grass {
-  position: absolute;
-  inset: -1px;
-  z-index: 0;
-  pointer-events: none;
-  background-repeat: no-repeat;
-  background-size: 100% 100%;
-  background-position: center;
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-}
+/* Eski hex-başına zemin sistemi (.iso-ground / .iso-ground-grass) FAZ 1'de
+   kaldırıldı -- yerini tek parça .world-terrain katmanı aldı (bkz. yukarıda
+   .iso-map'in hemen altındaki kural bloğu). */
 
 /* Seviye rozeti katmanı -- tüm .iso-tile-group'ların VE .iso-mountain'ların
    üstünde durur ki hiçbir karo/dağ bir rozetin üstüne binemesin. Karoların

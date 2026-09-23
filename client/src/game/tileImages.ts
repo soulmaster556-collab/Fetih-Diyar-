@@ -28,18 +28,3 @@ export function npcCastleImageForLevel(level: number): string {
   }
   return NPC_LEVEL_TIERS[NPC_LEVEL_TIERS.length - 1][1];
 }
-
-// Üç çim dokusundan hangisinin kullanılacağı rastgele DEĞİL, axial hex
-// koordinatına göre (x - y) mod 3 ile seçiliyor. Sebep: Math.random()
-// her yeniden çizimde titrer ve komşu iki karo aynı dokuyu alabilir.
-// (x - y) mod 3, altıgen komşulukta (6 komşu) HER zaman komşudan farklı
-// bir değer üretir -- aynı doku asla yan yana gelmez.
-export const GRASS_TEXTURES = [
-  "/terrain/grass-tuft-a.png",
-  "/terrain/grass-tuft-b.png",
-  "/terrain/grass-tuft-c.png",
-];
-export function grassTextureForTile(x: number, y: number): string {
-  const idx = (((x - y) % 3) + 3) % 3;
-  return GRASS_TEXTURES[idx];
-}

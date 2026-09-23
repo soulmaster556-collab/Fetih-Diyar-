@@ -7,9 +7,12 @@ import {
   SHOW_BUILDINGS,
   WORLD_SIZE,
 } from "../game/constants";
+import { isCastleSceneVisible } from "../game/castleScenes";
 import { isoCenter } from "../game/hexMath";
 import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
-import { castleImageForLevel, grassTextureForTile, npcCastleImageForLevel } from "../game/tileImages";
+import { castleImageForLevel, npcCastleImageForLevel } from "../game/tileImages";
+import { buildBiomeBackground, generateBiomeAnchors, TERRAIN_GRAIN_BACKGROUND } from "../game/worldRegions";
+import { CastleScene } from "./CastleScene";
 
 // Harita artık tüm pencereyi kaplayan tek katman -- menü/panel bunun
 // ÜZERİNE yarı saydam "HUD" katmanları olarak biniyor. Kaydırma/zoom/
@@ -53,6 +56,34 @@ export function MapView({
     [tiles]
   );
 
+  // FAZ 1 -- Sürekli dünya zemini (bkz. worldRegions.ts). Anchor listesi
+  // WORLD_SIZE'a göre sabit -- yüklü `tiles` penceresinden TAMAMEN bağımsız,
+  // bu yüzden harita hızlı kaydırılırken zemin asla "sonradan belirmiyor"
+  // (eski hex-başına .iso-ground sisteminin aksine). Sadece zoom (tileWidth)
+  // değişince piksel konumları yeniden hesaplanıyor.
+  const biomeAnchors = useMemo(() => generateBiomeAnchors(WORLD_SIZE), []);
+  const terrainBackground = useMemo(
+    () => buildBiomeBackground(biomeAnchors, tileWidth),
+    [biomeAnchors, tileWidth]
+  );
+
+  // FAZ 2 -- Castle Scene PROTOTİPİ. Bilerek SADECE TEK bir kalede
+  // deneniyor (bkz. game/castleScenes.ts dosya başı yorumu) -- oyuncunun
+  // sahip olduğu, id'si en düşük karo (genelde ilk/başlangıç kalesi).
+  // `tiles` yüklü pencereye göre değişebileceği için bu id de zoom/scroll
+  // ile değişebilir (oyuncunun o an ekranda olan en düşük id'li karosu),
+  // ama HER ZAMAN en fazla bir tane -- diğer tüm kaleler eski sisteme
+  // dokunulmadan devam ediyor.
+  const prototypeCastleId = useMemo(() => {
+    let best: Tile | null = null;
+    for (const t of tiles) {
+      if (t.tileType !== "PLAYER" || t.ownerId !== playerId) continue;
+      if (!best || t.id < best.id) best = t;
+    }
+    return best?.id ?? null;
+  }, [tiles, playerId]);
+  const castleSceneVisible = isCastleSceneVisible(tileWidth);
+
   // Dağ yerleşimi -- sadece o an yüklü (viewport'taki) karolara göre
   // hesaplanıyor, bkz. computePlacedMountains yorumu.
   const placedMountains = useMemo(() => computePlacedMountains(tiles), [tiles]);
@@ -89,6 +120,25 @@ export function MapView({
         height: tileHeight * 0.75 * (WORLD_SIZE - 1) + tileHeight,
       }}
     >
+      {/* FAZ 1 -- tek parça dünya zemini. Hex başına DEĞİL, .iso-map'in
+          TAMAMI için tek katman (bkz. worldRegions.ts) -- .iso-tile-group'lar
+          zaten z-index 10+ ile bunun üstünde duruyor, painter's algorithm'a
+          hiç katılmıyor (sabit z-index 0). İki alt-katman: biyom lekeleri
+          (geniş, yumuşak geçişli renk varyasyonu) + üstünde ince bir doku/
+          gren katmanı (yakın zoomda çıplak düz renk hissi vermesin diye). */}
+      <div className="world-terrain">
+        <div
+          className="world-terrain-biome"
+          style={{ backgroundImage: terrainBackground }}
+        />
+        <div
+          className="world-terrain-grain"
+          style={{
+            backgroundImage: TERRAIN_GRAIN_BACKGROUND,
+            backgroundSize: `${tileWidth * 1.5}px ${tileWidth * 1.5}px`,
+          }}
+        />
+      </div>
       {sortedTiles.map((tile) => {
             const showCastle =
               SHOW_BUILDINGS && tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
@@ -142,20 +192,34 @@ export function MapView({
                 }}
                 title={isDeadZone ? undefined : `(${tile.x}, ${tile.y}) Lv${tile.level} — ada #${tile.islandId}`}
               >
-                {/* Zemin -- düz açık yeşil taban rengi (bkz. .iso-ground),
-                    üstüne çim topağı dokusu (bkz. grassTextureForTile).
-                    Doku PNG'leri zaten altıgen sınırına kırpılmış, burada
-                    .iso-ground-grass'taki clip-path ek bir güvenlik. */}
-                <div className="iso-ground" />
-                <div
-                  className="iso-ground-grass"
-                  style={{ backgroundImage: `url(${grassTextureForTile(tile.x, tile.y)})` }}
-                />
+                {/* Zemin artık burada değil -- tek parça .world-terrain
+                    katmanı (bkz. yukarısı) tüm haritayı kaplıyor. Bu div
+                    sadece seçili karo vurgusu için var, varsayılanda
+                    şeffaf (bkz. .iso-diamond). */}
                 <div className={`iso-diamond ${selectedTileId === tile.id ? "selected" : ""}`} />
                 {/* Sahiplik ayrı bir rozetle değil, seviye etiketinin
                     rengiyle anlaşılıyor -- bkz. aşağıdaki .iso-labels-layer:
                     NPC gri, kendi/klan sarı, düşman oyuncu kırmızı. */}
-                {showCastle && (
+                {/* FAZ 2 prototip: sadece `prototypeCastleId`'ye eşit TEK
+                    kale <CastleScene> ile (ana görsel + LOD'a göre
+                    çevresindeki prop'lar) çiziliyor. Diğer TÜM kaleler
+                    (kendi/klan/düşman fark etmez) eski tek-görsel sistemiyle
+                    devam ediyor -- bkz. game/castleScenes.ts dosya başı
+                    yorumu. */}
+                {showCastle && tile.id === prototypeCastleId && (
+                  <CastleScene
+                    tile={tile}
+                    sceneVisible={castleSceneVisible}
+                    tileWidth={tileWidth}
+                    tileHeight={tileHeight}
+                    castleIcon={castleIcon}
+                    castleBoxWidth={castleBoxWidth}
+                    castleBoxHeight={castleBoxHeight}
+                    castleLeft={(tileWidth - castleBoxWidth) / 2}
+                    castleTop={castleTop}
+                  />
+                )}
+                {showCastle && tile.id !== prototypeCastleId && (
                   // Oyuncu kaleleri altın, NPC kampları kendi parıltısıyla
                   // (bkz. showNpc dalı).
                   <img

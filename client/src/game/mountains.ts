@@ -10,9 +10,9 @@ import type { Tile } from "../api";
 // hem üst üste binme hem de komşu çimle görünür "dikiş" oluşuyordu.
 //
 // Yerleştirme sunucuya/DB'ye HİÇ dokunmadan tamamen CLIENT tarafında,
-// koordinata göre DETERMİNİSTİK yapılıyor (bkz. hashXY -- grassTextureForTile
-// ile aynı prensip: Math.random() değil, sayfa her açıldığında AYNI
-// karolarda aynı dağ çıksın).
+// koordinata göre DETERMİNİSTİK yapılıyor (bkz. hashXY -- worldRegions.ts'teki
+// biyom anchor üretimi de aynı hash'i kullanıyor: Math.random() değil,
+// sayfa her açıldığında AYNI karolarda aynı dağ çıksın).
 export type MountainDef = {
   id: string;
   img: string;

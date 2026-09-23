@@ -24,8 +24,8 @@ export const ICON_MIN_WIDTH = 28;
 // yeterince yakınlaştırılmışken gösteriliyor.
 export const LABEL_MIN_WIDTH = 40;
 
-// Zemin düz tek renk açık yeşil (bkz. App.css .iso-ground) -- doku/fotoğraf
-// tabanlı zemin, komşu karo sınırlarında bal peteği deseni gibi görünüyordu.
+// Zemin artık hex başına değil, tek parça bir dünya katmanı (bkz.
+// game/worldRegions.ts, App.css .world-terrain).
 
 // Kale/NPC görselleri hex karoların üzerinde gösteriliyor mu.
 export const SHOW_BUILDINGS = true;
