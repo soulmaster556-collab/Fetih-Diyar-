@@ -3,6 +3,8 @@ import "./App.css";
 import {
   attackTile,
   fetchActiveAttacks,
+  fetchGeneralChat,
+  fetchGuildChat,
   fetchMap,
   fetchMyGuild,
   fetchMyGuildInvites,
@@ -14,9 +16,12 @@ import {
   recallReinforcement,
   reinforceTile,
   scoutTile,
+  sendGeneralChat,
+  sendGuildChat,
   upgradeTile,
   uploadAvatar,
   type ActiveAttack,
+  type ChatMessage,
   type Guild,
   type MyProfile,
   type PlayerSummary,
@@ -35,12 +40,15 @@ import {
 import { isoCenter, screenToWorld } from "./game/hexMath";
 import type { ActionMode, ActionType, PendingTarget } from "./game/types";
 import { loadSession, resizeImageToDataUrl } from "./game/utils";
+import { ChatPanel } from "./components/ChatPanel";
 import { GuildModal } from "./components/GuildModal";
 import { KingdomPanel } from "./components/KingdomPanel";
 import { LeaderboardModal } from "./components/LeaderboardModal";
 import { LoginScreen } from "./components/LoginScreen";
 import { MapView } from "./components/MapView";
+import { NicknameModal } from "./components/NicknameModal";
 import { PendingActionCard } from "./components/PendingActionCard";
+import { PlayerFlagModal } from "./components/PlayerFlagModal";
 import { ReportsModal } from "./components/ReportsModal";
 import { TileMenu } from "./components/TileMenu";
 import { TopBar } from "./components/TopBar";
@@ -80,8 +88,16 @@ export default function App() {
   // Mesaj/rapor kutusu: saldırı sonuçları, gözcü raporları, gözetlenme
   // bildirimleri.
   const [showReports, setShowReports] = useState(false);
+  // Flama tasarım ekranı (bkz. components/PlayerFlagModal.tsx).
+  const [showFlagEditor, setShowFlagEditor] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const unreadReportCount = useMemo(() => reports.filter((r) => r.readAt === null).length, [reports]);
+  // Sohbet -- Genel Chat / Lonca Chat (bkz. components/ChatPanel.tsx,
+  // server routes/chat.ts). Panel her zaman ekranda (kapanabilir bir modal
+  // değil), bu yüzden mesajlar arka planda sürekli poll ediliyor -- tıpkı
+  // raporlar/aktif saldırılar gibi.
+  const [generalChat, setGeneralChat] = useState<ChatMessage[]>([]);
+  const [guildChat, setGuildChat] = useState<ChatMessage[]>([]);
   // Yolda olan (kendi/klanla ilgili) saldırılar -- haritada animasyonlu hat
   // olarak çiziliyor (bkz. MapView .attack-lines-layer).
   const [activeAttacks, setActiveAttacks] = useState<ActiveAttack[]>([]);
@@ -212,6 +228,14 @@ export default function App() {
     fetchMyReports(token).then(setReports).catch(() => {});
   };
 
+  const refreshGeneralChat = (token: string) => {
+    fetchGeneralChat(token).then(setGeneralChat).catch(() => {});
+  };
+
+  const refreshGuildChat = (token: string) => {
+    fetchGuildChat(token).then((r) => setGuildChat(r.messages)).catch(() => {});
+  };
+
   // Yolda olan saldırılar -- liste küçülürse (bir saldırı sonuçlanmışsa)
   // haritayı/kaleleri/altını/raporları hemen tazeliyoruz ki sonucu görmek
   // için 3-10 saniyelik normal polling aralığını beklemeye gerek kalmasın.
@@ -241,6 +265,20 @@ export default function App() {
   const refreshProfile = (token: string) => {
     fetchMyProfile(token).then(setProfile).catch(() => {});
   };
+
+  // NicknameModal onaylanınca hem profili hem (localStorage'a yazılan)
+  // session'ı güncelliyoruz ki `profile.nickname` artık dolu olduğu için
+  // modal render koşulu false'a düşüp modal kendiliğinden kapansın (bkz. o
+  // dosyadaki not -- "onaylanınca otomatik kapanıcak").
+  function handleNicknameConfirmed(nickname: string) {
+    setProfile((p) => (p ? { ...p, nickname } : p));
+    setSession((s) => {
+      if (!s) return s;
+      const next = { ...s, nickname };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
 
   function scrollToWorld(x: number, y: number, smooth: boolean) {
     const el = viewportRef.current;
@@ -292,8 +330,27 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
 
-  // Sunucudaki saldırı çözüm turu (bkz. index.ts) 2 saniyede bir çalıştığı
-  // için aynı sıklıkla çekiliyor -- saldırı ulaşır ulaşmaz harita güncellenir.
+  // Sohbet -- kullanıcı sekmeyi hiç açmasa da (panel her zaman görünür ama
+  // yeni mesaj bildirimini kaçırmamak için) 4 saniyede bir her iki kanal da
+  // çekiliyor. Lonca kanalı loncası olmayan oyuncu için sunucudan zaten boş
+  // dönüyor (bkz. server routes/chat.ts) -- burada ayrıca dallanmaya gerek yok.
+  useEffect(() => {
+    if (!session) return;
+    refreshGeneralChat(session.token);
+    refreshGuildChat(session.token);
+    const interval = setInterval(() => {
+      refreshGeneralChat(session.token);
+      refreshGuildChat(session.token);
+    }, 4000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token]);
+
+  // Sunucudaki saldırı/takviye çözüm turu (bkz. index.ts) 2 saniyede bir
+  // çalıştığı için aynı sıklıkla çekiliyor -- bu, siparişler zamanında
+  // çözülmezse (sunucu az önce yeniden başladıysa vb.) diye bir güvenlik
+  // ağı; asıl hız aşağıdaki "en yakın varış" zamanlayıcısında (bkz. sonraki
+  // effect).
   useEffect(() => {
     if (!session) return;
     prevAttackIdsRef.current = new Set();
@@ -302,6 +359,23 @@ export default function App() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.token]);
+
+  // Marker'ın CSS animasyonu tam arrivesAt'te bitiyor ama sonucun/takviyenin
+  // gerçekten uygulanması eskiden 2 saniyelik genel poll'u beklerdi --
+  // oyuncuya "ikon vardı ama bir şey olmadı" hissi veriyordu (bkz. sunucu
+  // tarafında aynı sorunun asıl çözümü: game/orderScheduler.ts). Burada da
+  // en yakın arrivesAt'e göre TEK SEFERLİK bir zamanlayıcı kurup tam o anda
+  // (küçük bir güvenlik payıyla) yeniden çekiyoruz -- 2sn'lik interval'i
+  // beklemeden.
+  useEffect(() => {
+    if (!session || activeAttacks.length === 0) return;
+    const estServerNow = Date.now() + clockOffsetRef.current;
+    const soonestArrival = Math.min(...activeAttacks.map((a) => a.arrivesAt));
+    const delay = Math.max(50, soonestArrival - estServerNow + 150);
+    const timeout = window.setTimeout(() => refreshActiveAttacks(session.token), delay);
+    return () => window.clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.token, activeAttacks]);
 
   useEffect(() => {
     if (!session) return;
@@ -448,6 +522,7 @@ export default function App() {
     setShowGuildPanel(false);
     setShowLeaderboard(false);
     setShowReports(false);
+    setShowFlagEditor(false);
   }
 
   function startAction(type: ActionType, fromTile: Tile) {
@@ -566,8 +641,13 @@ export default function App() {
           `Gözcü raporu geldi: Lv${result.level} — ⚔️ ${Math.floor(result.troops)} asker, 🪙 +${result.goldPerHour}/sa`
         );
       } else {
-        await reinforceTile(session.token, targetTile.id, fromTile.id, troops);
-        setMessage("Takviye gönderildi!");
+        // Takviye de artık anında değil, saldırı gibi bir "yolda" siparişi
+        // (bkz. api.ts reinforceTile/AttackOrder, server game/reinforcements.ts).
+        const order = await reinforceTile(session.token, targetTile.id, fromTile.id, troops);
+        clockOffsetRef.current = order.serverNow - Date.now();
+        const etaSec = Math.max(1, Math.round((order.arrivesAt - order.departedAt) / 1000));
+        setMessage(`Takviye yola çıktı! ${etaSec} sn sonra hedefe ulaşacak.`);
+        refreshActiveAttacks(session.token);
       }
       refresh();
       refreshMyTiles(session.token);
@@ -607,6 +687,12 @@ export default function App() {
     const next = !showLeaderboard;
     closeFloatingPanels();
     setShowLeaderboard(next);
+  }
+
+  function openFlagEditor() {
+    const next = !showFlagEditor;
+    closeFloatingPanels();
+    setShowFlagEditor(next);
   }
 
   // Raporlar panelini açınca hem en güncel listeyi çekiyoruz hem de hepsini
@@ -651,6 +737,19 @@ export default function App() {
     setMessage(null);
     setError(null);
     setSelectedScreenPos({ x: clientX, y: clientY });
+  }
+
+  function handleSendGeneralChat(text: string) {
+    if (!session) return;
+    // İyimser (optimistic) ekleme yok -- 4sn'lik poll zaten çok kısa, sunucu
+    // cevabı kendi mesajını normal akışla getirir (diğer poll'larla aynı
+    // basitlik ilkesi).
+    sendGeneralChat(session.token, text).then((m) => setGeneralChat((prev) => [...prev, m])).catch(() => {});
+  }
+
+  function handleSendGuildChat(text: string) {
+    if (!session) return;
+    sendGuildChat(session.token, text).then((m) => setGuildChat((prev) => [...prev, m])).catch(() => {});
   }
 
   async function handleAvatarFile(file: File) {
@@ -710,7 +809,21 @@ export default function App() {
         onToggleGuild={openGuildPanel}
         onToggleLeaderboard={openLeaderboard}
         onToggleReports={openReports}
+        onOpenFlagEditor={openFlagEditor}
         onLogout={handleLogout}
+      />
+
+      {profile && !profile.nickname && (
+        <NicknameModal token={session.token} onConfirmed={handleNicknameConfirmed} />
+      )}
+
+      <ChatPanel
+        generalMessages={generalChat}
+        guildMessages={guildChat}
+        hasGuild={!!guild}
+        playerId={session.playerId}
+        onSendGeneral={handleSendGeneralChat}
+        onSendGuild={handleSendGuildChat}
       />
 
       {(message || error) && (
@@ -738,6 +851,17 @@ export default function App() {
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
 
       {showReports && <ReportsModal reports={reports} onClose={() => setShowReports(false)} />}
+
+      {showFlagEditor && profile && (
+        <PlayerFlagModal
+          token={session.token}
+          profile={profile}
+          onProfileChange={setProfile}
+          setError={setError}
+          setMessage={setMessage}
+          onClose={() => setShowFlagEditor(false)}
+        />
+      )}
 
       {showGuildPanel && (
         <GuildModal

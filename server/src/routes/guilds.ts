@@ -32,8 +32,11 @@ async function getMyGuildRow(playerId: string) {
 }
 
 async function serializeGuild(guild: GuildRow) {
+  // `username` alanı burada da (bkz. players.ts leaderboard'daki aynı not)
+  // aslında takma adı taşıyor -- üyelere diğer oyuncular arasında gösterilen
+  // isim her zaman nickname.
   const { rows: memberRows } = await pool.query<{ player_id: string; username: string; joined_at: number }>(
-    `SELECT p.id as player_id, p.username, gm.joined_at
+    `SELECT p.id as player_id, COALESCE(p.nickname, p.username) as username, gm.joined_at
      FROM guild_members gm
      JOIN players p ON p.id = gm.player_id
      WHERE gm.guild_id = $1
@@ -50,7 +53,8 @@ async function serializeGuild(guild: GuildRow) {
     invited_by_username: string;
     created_at: number;
   }>(
-    `SELECT gi.id, p1.username as invited_username, p2.username as invited_by_username, gi.created_at
+    `SELECT gi.id, COALESCE(p1.nickname, p1.username) as invited_username,
+            COALESCE(p2.nickname, p2.username) as invited_by_username, gi.created_at
      FROM guild_invites gi
      JOIN players p1 ON p1.id = gi.invited_player_id
      JOIN players p2 ON p2.id = gi.invited_by_id
@@ -78,7 +82,7 @@ async function serializeGuild(guild: GuildRow) {
 guildsRouter.get("/", async (_req, res) => {
   try {
     const { rows } = await pool.query<GuildRow & { member_count: string; leader_username: string }>(
-      `SELECT g.*, p.username as leader_username,
+      `SELECT g.*, COALESCE(p.nickname, p.username) as leader_username,
               (SELECT COUNT(*)::int FROM guild_members gm WHERE gm.guild_id = g.id) as member_count
        FROM guilds g
        JOIN players p ON p.id = g.leader_id
@@ -227,25 +231,28 @@ guildsRouter.post("/leave", authenticate, async (req: any, res) => {
 // kabul/red eder.
 // -----------------------------------------------------------------------
 
+// Davet, `username` yerine `nickname` ile aranıyor -- oyuncular birbirinin
+// login kullanıcı adını değil, oyun içinde her yerde görünen takma adını
+// bilir (bkz. db.ts sütun yorumu).
 guildsRouter.post("/invite", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
-    const username = String(req.body?.username ?? "").trim();
-    if (!username) return res.status(400).json({ error: "Kullanıcı adı gerekli." });
+    const nickname = String(req.body?.nickname ?? "").trim();
+    if (!nickname) return res.status(400).json({ error: "Takma ad gerekli." });
 
     const guild = await getMyGuildRow(player.id);
     if (!guild) return res.status(400).json({ error: "Davet gönderebilmek için bir loncada olmalısın." });
 
-    const { rows: targetRows } = await pool.query<{ id: string; username: string }>(
-      "SELECT id, username FROM players WHERE username = $1",
-      [username]
+    const { rows: targetRows } = await pool.query<{ id: string; nickname: string }>(
+      "SELECT id, nickname FROM players WHERE lower(nickname) = lower($1)",
+      [nickname]
     );
     const target = targetRows[0];
-    if (!target) return res.status(404).json({ error: "Bu kullanıcı adında bir oyuncu yok." });
+    if (!target) return res.status(404).json({ error: "Bu takma adda bir oyuncu yok." });
     if (target.id === player.id) return res.status(400).json({ error: "Kendini davet edemezsin." });
 
     const targetGuild = await getMyGuildRow(target.id);
-    if (targetGuild) return res.status(400).json({ error: `${target.username} zaten bir loncada.` });
+    if (targetGuild) return res.status(400).json({ error: `${target.nickname} zaten bir loncada.` });
 
     await pool.query(
       `INSERT INTO guild_invites (guild_id, invited_player_id, invited_by_id, created_at)
@@ -273,7 +280,7 @@ guildsRouter.get("/me/invites", authenticate, async (req: any, res) => {
       invited_by_username: string;
       created_at: number;
     }>(
-      `SELECT gi.id, gi.guild_id, g.name as guild_name, p.username as invited_by_username, gi.created_at
+      `SELECT gi.id, gi.guild_id, g.name as guild_name, COALESCE(p.nickname, p.username) as invited_by_username, gi.created_at
        FROM guild_invites gi
        JOIN guilds g ON g.id = gi.guild_id
        JOIN players p ON p.id = gi.invited_by_id

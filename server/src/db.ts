@@ -7,9 +7,13 @@ if (!connectionString) {
   throw new Error("DATABASE_URL ortam değişkeni tanımlı değil.");
 }
 
+const isLocalDb = /^(localhost|127\.0\.0\.1)/.test(
+  connectionString.replace(/^postgres(ql)?:\/\/[^@]*@/, ""),
+);
+
 export const pool = new Pool({
   connectionString,
-  ssl: { rejectUnauthorized: false },
+  ssl: isLocalDb ? false : { rejectUnauthorized: false },
 });
 
 export async function initSchema() {
@@ -34,6 +38,18 @@ export async function initSchema() {
   // ban anında döndürülür (bkz. routes/admin.ts) ve authenticate/login bu
   // bayrağı kontrol edip erişimi reddeder (bkz. routes/players.ts).
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS banned BOOLEAN NOT NULL DEFAULT false;`);
+
+  // Takma ad (kale adı): login için kullanılan `username`'den TAMAMEN ayrı --
+  // diğer oyunculara HER YERDE (harita, liderlik, lonca, raporlar) bu
+  // gösterilir, `username` artık sadece giriş kimlik bilgisi. NULL = henüz
+  // seçilmemiş; ilk girişte istemci (bkz. NicknameModal.tsx) oyuncuyu bunu
+  // seçmeye zorluyor ve bir kez seçildikten sonra POST /me/nickname bir daha
+  // değiştirmeye izin vermiyor (bkz. routes/players.ts). Benzersizlik
+  // büyük/küçük harf duyarsız (aşağıdaki fonksiyonel unique index).
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS nickname TEXT NULL;`);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS players_nickname_lower_idx ON players (lower(nickname)) WHERE nickname IS NOT NULL;`
+  );
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tiles (
@@ -86,6 +102,13 @@ export async function initSchema() {
   // olmamalı -- hem yeni harita üretiminde hem de mevcut canlı haritaya
   // uygulanan tek seferlik göç (migration) bu alanı kullanır.
   await pool.query(`ALTER TABLE tiles ADD COLUMN IF NOT EXISTS is_coastal BOOLEAN NOT NULL DEFAULT false;`);
+
+  // Kare, client'ın (game/decor.ts, riversLakes.ts'in sunucu portu) tamamen
+  // dünya-koordinatına göre çizdiği bir gölün altında mı? Kale/NPC yerleşimi
+  // bu karolarda asla olmamalı (bkz. is_coastal yorumu, aynı gerekçe) --
+  // hem yeni harita üretiminde hem de mevcut canlı haritaya uygulanan tek
+  // seferlik göç (applyLakeLockMigration) bu alanı kullanır.
+  await pool.query(`ALTER TABLE tiles ADD COLUMN IF NOT EXISTS is_water BOOLEAN NOT NULL DEFAULT false;`);
 
   // Lonca (klan) sistemi -- basit: bir oyuncu en fazla bir loncaya üye olur.
   await pool.query(`
@@ -219,6 +242,63 @@ export async function initSchema() {
   // kadar büyük bir ihtiyaç değil -- bkz. routes/players.ts avatar yükleme
   // ucu, istemci tarafında zaten küçük bir kareye indirgenip sıkıştırılıyor).
   await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar_data TEXT NULL;`);
+
+  // Oyuncu flaması: şekil (1-10), renk (1-20), logo (1-20). Kayıtta rastgele
+  // atanır (bkz. routes/players.ts /register), profil ekranından
+  // değiştirilebilir (bkz. POST /players/me/flag). Görselin kendisi tamamen
+  // client'ta üretiliyor (bkz. client/src/game/playerFlags.ts) -- lonca
+  // flamasından (guilds.flag_id) bağımsız, ayrı bir sistem. Varsayılan
+  // (1,1,1) eski hesaplar için.
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS flag_shape INTEGER NOT NULL DEFAULT 1;`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS flag_color INTEGER NOT NULL DEFAULT 1;`);
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS flag_logo INTEGER NOT NULL DEFAULT 1;`);
+
+  // Takviye siparişleri de (attack_orders gibi) anında değil, mesafeye bağlı
+  // yolculuk süresiyle hedefe ulaşıyor (bkz. game/reinforcements.ts). Aynı
+  // travelDurationMs formülünü kullanıyor -- ayrı bir "hız" ayarı yok,
+  // askerin yürüme hızı saldırı/takviye farketmeksizin aynı.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS reinforcement_orders (
+      id SERIAL PRIMARY KEY,
+      from_player_id TEXT NOT NULL REFERENCES players(id),
+      from_tile_id INTEGER NOT NULL REFERENCES tiles(id),
+      target_tile_id INTEGER NOT NULL REFERENCES tiles(id),
+      from_x INTEGER NOT NULL,
+      from_y INTEGER NOT NULL,
+      target_x INTEGER NOT NULL,
+      target_y INTEGER NOT NULL,
+      troops_sent DOUBLE PRECISION NOT NULL,
+      departed_at BIGINT NOT NULL,
+      arrives_at BIGINT NOT NULL
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS reinforcement_orders_arrives_idx ON reinforcement_orders (arrives_at);`
+  );
+
+  // Sohbet: iki sabit kanal -- "general" (herkese açık) ve "guild" (sadece
+  // aynı loncanın üyeleri, guild_id ile filtrelenir). `username` gönderim
+  // anında DENORMALİZE ediliyor (player_reports/attack_orders'taki aynı
+  // gerekçe -- her poll'da players'a JOIN gerekmesin) -- takma ad zaten bir
+  // kez seçilip bir daha değişmiyor (bkz. players.nickname yorumu), o yüzden
+  // bu bir tutarsızlık riski taşımıyor.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id SERIAL PRIMARY KEY,
+      channel TEXT NOT NULL CHECK (channel IN ('general', 'guild')),
+      guild_id INTEGER NULL REFERENCES guilds(id),
+      player_id TEXT NOT NULL REFERENCES players(id),
+      username TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS chat_messages_general_idx ON chat_messages (created_at DESC) WHERE channel = 'general';`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS chat_messages_guild_idx ON chat_messages (guild_id, created_at DESC) WHERE channel = 'guild';`
+  );
 }
 
 export async function hasMigration(name: string): Promise<boolean> {

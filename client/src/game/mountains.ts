@@ -49,6 +49,14 @@ export type PlacedMountain = {
   rootX: number;
   rootY: number;
   frontSortKey: number; // painter's algorithm sıralaması için (bkz. sortedTiles)
+  // rockyAreas.ts'teki `rotationDeg` ile aynı prensip: sadece 2 sabit görsel
+  // (range-a/range-b) olduğu için rotasyon/ayna YOKSA harita genelinde her
+  // dağ birebir aynı açıda, "hep yatay bir sırt" gibi tekrar ediyor --
+  // deterministik hash'e göre küçük bir dönüş + %50 ihtimalle yatay ayna
+  // (flipX) bu tekrarı kırıyor. transform-origin "bottom center" ile
+  // uygulanıyor (bkz. MapView.tsx) ki taban hizası bozulmasın.
+  rotationDeg: number;
+  flipX: boolean;
 };
 
 export function computePlacedMountains(tiles: Tile[]): PlacedMountain[] {
@@ -80,7 +88,20 @@ export function computePlacedMountains(tiles: Tile[]): PlacedMountain[] {
     const defIndex = hashXY(t.x, t.y, 2) % MOUNTAIN_DEFS.length;
     const def = MOUNTAIN_DEFS[defIndex];
     occupied.add(key);
-    placed.push({ key: `${key}:${def.id}`, def, rootX: t.x, rootY: t.y, frontSortKey: t.x + t.y });
+    // ±12° -- rocky kümelerdeki ±7°'den biraz daha geniş (dağ görseli daha
+    // büyük/dikkat çekici olduğu için varyasyon da daha belirgin olmalı),
+    // ama ışık/gölgenin baskın yönünü bozacak kadar (90°) DEĞİL.
+    const rotationDeg = ((hashXY(t.x, t.y, 3) % 100) / 100 - 0.5) * 24;
+    const flipX = hashXY(t.x, t.y, 4) % 2 === 0;
+    placed.push({
+      key: `${key}:${def.id}`,
+      def,
+      rootX: t.x,
+      rootY: t.y,
+      frontSortKey: t.x + t.y,
+      rotationDeg,
+      flipX,
+    });
   }
   return placed;
 }

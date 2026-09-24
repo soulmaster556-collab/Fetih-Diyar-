@@ -5,12 +5,18 @@ export const WORLD_SIZE = 200;
 // kaydırmalarda hemen yeniden istek atmamak için.
 export const VIEWPORT_MARGIN = 6;
 // Karo genişliği seviyeleri (zoom kademeleri, px). Altıgen yüksekliği =
-// genişlik × 2/√3 (bkz. hexMath.ts). En uzak kademe bilerek sınırlı (çok
-// uzağa zoom istenmiyor), varsayılan yakın planda başlıyor.
-export const TILE_WIDTHS = [72, 104, 144, 200, 272, 320];
-// Varsayılan artık 72px (index 2) -- eski varsayılan (46) yerine, "daha yakın
-// plan" isteği için bir kademe büyütüldü.
-export const DEFAULT_TILE_WIDTH_INDEX = 2;
+// genişlik × 2/√3 (bkz. hexMath.ts). Kullanıcı geri bildirimi: eski 6 kademe
+// ([72,104,144,200,272,320]) uzaklaşırken "az" (72'de tıkanıp kalıyor, sadece
+// 2 kademe uzaklaşma payı var), yakınlaşırken "fazla" (200->272->320 arası
+// oranlar %36/%18 -- tutarsız, üstteki sıçrama göze batıyor) hissettiriyordu.
+// Yeni dizi ~×1.31 sabit oranla (geometrik dizi) 8 kademeye çıkarıldı: hem
+// daha uzağa gidebiliyor (48 -- eskiden görülemeyen kadar geniş bir alan),
+// hem de her kademe arası fark her yerde YAKLAŞIK aynı (~%30) -- ne aşırı
+// küçük ne aşırı büyük bir sıçrama.
+export const TILE_WIDTHS = [48, 63, 83, 109, 144, 189, 248, 320];
+// Varsayılan değer (144) DEĞİŞMEDİ -- sadece dizideki index'i kaydı (eski
+// dizide 144 index 2'ydi, yeni dizide index 4).
+export const DEFAULT_TILE_WIDTH_INDEX = 4;
 
 // Kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın diye
 // NPC kale boyutu bu orana göre hesaplanıyor (bkz. components/MapView.tsx npcBoxWidth).

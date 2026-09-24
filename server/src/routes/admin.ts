@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import { SETTING_DEFS, loadSettings, updateSettings } from "../game/settings.js";
 import { computeLivePlayerGold, computeLiveTroops } from "../game/resources.js";
 import { hashPassword } from "../game/password.js";
+import { ensureMapGenerated } from "../game/mapgen.js";
 import type { Player, TileRow } from "../types.js";
 
 export const adminRouter = Router();
@@ -163,6 +164,7 @@ adminRouter.get("/players", requireAdmin, async (req, res) => {
       return {
         id: p.id,
         username: p.username,
+        nickname: p.nickname,
         createdAt: Number(p.created_at),
         seasonPoints: p.season_points,
         banned: p.banned,
@@ -205,6 +207,7 @@ adminRouter.get("/players/:id", requireAdmin, async (req, res) => {
     res.json({
       id: player.id,
       username: player.username,
+      nickname: player.nickname,
       createdAt: Number(player.created_at),
       seasonPoints: player.season_points,
       banned: player.banned,
@@ -413,4 +416,49 @@ adminRouter.delete("/players/:id", requireAdmin, async (req, res) => {
   } finally {
     client.release();
   }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/reset-game -- TÜM oyun verisini (oyuncular, kaleler, loncalar,
+// davetler, saldırı/takviye siparişleri, gözcü/rapor/savaş kayıtları) siler
+// ve haritayı SIFIRDAN yeniden üretir. `game_settings` (admin'in ayarladığı
+// tüm oyun sabitleri) ve `schema_migrations` (bkz. mapgen.ts'teki tek
+// seferlik geçiş kayıtları) BİLEREK dokunulmuyor -- aksi halde eski TRUNCATE
+// tabanlı migration'lar (ör. applyRectSingleIslandMigration) "hiç
+// çalışmamış" gibi görünüp bir sonraki boot'ta yanlışlıkla tekrar
+// tetiklenebilirdi (bkz. mapgen.ts dosya başı yorumları, aynı TRUNCATE
+// deseni). GERİ ALINAMAZ -- client tarafında çift onay isteniyor (bkz.
+// AdminPanel.tsx).
+// ---------------------------------------------------------------------------
+adminRouter.post("/reset-game", requireAdmin, async (_req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `TRUNCATE TABLE
+         tile_reinforcements, scout_reports, player_reports, battle_log,
+         attack_orders, reinforcement_orders, guild_invites, guild_members,
+         guilds, tiles, players
+       RESTART IDENTITY CASCADE`
+    );
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error(err);
+    return res.status(500).json({ error: "Sunucu hatası." });
+  } finally {
+    client.release();
+  }
+
+  try {
+    const settings = await loadSettings();
+    await ensureMapGenerated(settings);
+  } catch (err) {
+    console.error("[admin] reset-game sonrası harita üretimi başarısız oldu:", err);
+    return res.status(500).json({
+      error: "Oyun verisi silindi ama harita yeniden üretilemedi -- sunucu loglarını kontrol et.",
+    });
+  }
+
+  res.json({ ok: true });
 });

@@ -1,5 +1,6 @@
 import { pool, hasMigration, markMigration } from "../db.js";
 import { productionForLevel } from "./resources.js";
+import { generateLakes, isWaterAtWorldPosition } from "./decor.js";
 import type { Settings } from "./settings.js";
 import type { TileType } from "../types.js";
 
@@ -382,6 +383,11 @@ export async function ensureMapGenerated(settings: Settings) {
 
   const now = Date.now();
   const layout = generateIslandLayout();
+  // Göl konumları client'la (riversLakes.ts) BİREBİR aynı, dünya
+  // koordinatına göre deterministik üretiliyor (bkz. decor.ts) -- göl
+  // altındaki hiçbir karo asla NPC/oyuncu kalesi olamaz (bkz. aşağıdaki
+  // isWater kontrolü ve pickRandomEmptyTile).
+  const lakes = generateLakes(WORLD_SIZE);
 
   const client = await pool.connect();
   try {
@@ -396,14 +402,16 @@ export async function ensureMapGenerated(settings: Settings) {
       let p = 1;
 
       for (const tile of chunk) {
-        // Kıyı karolarında (adanın dış sınırından 1 kare) asla NPC kampı
-        // oluşmaz -- sadece adanın iç kısmı NPC'ye açık.
-        const isNpc = !tile.isCoastal && Math.random() < settings.npc_spawn_chance;
+        const isWater = isWaterAtWorldPosition(tile.x, tile.y, lakes);
+        // Kıyı karolarında (adanın dış sınırından 1 kare) ve göl altındaki
+        // karolarda asla NPC kampı oluşmaz -- sadece adanın iç, kuru kısmı
+        // NPC'ye açık.
+        const isNpc = !tile.isCoastal && !isWater && Math.random() < settings.npc_spawn_chance;
         const level = isNpc ? 1 + Math.floor(Math.random() * 3) : 1;
         const production = productionForLevel(level, settings);
 
         values.push(
-          `($${p++}, $${p++}, NULL, $${p++}, $${p++}, $${p++}, $${p++}, 0, 0, $${p++}, $${p++}, $${p++})`
+          `($${p++}, $${p++}, NULL, $${p++}, $${p++}, $${p++}, $${p++}, 0, 0, $${p++}, $${p++}, $${p++}, $${p++})`
         );
         params.push(
           tile.x,
@@ -414,13 +422,14 @@ export async function ensureMapGenerated(settings: Settings) {
           production.gold_per_hour,
           isNpc ? level * 20 : 0, // NPC garrison, static
           now,
-          tile.isCoastal
+          tile.isCoastal,
+          isWater
         );
       }
 
       await client.query(
         `INSERT INTO tiles (x, y, owner_id, island_id, tile_type, level, gold_per_hour,
-                            troops_per_hour, stored_gold, stored_troops, last_collected_at, is_coastal)
+                            troops_per_hour, stored_gold, stored_troops, last_collected_at, is_coastal, is_water)
          VALUES ${values.join(", ")}`,
         params
       );
@@ -438,10 +447,12 @@ export async function ensureMapGenerated(settings: Settings) {
 // Yeni oyuncunun başlangıç şehri de bir "kale" olduğu için aynı kıyı
 // tamponu kuralına tabi -- ORDER BY is_coastal ASC önce iç karoları dener,
 // hiç kalmadıysa (küçük bir adada iç karo tükenmiş olabilir) otomatik
-// olarak kıyı karolarına düşer.
+// olarak kıyı karolarına düşer. Göl altındaki karolar (is_water) ise HİÇ
+// aday değil -- kıyının aksine burada "yoksa düş" diye bir geri dönüş yok,
+// çünkü bir kale asla suyun içinde başlamamalı (bkz. is_water yorumu).
 export async function pickRandomEmptyTile(): Promise<number | null> {
   const { rows } = await pool.query<{ id: number }>(
-    "SELECT id FROM tiles WHERE tile_type = 'EMPTY' ORDER BY is_coastal ASC, RANDOM() LIMIT 1"
+    "SELECT id FROM tiles WHERE tile_type = 'EMPTY' AND is_water = false ORDER BY is_coastal ASC, RANDOM() LIMIT 1"
   );
   return rows[0]?.id ?? null;
 }
@@ -599,6 +610,140 @@ export async function applyNpcDensityReductionMigrationV3(settings: Settings) {
   await markMigration(MIGRATION_NAME);
   console.log(
     `[migration] ${MIGRATION_NAME}: tamamlandı (${rows.length} fethedilmemiş NPC kampından ${clearIds.length} tanesi daha boşaltıldı).`
+  );
+}
+
+// Önceki üç seyreltme turu (applyNpcBorderMigration, ...ReductionMigration,
+// ...ReductionMigrationV3) NPC yoğunluğunu gereğinden fazla düşürmüştü
+// ("haritada sadece birkaç tane var" geri bildirimi). Bu geçiş TERSİNE, kalan
+// boş (fethedilmemiş, kıyı olmayan) karelerin bir kısmını NPC kampına
+// çevirip npc_spawn_chance ayarını da (hâlâ eski varsayılandaysa) artırıyor.
+// TEK SEFERLİK, oyuncuya ait hiçbir kareye dokunmuyor.
+export async function applyNpcDensityIncreaseMigrationV4(settings: Settings) {
+  const MIGRATION_NAME = "npc_density_increase_v4";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  const { rows } = await pool.query<{ id: number }>(
+    "SELECT id FROM tiles WHERE tile_type = 'EMPTY' AND is_coastal = false AND owner_id IS NULL"
+  );
+
+  // Seviyeye göre gruplanmış id listeleri -- her seviye için TEK bir toplu
+  // (ANY($1)) UPDATE atmak, binlerce satır için tek tek sorgu atmaktan çok
+  // daha hızlı (bkz. applyNpcBorderMigration'daki aynı gerekçe).
+  const idsByLevel = new Map<number, number[]>();
+  for (const r of rows) {
+    if (Math.random() >= 0.12) continue;
+    const level = 1 + Math.floor(Math.random() * 3);
+    const list = idsByLevel.get(level) ?? [];
+    list.push(r.id);
+    idsByLevel.set(level, list);
+  }
+
+  let spawnedCount = 0;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const [level, ids] of idsByLevel) {
+      if (ids.length === 0) continue;
+      const production = productionForLevel(level, settings);
+      await client.query(
+        `UPDATE tiles
+         SET tile_type = 'NPC', level = $1, gold_per_hour = $2, troops_per_hour = 0, stored_troops = $3
+         WHERE id = ANY($4)`,
+        [level, production.gold_per_hour, level * 20, ids]
+      );
+      spawnedCount += ids.length;
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // Eski varsayılan (0.01) hâlâ ayarlıysa yeni varsayılana (0.05) taşı --
+  // admin panelinden elle değiştirilmişse dokunma.
+  await pool.query(
+    "UPDATE game_settings SET value = 0.05 WHERE key = 'npc_spawn_chance' AND value = 0.01"
+  );
+
+  await markMigration(MIGRATION_NAME);
+  console.log(
+    `[migration] ${MIGRATION_NAME}: tamamlandı (${rows.length} boş kareden ${spawnedCount} tanesi NPC kampına çevrildi).`
+  );
+}
+
+// Göller (bkz. decor.ts) `ensureMapGenerated`e kadar mapgen'in hiç bilmediği,
+// tamamen client-tarafı bir kavramdı -- bu yüzden zaten canlı olan haritada
+// bazı NPC kampları (ve nadiren oyuncu kaleleri) client'ın göl çizdiği bir
+// karoya denk gelmiş olabilir ("kaleler göllerin üzerine geliyor" geri
+// bildirimi). Bu geçiş TEK SEFERLİK: (1) göl altındaki HER karoyu is_water=
+// true olarak işaretler ki bundan sonra hiçbir yeni NPC/oyuncu kalesi oraya
+// düşmesin (bkz. ensureMapGenerated/pickRandomEmptyTile), (2) göl altında
+// kalan, fethedilmemiş (owner_id NULL) NPC kamplarını EMPTY'e çevirir --
+// zaten kimsenin oynamadığı, tamamen tersine çevrilebilir bir değişiklik.
+// Bir OYUNCUNUN sahip olduğu kale göl altında çıkarsa (çok nadir, ama
+// mümkün) buraya BİLEREK dokunulmuyor -- bir oyuncunun kalesini otomatik
+// olarak başka bir karoya taşımak/silmek çok daha riskli bir işlem, sadece
+// uyarı olarak loglanıyor (gerekirse admin panelinden elle taşınabilir).
+export async function applyLakeLockMigration(settings: Settings) {
+  const MIGRATION_NAME = "lake_lock_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  const { rows } = await pool.query<{
+    id: number;
+    x: number;
+    y: number;
+    tile_type: TileType;
+    owner_id: string | null;
+  }>("SELECT id, x, y, tile_type, owner_id FROM tiles");
+
+  if (rows.length === 0) {
+    await markMigration(MIGRATION_NAME);
+    return;
+  }
+
+  const lakes = generateLakes(WORLD_SIZE);
+  const waterIds: number[] = [];
+  const clearIds: number[] = [];
+  let ownedOnWater = 0;
+  for (const t of rows) {
+    if (!isWaterAtWorldPosition(t.x, t.y, lakes)) continue;
+    waterIds.push(t.id);
+    if (t.tile_type === "NPC" && !t.owner_id) clearIds.push(t.id);
+    else if (t.tile_type === "PLAYER") ownedOnWater++;
+  }
+
+  const production = productionForLevel(1, settings);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    if (waterIds.length > 0) {
+      await client.query("UPDATE tiles SET is_water = true WHERE id = ANY($1)", [waterIds]);
+    }
+    if (clearIds.length > 0) {
+      await client.query(
+        `UPDATE tiles
+         SET tile_type = 'EMPTY', level = 1, gold_per_hour = $1, troops_per_hour = 0, stored_troops = 0
+         WHERE id = ANY($2)`,
+        [production.gold_per_hour, clearIds]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  await markMigration(MIGRATION_NAME);
+  console.log(
+    `[migration] ${MIGRATION_NAME}: tamamlandı (${waterIds.length} karo göl olarak işaretlendi, ` +
+      `${clearIds.length} fethedilmemiş NPC kampı boşaltıldı${
+        ownedOnWater > 0 ? `, DİKKAT: ${ownedOnWater} oyuncu kalesi göl altında kaldı (elle taşınmalı)` : ""
+      }).`
   );
 }
 

@@ -72,7 +72,7 @@ export async function resolveDueAttackOrders(): Promise<void> {
   }
 }
 
-async function resolveOneAttackOrder(order: AttackOrderRow, now: number): Promise<void> {
+export async function resolveOneAttackOrder(order: AttackOrderRow, now: number): Promise<void> {
   const settings = await loadSettings();
   const client = await pool.connect();
   try {
@@ -211,7 +211,7 @@ async function resolveOneAttackOrder(order: AttackOrderRow, now: number): Promis
           targetTile.owner_id,
           "defended_loss",
           "Kalen ele geçirildi",
-          `${attacker.username}, ${coordText} karesindeki kaleni ele geçirdi. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
+          `${attacker.nickname ?? attacker.username}, ${coordText} karesindeki kaleni ele geçirdi. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
           now
         ).catch(() => {});
       }
@@ -228,7 +228,7 @@ async function resolveOneAttackOrder(order: AttackOrderRow, now: number): Promis
           targetTile.owner_id,
           "defended_win",
           "Saldırıyı savuşturdun",
-          `${attacker.username}, ${coordText} karesindeki kaleni ele geçirmeye çalıştı ama başarısız oldu. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
+          `${attacker.nickname ?? attacker.username}, ${coordText} karesindeki kaleni ele geçirmeye çalıştı ama başarısız oldu. Güç: ${Math.round(combat.attackerPower)} / ${Math.round(combat.defenderPower)}.`,
           now
         ).catch(() => {});
       }

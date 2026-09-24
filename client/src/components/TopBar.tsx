@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import type { Guild, MyProfile, PlayerSummary, Session } from "../api";
 import { GuildFlag } from "./GuildFlag";
+import { PlayerFlag } from "./PlayerFlag";
 
 export function TopBar({
   session,
@@ -21,6 +22,7 @@ export function TopBar({
   onToggleGuild,
   onToggleLeaderboard,
   onToggleReports,
+  onOpenFlagEditor,
   onLogout,
 }: {
   session: Session;
@@ -41,10 +43,16 @@ export function TopBar({
   onToggleGuild: () => void;
   onToggleLeaderboard: () => void;
   onToggleReports: () => void;
+  onOpenFlagEditor: () => void;
   onLogout: () => void;
 }) {
   // Üst menüdeki yuvarlak profil widget'ı (avatar yükleme).
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  // Profilde gösterilen isim artık takma ad (diğer oyunculara görünen
+  // kimlik) -- `session.username` sadece login kimlik bilgisi, profil henüz
+  // yüklenmediği/nickname hiç seçilmediği çok kısa bir ara durumda ona
+  // düşülüyor (bkz. api.ts Session/MyProfile yorumları).
+  const displayName = profile?.nickname ?? session.username;
 
   return (
     <header className="topbar">
@@ -58,7 +66,7 @@ export function TopBar({
           {profile?.avatarData ? (
             <img src={profile.avatarData} alt="" className="profile-avatar-img" />
           ) : (
-            <span className="profile-avatar-fallback">{session.username.slice(0, 2).toUpperCase()}</span>
+            <span className="profile-avatar-fallback">{displayName.slice(0, 2).toUpperCase()}</span>
           )}
           <span className="profile-avatar-edit-badge">📷</span>
         </button>
@@ -73,7 +81,12 @@ export function TopBar({
             if (file) onAvatarFile(file);
           }}
         />
-        <span className="profile-widget-name">{session.username}</span>
+        <span className="profile-widget-name">{displayName}</span>
+        {profile && (
+          <button type="button" className="profile-flag-btn" onClick={onOpenFlagEditor} title="Flamanı tasarla">
+            <PlayerFlag shapeId={profile.flagShape} colorId={profile.flagColor} logoId={profile.flagLogo} size={20} />
+          </button>
+        )}
       </div>
       {summary && (
         <div className="summary-bar">

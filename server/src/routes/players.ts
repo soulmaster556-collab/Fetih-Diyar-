@@ -23,6 +23,20 @@ function validateCredentials(username: unknown, password: unknown) {
   return { username: u, password: p };
 }
 
+// Takma ad, `username`'den (giriş kimlik bilgisi) BİLEREK farklı kurallara
+// tabi -- Türkçe harfler/boşluk/rakam serbest (kale/oyuncu ismi gibi
+// hissettirsin diye), ama art arda/baştan-sondan boşluk sadeleştiriliyor.
+function validateNickname(nickname: unknown) {
+  const n = String(nickname ?? "").trim().replace(/\s+/g, " ");
+  if (n.length < 2 || n.length > 20) {
+    return { error: "Takma ad 2-20 karakter olmalı." };
+  }
+  if (!/^[\p{L}\p{N} _'-]+$/u.test(n)) {
+    return { error: "Takma ad sadece harf, rakam, boşluk, alt çizgi, tire ve kesme işareti içerebilir." };
+  }
+  return { nickname: n };
+}
+
 playersRouter.post("/register", async (req, res) => {
   try {
     const parsed = validateCredentials(req.body?.username, req.body?.password);
@@ -45,6 +59,11 @@ playersRouter.post("/register", async (req, res) => {
     const passwordHash = hashPassword(password);
     const now = Date.now();
     const production = productionForLevel(1, settings);
+    // Kayıtta rastgele bir flama atanıyor (bkz. client/src/game/
+    // playerFlags.ts) -- kozmetik olduğu için kripto rastgelelik gerekmiyor.
+    const flagShape = 1 + Math.floor(Math.random() * 10);
+    const flagColor = 1 + Math.floor(Math.random() * 20);
+    const flagLogo = 1 + Math.floor(Math.random() * 20);
 
     let homeX: number | null = null;
     let homeY: number | null = null;
@@ -52,9 +71,9 @@ playersRouter.post("/register", async (req, res) => {
     try {
       await client.query("BEGIN");
       await client.query(
-        `INSERT INTO players (id, username, password_hash, token, created_at, season_points, home_tile_id)
-         VALUES ($1, $2, $3, $4, $5, 0, $6)`,
-        [id, username, passwordHash, token, now, startingTileId]
+        `INSERT INTO players (id, username, password_hash, token, created_at, season_points, home_tile_id, flag_shape, flag_color, flag_logo)
+         VALUES ($1, $2, $3, $4, $5, 0, $6, $7, $8, $9)`,
+        [id, username, passwordHash, token, now, startingTileId, flagShape, flagColor, flagLogo]
       );
       const tileResult = await client.query<{ x: number; y: number }>(
         `UPDATE tiles
@@ -77,7 +96,7 @@ playersRouter.post("/register", async (req, res) => {
       client.release();
     }
 
-    res.json({ playerId: id, username, token, startingTileId, homeX, homeY });
+    res.json({ playerId: id, username, nickname: null, token, startingTileId, homeX, homeY });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -122,7 +141,14 @@ playersRouter.post("/login", async (req, res) => {
       }
     }
 
-    res.json({ playerId: player.id, username: player.username, token: newToken, homeX, homeY });
+    res.json({
+      playerId: player.id,
+      username: player.username,
+      nickname: player.nickname ?? null,
+      token: newToken,
+      homeX,
+      homeY,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -155,8 +181,45 @@ playersRouter.get("/me", authenticate, async (req: any, res) => {
   res.json({
     playerId: player.id,
     username: player.username,
+    nickname: player.nickname ?? null,
     avatarData: player.avatar_data ?? null,
+    flagShape: player.flag_shape,
+    flagColor: player.flag_color,
+    flagLogo: player.flag_logo,
   });
+});
+
+// Takma ad SADECE bir kere seçilebilir (zaten dolu bir oyuncu 409 alır) --
+// oyunun her yerinde gösterilen kimliğin kararsız/sık değişen bir şey
+// olmaması için bilerek kısıtlandı (bkz. db.ts sütun yorumu). Eşzamanlı iki
+// isteğin aynı adı almaya çalışması SELECT kontrolüyle çoğunlukla yakalanır,
+// ama asıl garanti DB'deki unique index -- 23505 burada da ayrıca ele
+// alınıyor.
+playersRouter.post("/me/nickname", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    if (player.nickname) {
+      return res.status(409).json({ error: "Takma adın zaten belirlendi, tekrar değiştirilemez." });
+    }
+
+    const parsed = validateNickname(req.body?.nickname);
+    if ("error" in parsed) return res.status(400).json({ error: parsed.error });
+    const { nickname } = parsed;
+
+    const existing = await pool.query("SELECT id FROM players WHERE lower(nickname) = lower($1)", [nickname]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: "Bu takma ad zaten kullanımda, farklı bir tane dene." });
+    }
+
+    await pool.query("UPDATE players SET nickname = $1 WHERE id = $2", [nickname, player.id]);
+    res.json({ ok: true, nickname });
+  } catch (err: any) {
+    if (err?.code === "23505") {
+      return res.status(409).json({ error: "Bu takma ad zaten kullanımda, farklı bir tane dene." });
+    }
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
 });
 
 const MAX_AVATAR_DATA_URL_LENGTH = 400_000; // ~300kb ham veri (base64 şişkinliğiyle)
@@ -181,6 +244,34 @@ playersRouter.post("/me/avatar", authenticate, async (req: any, res) => {
 
     await pool.query("UPDATE players SET avatar_data = $1 WHERE id = $2", [avatarData, player.id]);
     res.json({ ok: true, avatarData });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Sunucu hatası." });
+  }
+});
+
+// Flama tasarım ekranından (bkz. client PlayerFlagModal.tsx) kaydetme --
+// avatar ucuyla aynı desen, ama guild'in normalizeFlagId'sinden farklı
+// olarak aralık dışı bir değeri SESSİZCE clamp etmek yerine 400 döner ki
+// istemci zar/seçim mantığında bir hata varsa fark edilsin.
+function isValidFlagAxis(value: unknown, max: number): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= max;
+}
+
+playersRouter.post("/me/flag", authenticate, async (req: any, res) => {
+  try {
+    const player = req.player as Player;
+    const { flagShape, flagColor, flagLogo } = req.body ?? {};
+
+    if (!isValidFlagAxis(flagShape, 10) || !isValidFlagAxis(flagColor, 20) || !isValidFlagAxis(flagLogo, 20)) {
+      return res.status(400).json({ error: "Geçersiz flama seçimi." });
+    }
+
+    await pool.query(
+      "UPDATE players SET flag_shape = $1, flag_color = $2, flag_logo = $3 WHERE id = $4",
+      [flagShape, flagColor, flagLogo, player.id]
+    );
+    res.json({ ok: true, flagShape, flagColor, flagLogo });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -239,8 +330,12 @@ playersRouter.get("/leaderboard", async (_req, res) => {
   try {
     const settings = await loadSettings();
     const now = Date.now();
+    // `username` alanı burada aslında takma adı taşıyor (COALESCE) -- diğer
+    // oyunculara gösterilen HER yerde artık nickname esas (bkz. db.ts sütun
+    // yorumu), login kullanıcı adı sadece onboarding tamamlanmamış (nickname
+    // hâlâ NULL) çok nadir bir ara durumun geri düşüşü.
     const { rows } = await pool.query<TileRow & { username: string }>(
-      `SELECT t.*, p.username as username FROM tiles t
+      `SELECT t.*, COALESCE(p.nickname, p.username) as username FROM tiles t
        JOIN players p ON p.id = t.owner_id
        WHERE t.tile_type = 'PLAYER' AND t.owner_id IS NOT NULL`
     );

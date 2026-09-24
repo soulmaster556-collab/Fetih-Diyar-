@@ -10,6 +10,9 @@ export interface Player {
   gold_collected_at: number;
   // Admin panelinden yasaklanmış mı (bkz. routes/admin.ts).
   banned: boolean;
+  // Diğer oyunculara gösterilen takma ad -- henüz seçilmemişse NULL (bkz.
+  // db.ts sütun yorumu, routes/players.ts POST /me/nickname).
+  nickname: string | null;
   // Oyuncunun ilk ana kalesinin tile id'si, kayıt olurken set edilir ve
   // login sırasında haritayı ana kaleye ortalamak için kullanılır (bkz.
   // routes/players.ts).
@@ -17,6 +20,11 @@ export interface Player {
   // Profil fotoğrafı: küçük bir data-URL (base64), yoksa null (bkz.
   // routes/players.ts).
   avatar_data: string | null;
+  // Oyuncu flaması: şekil (1-10) / renk (1-20) / logo (1-20) -- bkz.
+  // client/src/game/playerFlags.ts ve routes/players.ts POST /me/flag.
+  flag_shape: number;
+  flag_color: number;
+  flag_logo: number;
 }
 
 export type TileType = "NPC" | "PLAYER" | "EMPTY";

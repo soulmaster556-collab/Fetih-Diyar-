@@ -35,6 +35,16 @@ export interface Tile {
   // Görüntüleyenin bu kareye en son ne zaman gözcü gönderdiği (ms epoch),
   // yoksa null. Kendi/klan kalelerinde her zaman null (gözcüye gerek yok).
   scoutedAt: number | null;
+  // Sahibinin kayıt olurken aldığı ilk ("merkez") kalesi mi -- true ise bu
+  // kareye saldırı sunucu tarafından reddedilir (bkz. server tiles.ts POST
+  // /:id/attack) ve haritada ayırt edici bir glow efekti gösterilir. NPC/boş
+  // karolarda her zaman false.
+  isCapital: boolean;
+  // Sahibinin flaması -- kale üstünde büyük gösterilir (bkz. MapView.tsx
+  // .iso-flags-layer). NPC/boş karolarda ya da sahipsizse null.
+  ownerFlagShape: number | null;
+  ownerFlagColor: number | null;
+  ownerFlagLogo: number | null;
 }
 
 export interface PlayerSummary {
@@ -46,6 +56,10 @@ export interface PlayerSummary {
 export interface Session {
   playerId: string;
   username: string;
+  // Diğer oyunculara gösterilen takma ad -- henüz seçilmemişse null (yeni
+  // kayıtta her zaman null). App.tsx bu null olduğu sürece NicknameModal'ı
+  // zorunlu olarak açık tutar (bkz. o dosya).
+  nickname: string | null;
   token: string;
   startingTileId?: number;
   // İlk ana kalenin koordinatları, hem register hem login cevabında gelir
@@ -152,6 +166,7 @@ export function updateAdminSettings(adminKey: string, values: Record<string, num
 export interface AdminPlayerSummary {
   id: string;
   username: string;
+  nickname: string | null;
   createdAt: number;
   seasonPoints: number;
   banned: boolean;
@@ -177,6 +192,7 @@ export interface AdminPlayerTile {
 export interface AdminPlayerDetail {
   id: string;
   username: string;
+  nickname: string | null;
   createdAt: number;
   seasonPoints: number;
   banned: boolean;
@@ -251,6 +267,16 @@ export function deleteAdminPlayer(adminKey: string, playerId: string) {
   }).then((r) => handle<{ ok: true }>(r));
 }
 
+// TÜM oyun verisini siler ve haritayı sıfırdan yeniden üretir -- GERİ
+// ALINAMAZ (bkz. server routes/admin.ts POST /reset-game). AdminPanel.tsx
+// çift onay istiyor.
+export function resetGame(adminKey: string) {
+  return fetch(`${BASE}/admin/reset-game`, {
+    method: "POST",
+    headers: adminHeaders(adminKey),
+  }).then((r) => handle<{ ok: true }>(r));
+}
+
 // Saldırı anında sonuçlanmıyor, askerler yola çıkıyor (bkz. server
 // game/attacks.ts) ve sonuç arrivesAt'te (raporlar üzerinden) geliyor. Bu
 // yüzden cevap bir sonuç değil, bir "sipariş" (yolda giden ordu) bilgisi.
@@ -291,13 +317,21 @@ export function fetchAttackEta(token: string, fromTileId: number, targetTileId: 
   }).then((r) => handle<{ durationMs: number }>(r));
 }
 
-// Haritada gösterilecek, hâlâ yolda olan tüm saldırılar (kendi + klanınki --
-// bkz. server routes/tiles.ts GET /attacks/active). Animasyonlu saldırı
-// hattı bu listeyle beslenir.
+// Haritada gösterilecek, hâlâ yolda olan tüm saldırılar VE takviyeler (kendi
+// + klanınki -- bkz. server routes/tiles.ts GET /attacks/active, artık
+// attack_orders ∪ reinforcement_orders). Animasyonlu yolculuk hattı/flama
+// marker'ı bu listeyle beslenir -- isim tarihsel nedenlerle "Attack" ama
+// orderType alanıyla iki sipariş türü de ayırt edilebiliyor.
 export interface ActiveAttack {
   id: number;
+  orderType: "attack" | "reinforce";
   attackerId: string;
   attackerUsername: string;
+  // Gönderenin flaması -- haritadaki marker artık kılıç ikonu yerine bunu
+  // çiziyor (bkz. MapView.tsx, components/PlayerFlag.tsx).
+  attackerFlagShape: number;
+  attackerFlagColor: number;
+  attackerFlagLogo: number;
   fromX: number;
   fromY: number;
   targetX: number;
@@ -322,9 +356,13 @@ export function fetchActiveAttacks(token: string) {
   }).then((r) => handle<ActiveAttacksResponse>(r));
 }
 
-// Asker takviyesi -- hedef kendi kalenmiş gibi (askerler doğrudan
-// karışır) ya da bir klan arkadaşınınmış gibi (askerler ayrı, sadece
-// savunma için, geri çağrılabilir -- bkz. recallReinforcement) çalışır.
+// Asker takviyesi -- artık saldırı gibi anında değil, mesafeye bağlı bir
+// yolculuk süresi sonunda hedefe ulaşıyor (bkz. server game/
+// reinforcements.ts), bu yüzden cevap da AttackOrder ile aynı "yolda giden
+// ordu" şeklini paylaşıyor. Hedef kendi kalenmiş gibi (askerler varışta
+// doğrudan karışır) ya da bir klan arkadaşınınmış gibi (askerler ayrı,
+// sadece savunma için, geri çağrılabilir -- bkz. recallReinforcement)
+// çalışır.
 export function reinforceTile(
   token: string,
   targetTileId: number,
@@ -335,7 +373,7 @@ export function reinforceTile(
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ fromTileId, troopsSent }),
-  }).then((r) => handle<Tile>(r));
+  }).then((r) => handle<AttackOrder>(r));
 }
 
 // Bir klan arkadaşına gönderilmiş takviyeyi geri çağırır (sadece gönderen
@@ -432,11 +470,13 @@ export function leaveGuild(token: string) {
   }).then((r) => handle<{ ok: true }>(r));
 }
 
-export function inviteToGuild(token: string, username: string) {
+// Davet takma ada göre gönderilir -- oyuncular birbirinin login kullanıcı
+// adını değil, oyun içi takma adını bilir (bkz. server routes/guilds.ts).
+export function inviteToGuild(token: string, nickname: string) {
   return fetch(`${BASE}/guilds/invite`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ username }),
+    body: JSON.stringify({ nickname }),
   }).then((r) => handle<Guild>(r));
 }
 
@@ -517,18 +557,74 @@ export function markReportsRead(token: string) {
   }).then((r) => handle<{ ok: true }>(r));
 }
 
+// Sohbet -- Genel Chat / Lonca Chat (bkz. server routes/chat.ts). Basit
+// polling, websocket YOK -- ChatPanel.tsx birkaç saniyede bir GET ile son
+// mesajları çekiyor (diğer her şeyle aynı desen, bkz. App.tsx refreshXxx).
+export interface ChatMessage {
+  id: number;
+  playerId: string;
+  username: string;
+  message: string;
+  createdAt: number;
+}
+
+export function fetchGeneralChat(token: string) {
+  return fetch(`${BASE}/chat/general`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<ChatMessage[]>(r));
+}
+
+export function sendGeneralChat(token: string, message: string) {
+  return fetch(`${BASE}/chat/general`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ message }),
+  }).then((r) => handle<ChatMessage>(r));
+}
+
+// Loncası olmayan oyuncu için `guildId: null` + boş liste döner (hata değil).
+export function fetchGuildChat(token: string) {
+  return fetch(`${BASE}/chat/guild`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => handle<{ guildId: number | null; messages: ChatMessage[] }>(r));
+}
+
+export function sendGuildChat(token: string, message: string) {
+  return fetch(`${BASE}/chat/guild`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ message }),
+  }).then((r) => handle<ChatMessage>(r));
+}
+
 // Oyuncu profili (avatar) -- üst menüdeki profil widget'ı bu ikisiyle
 // besleniyor.
 export interface MyProfile {
   playerId: string;
   username: string;
+  nickname: string | null;
   avatarData: string | null;
+  // Oyuncu flaması -- bkz. game/playerFlags.ts (şekil 1-10 / renk 1-20 / logo 1-20).
+  flagShape: number;
+  flagColor: number;
+  flagLogo: number;
 }
 
 export function fetchMyProfile(token: string) {
   return fetch(`${BASE}/players/me`, {
     headers: { Authorization: `Bearer ${token}` },
   }).then((r) => handle<MyProfile>(r));
+}
+
+// Takma ad SADECE bir kere seçilebilir -- sunucu ikinci çağrıda 409 döner
+// (bkz. server routes/players.ts). NicknameModal.tsx bunu ilk girişte zorunlu
+// olarak çağırır.
+export function setNickname(token: string, nickname: string) {
+  return fetch(`${BASE}/players/me/nickname`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ nickname }),
+  }).then((r) => handle<{ ok: true; nickname: string }>(r));
 }
 
 // avatarData: "data:image/..." base64 -- null/"" gönderilirse avatar kaldırılır.
@@ -538,4 +634,16 @@ export function uploadAvatar(token: string, avatarData: string | null) {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ avatarData }),
   }).then((r) => handle<{ ok: true; avatarData: string | null }>(r));
+}
+
+// Flama tasarım ekranından (bkz. components/PlayerFlagModal.tsx) kaydetme.
+export function updatePlayerFlag(
+  token: string,
+  flag: { flagShape: number; flagColor: number; flagLogo: number }
+) {
+  return fetch(`${BASE}/players/me/flag`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(flag),
+  }).then((r) => handle<{ ok: true; flagShape: number; flagColor: number; flagLogo: number }>(r));
 }

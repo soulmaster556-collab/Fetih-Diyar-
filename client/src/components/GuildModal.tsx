@@ -150,7 +150,7 @@ export function GuildModal({
               <p className="hint guild-section-heading">Oyuncu davet et</p>
               <form onSubmit={handleInvitePlayer} className="guild-invite-form">
                 <input
-                  placeholder="Kullanıcı adı"
+                  placeholder="Takma ad"
                   value={guildInviteUsername}
                   onChange={(e) => setGuildInviteUsername(e.target.value)}
                   minLength={3}

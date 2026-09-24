@@ -11,6 +11,7 @@ import {
   setAdminPlayerBanned,
   kickAdminPlayerFromGuild,
   deleteAdminPlayer,
+  resetGame,
   type SettingDef,
   type AdminPlayerSummary,
   type AdminPlayerDetail,
@@ -132,7 +133,7 @@ function PlayerDetailModal({
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-screen admin-detail-screen" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>{detail ? detail.username : "Oyuncu"}</h2>
+          <h2>{detail ? detail.username : "Oyuncu"}{detail?.nickname ? ` (${detail.nickname})` : ""}</h2>
           <button className="icon-btn" onClick={onClose} aria-label="Kapat">
             ✕
           </button>
@@ -360,7 +361,10 @@ function PlayersTab({ adminKey }: { adminKey: string }) {
               className={`admin-players-row ${p.banned ? "admin-players-row-banned" : ""}`}
               onClick={() => setSelectedId(p.id)}
             >
-              <span className="admin-players-username">{p.username}</span>
+              <span className="admin-players-username">
+                {p.username}
+                {p.nickname && <small className="admin-players-nickname"> ({p.nickname})</small>}
+              </span>
               <span>{formatDate(p.createdAt)}</span>
               <span className="admin-stat-gold">{formatNumber(p.gold)}</span>
               <span className="admin-stat-troops">{formatNumber(p.troops)}</span>
@@ -472,6 +476,87 @@ function SettingsTab({ adminKey }: { adminKey: string }) {
 }
 
 // -----------------------------------------------------------------------
+// Tehlikeli Bölge -- tüm oyunu sıfırlama. Tek bir window.confirm'e (bkz.
+// PlayerDetailModal'daki hesap silme) BİLEREK güvenilmiyor -- native tarayıcı
+// dialog'u bu tür gömülü/otomatize edilmiş ortamlarda (ör. webview) sessizce
+// engellenebiliyor ya da sayfayı asıl işlemden habersiz kilitleyebiliyor, ve
+// bu işlem oyundaki HERKESİ sildiği için o riski almaya değmez. Bunun
+// yerine tamamen uygulama-içi iki adım: (1) tam olarak "SIFIRLA" yazılmadan
+// buton hiç aktif olmuyor, (2) buton tıklanınca ayrı bir "son kez onayla"
+// adımına geçiliyor -- gerçek silme SADECE o ikinci adımdaki ayrı butona
+// basılınca tetikleniyor.
+// -----------------------------------------------------------------------
+const RESET_CONFIRM_PHRASE = "SIFIRLA";
+
+function DangerZoneTab({ adminKey }: { adminKey: string }) {
+  const [confirmText, setConfirmText] = useState("");
+  const [awaitingFinalConfirm, setAwaitingFinalConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  function handleReset() {
+    setBusy(true);
+    setError(null);
+    setSuccess(null);
+    resetGame(adminKey)
+      .then(() => {
+        setSuccess("Oyun sıfırlandı, harita yeniden üretildi.");
+        setConfirmText("");
+        setAwaitingFinalConfirm(false);
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <div className="admin-section">
+      <h3>⚠️ Oyunu Sıfırla</h3>
+      <div className="banner error">
+        Bu, TÜM oyuncu hesaplarını, kaleleri, loncaları, saldırı/takviye siparişlerini ve raporları
+        kalıcı olarak siler, ardından haritayı sıfırdan yeniden üretir. Admin ayarları (Ayarlar
+        sekmesi) bu işlemden etkilenmez. <strong>Geri alınamaz.</strong>
+      </div>
+      {error && <div className="banner error">{error}</div>}
+      {success && <div className="banner success">{success}</div>}
+
+      {!awaitingFinalConfirm ? (
+        <div className="admin-action-row admin-action-row-danger">
+          <label>Onaylamak için "{RESET_CONFIRM_PHRASE}" yaz</label>
+          <div className="admin-inline-form">
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={RESET_CONFIRM_PHRASE}
+            />
+            <button
+              className="admin-btn-danger"
+              disabled={confirmText !== RESET_CONFIRM_PHRASE}
+              onClick={() => setAwaitingFinalConfirm(true)}
+            >
+              Oyunu Sıfırla
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="admin-action-row admin-action-row-danger">
+          <label>Son kez soruyoruz -- gerçekten TÜMÜNÜ silmek istiyor musun?</label>
+          <div className="admin-inline-form">
+            <button disabled={busy} onClick={() => setAwaitingFinalConfirm(false)}>
+              Vazgeç
+            </button>
+            <button className="admin-btn-danger" disabled={busy} onClick={handleReset}>
+              {busy ? "Sıfırlanıyor…" : "Evet, Kalıcı Olarak Sıfırla"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// -----------------------------------------------------------------------
 // Kök bileşen -- giriş ekranı + sekmeli (Ayarlar / Oyuncular) düzen, oyunun
 // lacivert/altın arayüz diliyle (bkz. App.css .admin-*).
 // -----------------------------------------------------------------------
@@ -480,7 +565,7 @@ export default function AdminPanel() {
   const [keyInput, setKeyInput] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const [tab, setTab] = useState<"players" | "settings">("players");
+  const [tab, setTab] = useState<"players" | "settings" | "danger">("players");
 
   function tryUnlock(key: string) {
     setChecking(true);
@@ -554,10 +639,19 @@ export default function AdminPanel() {
         <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>
           ⚙️ Ayarlar
         </button>
+        <button className={tab === "danger" ? "active" : ""} onClick={() => setTab("danger")}>
+          ⚠️ Tehlikeli Bölge
+        </button>
       </nav>
 
       <div className="admin-content">
-        {tab === "players" ? <PlayersTab adminKey={adminKey} /> : <SettingsTab adminKey={adminKey} />}
+        {tab === "players" ? (
+          <PlayersTab adminKey={adminKey} />
+        ) : tab === "settings" ? (
+          <SettingsTab adminKey={adminKey} />
+        ) : (
+          <DangerZoneTab adminKey={adminKey} />
+        )}
       </div>
     </div>
   );

@@ -114,3 +114,32 @@ const GRAIN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="1
 </svg>`;
 
 export const TERRAIN_GRAIN_BACKGROUND = `url("data:image/svg+xml,${encodeURIComponent(GRAIN_SVG)}")`;
+
+// ---------------------------------------------------------------------
+// FAZ 3 — forests.ts / rockyAreas.ts bu tek fonksiyonla "region field"i
+// sorguluyor (bkz. dosya başı yorumu -- FAZ 1'deki anchor/render kodu
+// yukarısı hiç değişmedi, bu SADECE yeni bir okuma fonksiyonu).
+// ---------------------------------------------------------------------
+// Bir (x,y) koordinatında verilen biyomun ne kadar "baskın" olduğunu
+// 0..1 arası döndürür -- aynı anchor listesini, buildBiomeBackground'daki
+// AYNI plato+düşüş şeklini (0-35% tam, 35-100% yumuşak sıfıra iniş)
+// kullanarak. Bu sayede orman/kayalık yoğunluğu, zeminin görsel biyom
+// lekeleriyle (ör. "forestFloor" rengiyle) DAİMA örtüşüyor -- ayrı bir
+// veri kümesi değil, aynı anchor'ların farklı bir okunuşu. isoCenter
+// referans genişlik 1 ile çağrılıyor (gerçek piksel değil, SADECE
+// anchor'larla aynı oranlı/skewed uzayda tutarlı mesafe karşılaştırması
+// için -- tileWidth'ten bağımsız, tamamen koordinat-tabanlı).
+export function sampleBiomeIntensity(x: number, y: number, anchors: BiomeAnchor[], biome: BiomeType): number {
+  const p = isoCenter(x, y, 1);
+  let intensity = 0;
+  for (const a of anchors) {
+    if (a.biome !== biome) continue;
+    const ap = isoCenter(a.x, a.y, 1);
+    const dist = Math.hypot(p.cx - ap.cx, p.cy - ap.cy);
+    if (dist >= a.radius) continue;
+    const t = dist / a.radius;
+    const local = t <= 0.35 ? 1 : 1 - (t - 0.35) / 0.65;
+    if (local > intensity) intensity = local;
+  }
+  return intensity;
+}

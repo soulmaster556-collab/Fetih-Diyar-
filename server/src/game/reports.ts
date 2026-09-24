@@ -10,7 +10,8 @@ export type ReportType =
   | "defended_win"
   | "defended_loss"
   | "scout_sent"
-  | "scouted_by";
+  | "scouted_by"
+  | "reinforce_returned";
 
 export interface ReportRow {
   id: number;

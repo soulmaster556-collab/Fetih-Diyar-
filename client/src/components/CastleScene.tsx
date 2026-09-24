@@ -1,7 +1,5 @@
 import { useMemo } from "react";
 import { buildCastleScene, type PlacedProp } from "../game/castleScenes";
-import { hashXY } from "../game/mountains";
-import { GuildFlag } from "./GuildFlag";
 
 // FAZ 2 prototip -- bkz. game/castleScenes.ts dosya başı yorumu. Bu
 // bileşen SADECE MapView.tsx'in seçtiği TEK bir prototip kalede kullanılır
@@ -45,13 +43,6 @@ export function CastleScene({
   const behind = sceneVisible ? props.filter((p) => p.slot.paintOrder === "behind") : [];
   const front = sceneVisible ? props.filter((p) => p.slot.paintOrder === "front") : [];
 
-  // Bayrak rengi -- gerçek klan/sahiplik verisi (bkz. FAZ 2 raporu, madde
-  // "gerçek asset geldiğinde nereden değiştirilecek") henüz MapView'a
-  // kadar taşınmadı, bu yüzden şimdilik koordinata göre deterministik bir
-  // flagId placeholder (1-10). İleride tile.ownerId -> guild.flagId
-  // eşlemesi geldiğinde sadece bu satır değişecek.
-  const flagId = (hashXY(tile.x, tile.y, 501) % 10) + 1;
-
   const centerX = tileWidth / 2;
   const centerY = tileHeight / 2;
 
@@ -85,17 +76,6 @@ export function CastleScene({
       {front.map((p) => (
         <CastleSceneProp key={p.slot.id} prop={p} tileWidth={tileWidth} centerX={centerX} centerY={centerY} />
       ))}
-      {sceneVisible && (
-        <div
-          className="castle-scene-flag"
-          style={{
-            left: centerX + tileWidth * 0.04 - (tileWidth * 0.2) / 2,
-            top: centerY - tileWidth * 0.58,
-          }}
-        >
-          <GuildFlag flagId={flagId} size={tileWidth * 0.2} />
-        </div>
-      )}
     </>
   );
 }

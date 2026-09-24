@@ -8,11 +8,16 @@ import {
   WORLD_SIZE,
 } from "../game/constants";
 import { isCastleSceneVisible } from "../game/castleScenes";
+import { computePlacedForests } from "../game/forests";
 import { isoCenter } from "../game/hexMath";
 import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
+import { computePlacedRocks } from "../game/rockyAreas";
+import { buildLakePathD, generateLakes, isWaterAtWorldPosition } from "../game/riversLakes";
 import { castleImageForLevel, npcCastleImageForLevel } from "../game/tileImages";
+import { buildTerritoryPathD, computeTerritoryRegions } from "../game/territory";
 import { buildBiomeBackground, generateBiomeAnchors, TERRAIN_GRAIN_BACKGROUND } from "../game/worldRegions";
 import { CastleScene } from "./CastleScene";
+import { PlayerFlag } from "./PlayerFlag";
 
 // Harita artık tüm pencereyi kaplayan tek katman -- menü/panel bunun
 // ÜZERİNE yarı saydam "HUD" katmanları olarak biniyor. Kaydırma/zoom/
@@ -67,6 +72,31 @@ export function MapView({
     [biomeAnchors, tileWidth]
   );
 
+  // Göller. AYNI prensip: WORLD_SIZE'a göre bir kez üretilir, `tiles`'tan
+  // bağımsız (bkz. riversLakes.ts dosya başı yorumu). z-index sırası:
+  // .world-terrain (0) -> .world-water (1) -> .iso-tile-group'lar (10+).
+  // Territory (FAZ 5) ileride bu ikisinin arasına (z~2) girecek. Nehir
+  // sistemi kullanıcı isteğiyle kaldırıldı -- sadece göl var.
+  const waterFeatures = useMemo(() => ({ lakes: generateLakes(WORLD_SIZE) }), []);
+  const lakePathsD = useMemo(
+    () => waterFeatures.lakes.map((l) => ({ key: `lake-${l.seed}`, d: buildLakePathD(l, tileWidth) })),
+    [waterFeatures, tileWidth]
+  );
+
+  // FAZ 5 -- Territory (bkz. game/territory.ts dosya başı yorumu). Pahalı
+  // kısım (flood-fill + sınır çıkarma) SADECE `tiles`/sahiplik değiştiğinde
+  // yeniden çalışır -- zoom (tileWidth) değişince ayrı bir useMemo (aşağıda)
+  // sadece koordinatları ölçekliyor, topoloji baştan hesaplanmıyor (madde 18).
+  const territoryRegions = useMemo(
+    () => computeTerritoryRegions(tiles, playerId, guildMemberIds),
+    [tiles, playerId, guildMemberIds]
+  );
+  const territoryPathsD = useMemo(
+    () =>
+      territoryRegions.map((r) => ({ key: r.key, category: r.category, d: buildTerritoryPathD(r, tileWidth) })),
+    [territoryRegions, tileWidth]
+  );
+
   // FAZ 2 -- Castle Scene PROTOTİPİ. Bilerek SADECE TEK bir kalede
   // deneniyor (bkz. game/castleScenes.ts dosya başı yorumu) -- oyuncunun
   // sahip olduğu, id'si en düşük karo (genelde ilk/başlangıç kalesi).
@@ -102,6 +132,72 @@ export function MapView({
     });
   }, [placedMountains, tileWidth, tileHeight]);
 
+  // FAZ 4A madde 6 -- "dağların suyla kötü çakışmaması", ama
+  // `computePlacedMountains`'ın KENDİSİNE (mountains.ts) dokunmadan: dağ
+  // YERLEŞİMİ hiç değişmedi, sadece burada -- render'a hangi dağların
+  // ÇİZİLECEĞİNE karar veren MapView katmanında -- kökü suya denk gelen
+  // dağlar listeden çıkarılıyor. Attack-line bükülmesi de (aşağıda) AYNI
+  // filtrelenmiş listeyi kullanıyor ki görünmeyen bir dağın etrafında
+  // saldırı hattı bükülmesin.
+  // Dağ sprite'ı (scale 2.2) diğer dekorlardan daha büyük taştığı için pay
+  // da daha geniş -- "ağaçlar/dekorlar göle taşıyor" düzeltmesi (bkz.
+  // riversLakes.ts isWaterAtWorldPosition yorumu, forests.ts/rockyAreas.ts
+  // ile aynı prensip).
+  const visibleMountainScreens = useMemo(
+    () =>
+      mountainScreens.filter(
+        (m) => !isWaterAtWorldPosition(m.mountain.rootX, m.mountain.rootY, waterFeatures, 1.25)
+      ),
+    [mountainScreens, waterFeatures]
+  );
+
+  // FAZ 3 -- Forest + Rocky Areas. `mountains.ts` HİÇ değişmedi; bu iki
+  // sistem sadece onunla aynı painter's-algorithm havuzuna (10+x+y,
+  // aşağıdaki render'da mountainScreens ile yan yana) katılıyor. Sıra
+  // önemli: dağlar önce yerleşiyor (değişmedi), ormanlar dağ köklerini
+  // (+6 komşu) dışlayarak yerleşiyor, kayalıklar hem dağları hem de
+  // (sadece kendi hex'i, komşu dışlaması olmadan) orman köklerini
+  // dışlayarak yerleşiyor -- bkz. forests.ts/rockyAreas.ts dosya başı
+  // yorumları. world-terrain'e (biomeAnchors'ın KENDİSİ değişmiyor, sadece
+  // okunuyor) hiç dokunulmuyor.
+  const placedForests = useMemo(
+    () => computePlacedForests(tiles, biomeAnchors, placedMountains, waterFeatures),
+    [tiles, biomeAnchors, placedMountains, waterFeatures]
+  );
+  const placedRocks = useMemo(
+    () => computePlacedRocks(tiles, biomeAnchors, placedMountains, placedForests, waterFeatures),
+    [tiles, biomeAnchors, placedMountains, placedForests, waterFeatures]
+  );
+
+  const forestScreens = useMemo(() => {
+    return placedForests.map((f) => {
+      const { cx, cy } = isoCenter(f.rootX, f.rootY, tileWidth);
+      const scale = f.def.scale * f.scaleJitter;
+      const boxW = tileWidth * scale;
+      const boxH = tileHeight * scale;
+      const left = cx + f.jitterX * tileWidth - boxW / 2;
+      const top = cy + f.jitterY * tileWidth - boxH / 2;
+      return { forest: f, left, top, width: boxW, height: boxH };
+    });
+  }, [placedForests, tileWidth, tileHeight]);
+
+  const rockScreens = useMemo(() => {
+    return placedRocks.map((r) => {
+      const { cx, cy } = isoCenter(r.rootX, r.rootY, tileWidth);
+      const scale = r.def.scale * r.scaleJitter;
+      const boxW = tileWidth * scale;
+      const boxH = tileHeight * scale;
+      const left = cx + r.jitterX * tileWidth - boxW / 2;
+      const top = cy + r.jitterY * tileWidth - boxH / 2;
+      return { rock: r, left, top, width: boxW, height: boxH };
+    });
+  }, [placedRocks, tileWidth, tileHeight]);
+
+  // Render sırası (yukarıdan aşağıya = arkadan öne, FAZ 5 madde 2/17):
+  // world-terrain(z0) -> world-water(z1) -> world-territory(z2) ->
+  // iso-tile-group'lar + mountains/forests/rocky/castle-scenes (z 10+,
+  // painter's algorithm havuzu) -> iso-labels-layer(z500) ->
+  // attack-lines-layer(en üst). Bu sırayı değiştirmeden koru.
   return (
   <div
     className="map-viewport"
@@ -139,6 +235,35 @@ export function MapView({
           }}
         />
       </div>
+      {/* Göl katmanı. .world-terrain'in HEMEN üstünde, tüm
+          .iso-tile-group'ların (z-index 10+) altında -- sabit z-index 1,
+          painter's algorithm'a hiç katılmıyor (tıpkı terrain gibi düz/
+          zemine-yapışık bir katman, "boylu" bir obje değil). Tek bir SVG,
+          içinde birkaç <path> -- dünya boyutundan bağımsız, düşük DOM
+          maliyetli (bkz. riversLakes.ts dosya başı yorumu). Nehir sistemi
+          kullanıcı isteğiyle kaldırıldı. */}
+      <svg className="world-water">
+        {lakePathsD.map((l) => (
+          <path key={l.key} d={l.d} className="lake-shape" />
+        ))}
+      </svg>
+      {/* FAZ 5 -- Territory katmanı. .world-water'ın HEMEN üstünde, TÜM
+          .iso-tile-group'ların (z 10+) altında -- sabit z-index 2, terrain/su
+          gibi zemine yapışık bir katman, painter's algorithm'a katılmıyor.
+          Her <path> tek bir bağlı bölgeyi (region) temsil ediyor -- hex
+          başına DEĞİL (bkz. game/territory.ts dosya başı yorumu). fillRule
+          evenodd, region içinde delik (ör. fethedilmemiş bir NPC karosu)
+          varsa doğru boşluğu bırakması için. */}
+      <svg className="world-territory">
+        {territoryPathsD.map((r) => (
+          <path
+            key={r.key}
+            d={r.d}
+            fillRule="evenodd"
+            className={`territory-path territory-path-${r.category}`}
+          />
+        ))}
+      </svg>
       {sortedTiles.map((tile) => {
             const showCastle =
               SHOW_BUILDINGS && tile.tileType === "PLAYER" && tileWidth >= ICON_MIN_WIDTH;
@@ -149,12 +274,15 @@ export function MapView({
             const castleIcon = castleImageForLevel(tile.level);
             const npcIcon = npcCastleImageForLevel(tile.level);
             const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-            // Kale kutusu: yükseklik tileHeight*0.82, genişlik en fazla
-            // tileWidth*0.94. object-fit:contain her seviye görselinin
-            // kendi oranını koruyor (gerçek oranlar ~0.41-1.18). 0.94 tavanı
-            // komşu karolarla üst üste binmeyi önlüyor -- kaldırma.
-            const castleBoxHeight = tileHeight * 0.82;
-            const castleBoxWidth = Math.min(castleBoxHeight * 1.2, tileWidth * 0.94);
+            // Kale kutusu: yükseklik tileHeight*0.94, genişlik en fazla
+            // tileWidth*1.08 (kullanıcı isteğiyle önceki 0.82/0.94'ten
+            // büyütüldü -- oyuncu kaleleri artık komşu karolara biraz daha
+            // taşıyor, bilerek: "overflow:visible" zaten kale ikonlarının
+            // karo dışına taşmasına izin veriyordu, bkz. .iso-tile-group).
+            // object-fit:contain her seviye görselinin kendi oranını koruyor
+            // (gerçek oranlar ~0.41-1.18).
+            const castleBoxHeight = tileHeight * 0.94;
+            const castleBoxWidth = Math.min(castleBoxHeight * 1.2, tileWidth * 1.08);
             const npcBoxHeight = tileHeight * 0.58;
             const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
             const castleTop = (tileHeight - castleBoxHeight) / 2;
@@ -276,7 +404,7 @@ export function MapView({
               sortedTiles yorumu). pointer-events:none -- tıklama her
               zaman altındaki (zaten "ölü alan" olan EMPTY) karoya
               gidiyor, ayrıca bir tıklama davranışı eklemeye gerek yok. */}
-          {mountainScreens.map(({ mountain, left, top, width, height }) => (
+          {visibleMountainScreens.map(({ mountain, left, top, width, height }) => (
             <img
               key={mountain.key}
               src={mountain.def.img}
@@ -288,6 +416,50 @@ export function MapView({
                 width,
                 height,
                 zIndex: 10 + mountain.frontSortKey,
+                transform: `rotate(${mountain.rotationDeg}deg)${mountain.flipX ? " scaleX(-1)" : ""}`,
+                transformOrigin: "bottom center",
+              }}
+            />
+          ))}
+          {/* FAZ 3 -- orman kümeleri. Dağlarla AYNI z-index numaralandırması
+              (10+frontSortKey) -- ayrı bir katman değil, aynı painter's
+              algorithm havuzuna karışıyor (bkz. yukarıdaki placedForests
+              yorumu), böylece önünden geçen bir karo kümenin üstünde,
+              arkasındaki bir karo altında doğru şekilde görünüyor. */}
+          {forestScreens.map(({ forest, left, top, width, height }) => (
+            <img
+              key={forest.key}
+              src={forest.def.img}
+              alt=""
+              className="forest-cluster"
+              style={{
+                left,
+                top,
+                width,
+                height,
+                zIndex: 10 + forest.frontSortKey,
+              }}
+            />
+          ))}
+          {/* FAZ 3 -- kayalık kümeler. Aynı prensip, ayrı katman. FAZ 4B --
+              her kayaya (kendi SVG'sindeki tekil taş açılarından AYRI
+              olarak) hash'e göre sabit, küçük bir genel eğim uygulanıyor
+              (bkz. rockyAreas.ts `rotationDeg` yorumu) -- transform-origin
+              "bottom center" ile taban/zemin teması dönüşten etkilenmiyor. */}
+          {rockScreens.map(({ rock, left, top, width, height }) => (
+            <img
+              key={rock.key}
+              src={rock.def.img}
+              alt=""
+              className="rock-cluster"
+              style={{
+                left,
+                top,
+                width,
+                height,
+                zIndex: 10 + rock.frontSortKey,
+                transform: `rotate(${rock.rotationDeg}deg)`,
+                transformOrigin: "bottom center",
               }}
             />
           ))}
@@ -334,6 +506,61 @@ export function MapView({
             })}
           </div>
 
+          {/* Oyuncu flamaları + merkez kale efekti -- level-badge'lerle AYNI
+              sebepten (komşu karonun taşan görseli örtmesin diye) ayrı, her
+              zaman en üstteki tek bir katmanda. Flama artık CastleScene'in
+              eski hashXY placeholder'ı yerine GERÇEK sahiplik verisinden
+              (tile.ownerFlagShape/Color/Logo) geliyor ve TÜM oyuncu
+              kalelerinde görünüyor (sadece FAZ 2 prototip kalede değil). */}
+          <div className="iso-flags-layer">
+            {sortedTiles.map((tile) => {
+              const showFlag =
+                SHOW_BUILDINGS && tile.tileType === "PLAYER" && !!tile.ownerId && tileWidth >= ICON_MIN_WIDTH;
+              if (!showFlag && !tile.isCapital) return null;
+              const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
+              return (
+                <div
+                  key={tile.id}
+                  className="iso-flag-anchor"
+                  style={{
+                    left: cx - tileWidth / 2,
+                    top: cy - tileHeight / 2,
+                    width: tileWidth,
+                    height: tileHeight,
+                  }}
+                >
+                  {tile.isCapital && (
+                    <div
+                      className="capital-castle-aura"
+                      style={{
+                        left: tileWidth / 2 - (tileWidth * 1.3) / 2,
+                        top: tileHeight / 2 + tileWidth * 0.14 - (tileWidth * 0.5) / 2,
+                        width: tileWidth * 1.3,
+                        height: tileWidth * 0.5,
+                      }}
+                    />
+                  )}
+                  {showFlag && (
+                    <div
+                      className="iso-flag-badge"
+                      style={{
+                        left: tileWidth / 2 + tileWidth * 0.04 - (tileWidth * 0.34) / 2,
+                        top: tileHeight / 2 - tileWidth * 0.66,
+                      }}
+                    >
+                      <PlayerFlag
+                        shapeId={tile.ownerFlagShape ?? 1}
+                        colorId={tile.ownerFlagColor ?? 1}
+                        logoId={tile.ownerFlagLogo ?? 1}
+                        size={tileWidth * 0.34}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
           {/* Yolda olan (kendi/klanla ilgili) her saldırı için kaynaktan
               hedefe kesikli bir hat + CSS Motion Path (offset-path) ile o hat
               üzerinde ilerleyen bir işaret. Negatif animation-delay (geçen
@@ -352,7 +579,7 @@ export function MapView({
                   from.cy,
                   to.cx,
                   to.cy,
-                  mountainScreens.map((m) => m.box),
+                  visibleMountainScreens.map((m) => m.box),
                   tileWidth
                 );
                 return (
@@ -360,7 +587,7 @@ export function MapView({
                     key={atk.id}
                     d={d}
                     fill="none"
-                    className={`attack-line-path ${atk.isMine ? "attack-line-mine" : "attack-line-enemy"}`}
+                    className={`attack-line-path ${atk.isMine ? "attack-line-mine" : "attack-line-enemy"} attack-line-${atk.orderType}`}
                   />
                 );
               })}
@@ -377,7 +604,7 @@ export function MapView({
                 from.cy,
                 to.cx,
                 to.cy,
-                mountainScreens.map((m) => m.box),
+                visibleMountainScreens.map((m) => m.box),
                 tileWidth
               );
               // Ham Date.now() yerine sunucuyla senkronize "şu an" (bkz.
@@ -386,10 +613,13 @@ export function MapView({
               const totalMs = Math.max(1, atk.arrivesAt - atk.departedAt);
               const elapsedMs = Math.min(totalMs, Math.max(0, estServerNow - atk.departedAt));
               const etaSec = Math.max(0, Math.round((atk.arrivesAt - estServerNow) / 1000));
+              const actionLabel = atk.orderType === "reinforce" ? "Takviye" : "Saldırı";
               return (
                 <div
                   key={atk.id}
-                  className={`attack-line-marker ${atk.isMine ? "attack-line-marker-mine" : "attack-line-marker-enemy"}`}
+                  className={`attack-line-marker attack-line-marker-${atk.orderType} ${
+                    atk.isMine ? "attack-line-marker-mine" : "attack-line-marker-enemy"
+                  }`}
                   style={
                     {
                       offsetPath: `path('${d}')`,
@@ -397,9 +627,14 @@ export function MapView({
                       animationDelay: `-${elapsedMs}ms`,
                     } as React.CSSProperties
                   }
-                  title={`${atk.attackerUsername}: (${atk.fromX}, ${atk.fromY}) → (${atk.targetX}, ${atk.targetY}) · ${etaSec} sn`}
+                  title={`${atk.attackerUsername} (${actionLabel}): (${atk.fromX}, ${atk.fromY}) → (${atk.targetX}, ${atk.targetY}) · ${etaSec} sn`}
                 >
-                  ⚔️
+                  <PlayerFlag
+                    shapeId={atk.attackerFlagShape}
+                    colorId={atk.attackerFlagColor}
+                    logoId={atk.attackerFlagLogo}
+                    size={11}
+                  />
                 </div>
               );
             })}

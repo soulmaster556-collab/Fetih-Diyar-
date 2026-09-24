@@ -4,6 +4,7 @@ import { authenticate, optionalAuthenticate } from "./players.js";
 import { computeLivePlayerGold, computeLiveTroops, productionForLevel, upgradeCost } from "../game/resources.js";
 import { getTotalGoldPerHour } from "../game/economy.js";
 import { travelDurationMs } from "../game/attacks.js";
+import { scheduleOrderResolution } from "../game/orderScheduler.js";
 import { loadSettings } from "../game/settings.js";
 import { addReport } from "../game/reports.js";
 import type { Settings } from "../game/settings.js";
@@ -71,7 +72,7 @@ async function fetchReinforcementsMap(tileIds: number[]): Promise<Map<number, Re
     from_username: string;
     troops: number;
   }>(
-    `SELECT tr.id, tr.tile_id, tr.from_player_id, p.username as from_username, tr.troops
+    `SELECT tr.id, tr.tile_id, tr.from_player_id, COALESCE(p.nickname, p.username) as from_username, tr.troops
      FROM tile_reinforcements tr
      JOIN players p ON p.id = tr.from_player_id
      WHERE tr.tile_id = ANY($1)`,
@@ -110,7 +111,13 @@ async function sameGuild(playerIdA: string, playerIdB: string): Promise<boolean>
 // /me) hep tam görünür -- zaten oyuncunun kendi eylemiyle ilgili bir kareyi
 // görüyor. Seviye (level) her zaman herkese açık.
 function serializeTile(
-  tile: TileRow & { owner_username?: string | null },
+  tile: TileRow & {
+    owner_username?: string | null;
+    owner_home_tile_id?: number | null;
+    owner_flag_shape?: number | null;
+    owner_flag_color?: number | null;
+    owner_flag_logo?: number | null;
+  },
   settings: Settings,
   now: number,
   reinforcements: ReinforcementInfo[] = [],
@@ -164,6 +171,14 @@ function serializeTile(
     reinforcementTroops,
     reinforcements: reinforcementsOut,
     scoutedAt,
+    // Merkez kale (madde: kayıt olurken alınan ilk kale asla saldırıya
+    // uğramaz, bkz. POST /:id/attack) -- GÜNCEL sahibin home_tile_id'sine
+    // göre hesaplanıyor, bu yüzden geçmişte el değiştirmiş eski bir "ana
+    // kale" yanlışlıkla korunmuyor.
+    isCapital: !!tile.owner_id && tile.owner_home_tile_id === tile.id,
+    ownerFlagShape: tile.owner_id ? tile.owner_flag_shape ?? null : null,
+    ownerFlagColor: tile.owner_id ? tile.owner_flag_color ?? null : null,
+    ownerFlagLogo: tile.owner_id ? tile.owner_flag_logo ?? null : null,
   };
 }
 
@@ -203,18 +218,36 @@ tilesRouter.get("/", optionalAuthenticate, async (req: any, res) => {
     const now = Date.now();
     const settings = await loadSettings();
     const bbox = parseBoundingBox(req);
-    // Kale sahibinin adı players tablosuna LEFT JOIN ile tek sorguda
-    // ekleniyor (N+1 sorgu yok, boş/NPC karolarda owner_id NULL olduğu için
-    // owner_username de doğal olarak NULL geliyor).
+    // Kale sahibinin adı + flaması + ana kale id'si players tablosuna LEFT
+    // JOIN ile tek sorguda ekleniyor (N+1 sorgu yok, boş/NPC karolarda
+    // owner_id NULL olduğu için bunların hepsi de doğal olarak NULL geliyor).
     const { rows } = bbox
-      ? await pool.query<TileRow & { owner_username: string | null }>(
-          `SELECT t.*, p.username AS owner_username
+      ? await pool.query<
+          TileRow & {
+            owner_username: string | null;
+            owner_home_tile_id: number | null;
+            owner_flag_shape: number | null;
+            owner_flag_color: number | null;
+            owner_flag_logo: number | null;
+          }
+        >(
+          `SELECT t.*, COALESCE(p.nickname, p.username) AS owner_username, p.home_tile_id AS owner_home_tile_id,
+                  p.flag_shape AS owner_flag_shape, p.flag_color AS owner_flag_color, p.flag_logo AS owner_flag_logo
            FROM tiles t LEFT JOIN players p ON p.id = t.owner_id
            WHERE t.x BETWEEN $1 AND $2 AND t.y BETWEEN $3 AND $4`,
           [bbox.minX, bbox.maxX, bbox.minY, bbox.maxY]
         )
-      : await pool.query<TileRow & { owner_username: string | null }>(
-          `SELECT t.*, p.username AS owner_username
+      : await pool.query<
+          TileRow & {
+            owner_username: string | null;
+            owner_home_tile_id: number | null;
+            owner_flag_shape: number | null;
+            owner_flag_color: number | null;
+            owner_flag_logo: number | null;
+          }
+        >(
+          `SELECT t.*, COALESCE(p.nickname, p.username) AS owner_username, p.home_tile_id AS owner_home_tile_id,
+                  p.flag_shape AS owner_flag_shape, p.flag_color AS owner_flag_color, p.flag_logo AS owner_flag_logo
            FROM tiles t LEFT JOIN players p ON p.id = t.owner_id`
         );
     const tileIds = rows.map((t) => t.id);
@@ -236,8 +269,17 @@ tilesRouter.get("/me", authenticate, async (req: any, res) => {
     const player = req.player as Player;
     const now = Date.now();
     const settings = await loadSettings();
-    const { rows } = await pool.query<TileRow & { owner_username: string | null }>(
-      `SELECT t.*, p.username AS owner_username
+    const { rows } = await pool.query<
+      TileRow & {
+        owner_username: string | null;
+        owner_home_tile_id: number | null;
+        owner_flag_shape: number | null;
+        owner_flag_color: number | null;
+        owner_flag_logo: number | null;
+      }
+    >(
+      `SELECT t.*, COALESCE(p.nickname, p.username) AS owner_username, p.home_tile_id AS owner_home_tile_id,
+              p.flag_shape AS owner_flag_shape, p.flag_color AS owner_flag_color, p.flag_logo AS owner_flag_logo
        FROM tiles t LEFT JOIN players p ON p.id = t.owner_id
        WHERE t.owner_id = $1`,
       [player.id]
@@ -314,8 +356,11 @@ tilesRouter.post("/:id/upgrade", authenticate, async (req: any, res) => {
 //     KARIŞMAZ (sahiplenilemez, sadece savunma için) -- ayrı bir
 //     tile_reinforcements satırı olarak tutulur, savunma gücüne eklenir ve
 //     gönderen istediği an geri çağırabilir (bkz. /recall).
-// Şimdilik anında ve mesafe sınırı yok — mesafeye bağlı süre/menzil kısıtı
-// ileride saldırı/casusluk gibi özelliklerle birlikte eklenecek.
+// Saldırı gibi ANINDA sonuçlanmıyor: bu uç nokta askerleri kaynak kaleden
+// düşüp bir "yolda" (reinforcement_orders) kaydı açıyor, asıl teslim
+// askerler fiilen ulaştığında arka planda gerçekleşiyor (bkz. game/
+// reinforcements.ts resolveDueReinforcementOrders, index.ts'teki periyodik
+// tur) -- mesafeye bağlı seyahat süresi saldırıyla BİREBİR aynı formül.
 tilesRouter.post("/:id/reinforce", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
@@ -357,38 +402,37 @@ tilesRouter.post("/:id/reinforce", authenticate, async (req: any, res) => {
       return res.status(400).json({ error: "Geçersiz asker sayısı." });
     }
 
-    const client = await pool.connect();
-    try {
-      await client.query("BEGIN");
-      await client.query(
-        "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
-        [fromLiveTroops - troopsSent, now, fromTile.id]
-      );
+    const durationMs = travelDurationMs(fromTile, targetTile, settings);
+    const arrivesAt = now + durationMs;
 
-      if (isSelf) {
-        const targetLiveTroops = computeLiveTroops(targetTile, settings, now);
-        await client.query(
-          "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
-          [targetLiveTroops + troopsSent, now, targetTile.id]
-        );
-      } else {
-        await client.query(
-          `INSERT INTO tile_reinforcements (tile_id, from_player_id, from_tile_id, troops, sent_at)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [targetTile.id, player.id, fromTile.id, troopsSent, now]
-        );
-      }
-      await client.query("COMMIT");
-    } catch (err) {
-      await client.query("ROLLBACK");
-      throw err;
-    } finally {
-      client.release();
-    }
+    const { rows: orderRows } = await pool.query<{ id: number }>(
+      `INSERT INTO reinforcement_orders
+         (from_player_id, from_tile_id, target_tile_id, from_x, from_y, target_x, target_y, troops_sent, departed_at, arrives_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id`,
+      [player.id, fromTile.id, targetTile.id, fromTile.x, fromTile.y, targetTile.x, targetTile.y, troopsSent, now, arrivesAt]
+    );
+    // Askerler yola çıktı -- kaynak kaleden hemen düşülüyor (attack ile
+    // birebir aynı davranış, bkz. POST /:id/attack).
+    await pool.query(
+      "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
+      [fromLiveTroops - troopsSent, now, fromTile.id]
+    );
+    scheduleOrderResolution("reinforce", orderRows[0].id, durationMs);
 
-    const { rows: freshTargetRows } = await pool.query<TileRow>("SELECT * FROM tiles WHERE id = $1", [targetTile.id]);
-    const reinforcements = (await fetchReinforcementsMap([targetTile.id])).get(targetTile.id);
-    res.json(serializeTile(freshTargetRows[0], settings, now, reinforcements));
+    res.json({
+      orderId: orderRows[0].id,
+      fromTileId: fromTile.id,
+      targetTileId: targetTile.id,
+      fromX: fromTile.x,
+      fromY: fromTile.y,
+      targetX: targetTile.x,
+      targetY: targetTile.y,
+      troopsSent,
+      departedAt: now,
+      arrivesAt,
+      serverNow: now,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Sunucu hatası." });
@@ -538,6 +582,19 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
       return res.status(400).json({ error: "Kendi karene saldıramazsın." });
     if (!canReach(fromTile, targetTile, settings))
       return res.status(400).json({ error: "Bu kareye ulaşamazsın (çok uzak)." });
+    // Madde: kayıt olurken alınan ilk ("merkez") kale asla saldırıya
+    // uğrayamaz. GÜNCEL sahibin home_tile_id'sine bakılıyor ki geçmişte el
+    // değiştirmiş eski bir "ana kale" yanlışlıkla korunmasın (bkz.
+    // serializeTile'daki isCapital ile birebir aynı mantık).
+    if (targetTile.owner_id) {
+      const { rows: ownerRows } = await pool.query<{ home_tile_id: number | null }>(
+        "SELECT home_tile_id FROM players WHERE id = $1",
+        [targetTile.owner_id]
+      );
+      if (ownerRows[0]?.home_tile_id === targetTile.id) {
+        return res.status(400).json({ error: "Bu oyuncunun merkez kalesine saldırılamaz." });
+      }
+    }
 
     const fromLive = computeLiveTroops(fromTile, settings, now);
     const troopsSent = Math.floor(troopsSentRaw);
@@ -562,6 +619,7 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
       "UPDATE tiles SET stored_troops = $1, last_collected_at = $2 WHERE id = $3",
       [fromLive - troopsSent, now, fromTile.id]
     );
+    scheduleOrderResolution("attack", orderRows[0].id, durationMs);
 
     res.json({
       orderId: orderRows[0].id,
@@ -585,9 +643,13 @@ tilesRouter.post("/:id/attack", authenticate, async (req: any, res) => {
 });
 
 // Saldırı hattını haritada göstermek için istemcinin sık sık çektiği "hâlâ
-// yolda olan" saldırılar. Görüneni sadece kendi saldırıları ve kendi/klan
-// kalelerine gelen saldırılarla sınırlıyoruz -- düşmanın haritanın tamamen
-// başka bir ucundaki alakasız saldırısını görmesine gerek yok.
+// yolda olan" saldırılar VE takviyeler (bkz. game/reinforcements.ts --
+// takviye artık anında değil). Görüneni sadece kendi siparişleri ve kendi/
+// klan kalelerine gelen siparişlerle sınırlıyoruz -- düşmanın haritanın
+// tamamen başka bir ucundaki alakasız hareketini görmesine gerek yok.
+// attack_orders ∪ reinforcement_orders -- isim (attacker_id/attackerId) hâlâ
+// "saldıran" diyor ama artık takviye siparişlerinde GÖNDEREN kişiyi temsil
+// ediyor (bkz. client api.ts ActiveAttack yorumu).
 tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
   try {
     const player = req.player as Player;
@@ -595,8 +657,12 @@ tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
     const relevantOwnerIds = [player.id, ...Array.from(guildIds)];
     const { rows } = await pool.query<{
       id: number;
+      order_type: "attack" | "reinforce";
       attacker_id: string;
       attacker_username: string;
+      flag_shape: number;
+      flag_color: number;
+      flag_logo: number;
       from_x: number;
       from_y: number;
       target_x: number;
@@ -605,13 +671,24 @@ tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
       departed_at: number;
       arrives_at: number;
     }>(
-      `SELECT ao.id, ao.attacker_id, p.username AS attacker_username,
-              ao.from_x, ao.from_y, ao.target_x, ao.target_y,
-              ao.troops_sent, ao.departed_at, ao.arrives_at
-       FROM attack_orders ao
-       JOIN players p ON p.id = ao.attacker_id
-       WHERE ao.attacker_id = $1
-          OR ao.target_tile_id IN (SELECT id FROM tiles WHERE owner_id = ANY($2::text[]))`,
+      `(SELECT ao.id, 'attack' AS order_type, ao.attacker_id, COALESCE(p.nickname, p.username) AS attacker_username,
+               p.flag_shape, p.flag_color, p.flag_logo,
+               ao.from_x, ao.from_y, ao.target_x, ao.target_y,
+               ao.troops_sent, ao.departed_at, ao.arrives_at
+        FROM attack_orders ao
+        JOIN players p ON p.id = ao.attacker_id
+        WHERE ao.attacker_id = $1
+           OR ao.target_tile_id IN (SELECT id FROM tiles WHERE owner_id = ANY($2::text[])))
+       UNION ALL
+       (SELECT ro.id, 'reinforce' AS order_type, ro.from_player_id AS attacker_id, COALESCE(p.nickname, p.username) AS attacker_username,
+               p.flag_shape, p.flag_color, p.flag_logo,
+               ro.from_x, ro.from_y, ro.target_x, ro.target_y,
+               ro.troops_sent, ro.departed_at, ro.arrives_at
+        FROM reinforcement_orders ro
+        JOIN players p ON p.id = ro.from_player_id
+        WHERE ro.from_player_id = $1
+           OR ro.target_tile_id IN (SELECT id FROM tiles WHERE owner_id = ANY($2::text[])))
+       ORDER BY arrives_at ASC`,
       [player.id, relevantOwnerIds]
     );
     // İstemcinin saati sunucununkinden birkaç saniye/dakika ileri/geri
@@ -625,8 +702,12 @@ tilesRouter.get("/attacks/active", authenticate, async (req: any, res) => {
       serverNow: Date.now(),
       attacks: rows.map((r) => ({
         id: r.id,
+        orderType: r.order_type,
         attackerId: r.attacker_id,
         attackerUsername: r.attacker_username,
+        attackerFlagShape: r.flag_shape,
+        attackerFlagColor: r.flag_color,
+        attackerFlagLogo: r.flag_logo,
         fromX: r.from_x,
         fromY: r.from_y,
         targetX: r.target_x,
@@ -692,7 +773,7 @@ tilesRouter.post("/:id/scout", authenticate, async (req: any, res) => {
     let ownerUsername: string | null = null;
     if (targetTile.owner_id) {
       const { rows: ownerRows } = await pool.query<{ username: string }>(
-        "SELECT username FROM players WHERE id = $1",
+        "SELECT COALESCE(nickname, username) AS username FROM players WHERE id = $1",
         [targetTile.owner_id]
       );
       ownerUsername = ownerRows[0]?.username ?? null;
@@ -726,7 +807,7 @@ tilesRouter.post("/:id/scout", authenticate, async (req: any, res) => {
         targetTile.owner_id,
         "scouted_by",
         "Kalen gözetlendi",
-        `${player.username}, ${coordText} karesindeki kaleni gözetledi.`,
+        `${player.nickname ?? player.username}, ${coordText} karesindeki kaleni gözetledi.`,
         now
       ).catch(() => {});
     }

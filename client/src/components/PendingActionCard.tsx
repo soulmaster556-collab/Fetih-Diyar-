@@ -19,13 +19,15 @@ export function PendingActionCard({
   onConfirm: (troops: number) => void;
 }) {
   const [troopsInput, setTroopsInput] = useState(10);
-  // "Saldırı Emri" onay kartında, göndermeden önce tahmini seyahat süresi.
+  // "Saldırı Emri"/"Destek Gönder" onay kartında, göndermeden önce tahmini
+  // seyahat süresi (takviye de artık anlık değil -- bkz. server game/
+  // reinforcements.ts).
   const [pendingAttackEtaMs, setPendingAttackEtaMs] = useState<number | null>(null);
 
-  // Onay kartı açılınca (sadece saldırı için, takviye/gözcü anlık)
+  // Onay kartı açılınca (saldırı VE takviye için, sadece gözcü anlık kalıyor)
   // sunucudan tahmini seyahat süresini çekiyoruz.
   useEffect(() => {
-    if (pendingTarget.type !== "attack") return;
+    if (pendingTarget.type !== "attack" && pendingTarget.type !== "reinforce") return;
     let cancelled = false;
     fetchAttackEta(token, pendingTarget.fromTile.id, pendingTarget.targetTile.id)
       .then((r) => {
@@ -77,7 +79,7 @@ export function PendingActionCard({
         </div>
 
         <p className="hint">Elindeki asker: <strong>{maxTroops}</strong></p>
-        {pendingTarget.type === "attack" && (
+        {(pendingTarget.type === "attack" || pendingTarget.type === "reinforce") && (
           <p className="hint pending-eta">
             🕒 Tahmini seyahat süresi:{" "}
             <strong>
