@@ -464,15 +464,32 @@ button:disabled {
   overflow: hidden;
 }
 
+/* Gerçek/AI-üretimi çim dokusu (bkz. public/terrain/grass-1.webp) --
+   .world-terrain-biome'nin HEMEN altında, taban katmanı. Piksel-piksel test
+   edildi (bkz. sohbet geçmişi): görselin kendi içinde gizli bir tekrar YOK
+   (Flow'un önceki iki denemesinin aksine), ama kenarları matematiksel
+   olarak kusursuz döşenmiyor. Ayna-döşeme (mirror-tile) denendi ama gerçek
+   boyutta döşenince gözle görülür bir "kaleidoskop" deseni oluşturdu --
+   bu yüzden BİLEREK ham/işlenmemiş görsel kullanılıyor: ince taneli/yönsüz
+   dokusu sayesinde kusursuz olmayan dikiş göze batmıyor, döşemeli
+   (background-repeat) haliyle düz duruyor. background-size tileWidth'e
+   göre JS'te hesaplanıyor (bkz. MapView.tsx) ki zoom değişince doku da
+   orantılı büyüsün/küçülsün. */
+.world-terrain-grass {
+  position: absolute;
+  inset: 0;
+  background-image: url("/terrain/grass-1.webp");
+  background-repeat: repeat;
+}
+
 /* Geniş, yumuşak geçişli biyom lekeleri -- background-image JS tarafında
    anchor listesinden üretilen bir radial-gradient dizisi (bkz.
-   buildBiomeBackground). Taban rengi burada sabit -- lekelerin kapsamadığı
-   (çok nadir) bir nokta kalırsa çıplak mavi/boşluk yerine düz çayır rengi
-   görünsün diye. */
+   buildBiomeBackground). Taban artık .world-terrain-grass (yukarısı) --
+   burada ayrı bir düz renk taban YOK, lekeler doğrudan çim dokusunun
+   üstüne yarı saydam tonlarla biniyor. */
 .world-terrain-biome {
   position: absolute;
   inset: 0;
-  background-color: #9ccc65;
 }
 
 /* İnce gren/doku katmanı, biyom lekelerinin TAM üstünde -- yakın zoomda

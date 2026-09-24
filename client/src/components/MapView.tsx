@@ -227,6 +227,10 @@ export function MapView({
           gren katmanı (yakın zoomda çıplak düz renk hissi vermesin diye). */}
       <div className="world-terrain">
         <div
+          className="world-terrain-grass"
+          style={{ backgroundSize: `${tileWidth * 6}px ${tileWidth * 6}px` }}
+        />
+        <div
           className="world-terrain-biome"
           style={{ backgroundImage: terrainBackground }}
         />
