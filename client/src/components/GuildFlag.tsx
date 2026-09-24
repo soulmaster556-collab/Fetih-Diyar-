@@ -83,7 +83,6 @@ export function GuildFlag({ flagId, size = 28, title }: { flagId: number; size?:
           <stop offset="100%" stopColor={def.colors[1]} />
         </linearGradient>
       </defs>
-      <rect x="3" y="1.6" width="1.6" height="20.8" rx="0.6" fill="#caa23a" />
       <path
         d="M4.6 3 H19.5 L15.8 8 L19.5 13 H4.6 Z"
         fill={`url(#${gradId})`}

@@ -7,7 +7,6 @@ import {
   SHOW_BUILDINGS,
   WORLD_SIZE,
 } from "../game/constants";
-import { isCastleSceneVisible } from "../game/castleScenes";
 import { computePlacedCrystals } from "../game/crystals";
 import { computePlacedForests } from "../game/forests";
 import { isoCenter } from "../game/hexMath";
@@ -17,7 +16,6 @@ import { buildLakePathD, generateLakes, isWaterAtWorldPosition } from "../game/r
 import { castleImageForLevel, npcCastleImageForLevel } from "../game/tileImages";
 import { buildTerritoryPathD, computeTerritoryRegions } from "../game/territory";
 import { buildBiomeBackground, generateBiomeAnchors, TERRAIN_GRAIN_BACKGROUND } from "../game/worldRegions";
-import { CastleScene } from "./CastleScene";
 import { PlayerFlag } from "./PlayerFlag";
 
 // Harita artık tüm pencereyi kaplayan tek katman -- menü/panel bunun
@@ -97,23 +95,6 @@ export function MapView({
       territoryRegions.map((r) => ({ key: r.key, category: r.category, d: buildTerritoryPathD(r, tileWidth) })),
     [territoryRegions, tileWidth]
   );
-
-  // FAZ 2 -- Castle Scene PROTOTİPİ. Bilerek SADECE TEK bir kalede
-  // deneniyor (bkz. game/castleScenes.ts dosya başı yorumu) -- oyuncunun
-  // sahip olduğu, id'si en düşük karo (genelde ilk/başlangıç kalesi).
-  // `tiles` yüklü pencereye göre değişebileceği için bu id de zoom/scroll
-  // ile değişebilir (oyuncunun o an ekranda olan en düşük id'li karosu),
-  // ama HER ZAMAN en fazla bir tane -- diğer tüm kaleler eski sisteme
-  // dokunulmadan devam ediyor.
-  const prototypeCastleId = useMemo(() => {
-    let best: Tile | null = null;
-    for (const t of tiles) {
-      if (t.tileType !== "PLAYER" || t.ownerId !== playerId) continue;
-      if (!best || t.id < best.id) best = t;
-    }
-    return best?.id ?? null;
-  }, [tiles, playerId]);
-  const castleSceneVisible = isCastleSceneVisible(tileWidth);
 
   // Dağ yerleşimi -- sadece o an yüklü (viewport'taki) karolara göre
   // hesaplanıyor, bkz. computePlacedMountains yorumu.
@@ -296,17 +277,12 @@ export function MapView({
             const castleIcon = castleImageForLevel(tile.level);
             const npcIcon = npcCastleImageForLevel(tile.level);
             const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-            // Kale kutusu: yükseklik tileHeight*1.18, genişlik en fazla
-            // tileWidth*1.32 (kullanıcı isteğiyle "kaleleri büyüt" -- önceki
-            // 0.94/1.08'den büyütüldü -- oyuncu kaleleri artık komşu
-            // karolara daha da taşıyor, bilerek: "overflow:visible" zaten
-            // kale ikonlarının karo dışına taşmasına izin veriyordu, bkz.
-            // .iso-tile-group). object-fit:contain her seviye görselinin
-            // kendi oranını koruyor (gerçek oranlar ~0.41-1.18).
-            const castleBoxHeight = tileHeight * 1.18;
-            const castleBoxWidth = Math.min(castleBoxHeight * 1.2, tileWidth * 1.32);
-            // NPC kampları da aynı büyütme oranıyla (0.58 -> 0.7) ölçekleniyor
-            // ki oyuncu kaleleriyle orantı bozulmasın.
+            // Kale kutusu: kullanıcı isteğiyle NPC kampıyla AYNI boyuta
+            // geri döndürüldü (önceki 1.18/1.32 büyütme kaldırıldı).
+            // object-fit:contain her seviye görselinin kendi oranını koruyor
+            // (gerçek oranlar ~0.41-1.18).
+            const castleBoxHeight = tileHeight * 0.7;
+            const castleBoxWidth = castleBoxHeight * CASTLE_IMAGE_ASPECT;
             const npcBoxHeight = tileHeight * 0.7;
             const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
             const castleTop = (tileHeight - castleBoxHeight) / 2;
@@ -352,26 +328,7 @@ export function MapView({
                 {/* Sahiplik ayrı bir rozetle değil, seviye etiketinin
                     rengiyle anlaşılıyor -- bkz. aşağıdaki .iso-labels-layer:
                     NPC gri, kendi/klan sarı, düşman oyuncu kırmızı. */}
-                {/* FAZ 2 prototip: sadece `prototypeCastleId`'ye eşit TEK
-                    kale <CastleScene> ile (ana görsel + LOD'a göre
-                    çevresindeki prop'lar) çiziliyor. Diğer TÜM kaleler
-                    (kendi/klan/düşman fark etmez) eski tek-görsel sistemiyle
-                    devam ediyor -- bkz. game/castleScenes.ts dosya başı
-                    yorumu. */}
-                {showCastle && tile.id === prototypeCastleId && (
-                  <CastleScene
-                    tile={tile}
-                    sceneVisible={castleSceneVisible}
-                    tileWidth={tileWidth}
-                    tileHeight={tileHeight}
-                    castleIcon={castleIcon}
-                    castleBoxWidth={castleBoxWidth}
-                    castleBoxHeight={castleBoxHeight}
-                    castleLeft={(tileWidth - castleBoxWidth) / 2}
-                    castleTop={castleTop}
-                  />
-                )}
-                {showCastle && tile.id !== prototypeCastleId && (
+                {showCastle && (
                   // Oyuncu kaleleri altın, NPC kampları kendi parıltısıyla
                   // (bkz. showNpc dalı).
                   <img
@@ -567,10 +524,9 @@ export function MapView({
 
           {/* Oyuncu flamaları + merkez kale efekti -- level-badge'lerle AYNI
               sebepten (komşu karonun taşan görseli örtmesin diye) ayrı, her
-              zaman en üstteki tek bir katmanda. Flama artık CastleScene'in
-              eski hashXY placeholder'ı yerine GERÇEK sahiplik verisinden
-              (tile.ownerFlagShape/Color/Logo) geliyor ve TÜM oyuncu
-              kalelerinde görünüyor (sadece FAZ 2 prototip kalede değil). */}
+              zaman en üstteki tek bir katmanda. Flama GERÇEK sahiplik
+              verisinden (tile.ownerFlagShape/Color/Logo) geliyor ve TÜM
+              oyuncu kalelerinde görünüyor. */}
           <div className="iso-flags-layer">
             {sortedTiles.map((tile) => {
               const showFlag =

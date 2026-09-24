@@ -15,12 +15,15 @@ export function castleImageForLevel(level: number): string {
   }
   return CASTLE_LEVEL_TIERS[CASTLE_LEVEL_TIERS.length - 1][1];
 }
-// NPC kampları da kendi seviyesine göre (bkz. mapgen.ts: NPC'ler hep 1-3
-// arası doğuyor) 3 farklı görselden birini kullanıyor.
+// NPC kampları da kendi seviyesine göre 3 farklı görselden birini
+// kullanıyor -- eşikler kullanıcı isteğiyle 10/20/30'a çıkarıldı (ileride
+// daha güçlü NPC'ler için hazır); mapgen.ts'te NPC'ler hâlâ 1-5 arası
+// doğduğu için haritadaki HİÇBİR NPC şu an 10 eşiğine ulaşmıyor, yani
+// hepsi en düşük seviye (npc_level_1.png) görselini gösteriyor.
 export const NPC_LEVEL_TIERS: [number, string][] = [
-  [3, "/buildings/npc_castle_levels/npc_level_3.png"],
-  [2, "/buildings/npc_castle_levels/npc_level_2.png"],
-  [1, "/buildings/npc_castle_levels/npc_level_1.png"],
+  [30, "/buildings/npc_castle_levels/npc_level_3.png"],
+  [20, "/buildings/npc_castle_levels/npc_level_2.png"],
+  [10, "/buildings/npc_castle_levels/npc_level_1.png"],
 ];
 export function npcCastleImageForLevel(level: number): string {
   for (const [threshold, src] of NPC_LEVEL_TIERS) {

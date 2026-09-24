@@ -407,7 +407,11 @@ export async function ensureMapGenerated(settings: Settings) {
         // karolarda asla NPC kampı oluşmaz -- sadece adanın iç, kuru kısmı
         // NPC'ye açık.
         const isNpc = !tile.isCoastal && !isWater && Math.random() < settings.npc_spawn_chance;
-        const level = isNpc ? 1 + Math.floor(Math.random() * 3) : 1;
+        // Kullanıcı isteğiyle 1-3 -> 1-5 aralığına çıkarıldı (bkz.
+        // client/src/game/tileImages.ts NPC_LEVEL_TIERS -- görsel eşikler
+        // 10/20/30'a çekildiği için 1-5 arası hâlâ hep en düşük tier
+        // görselini gösteriyor, sadece asker/üretim gücü değişiyor).
+        const level = isNpc ? 1 + Math.floor(Math.random() * 5) : 1;
         const production = productionForLevel(level, settings);
 
         values.push(
@@ -671,6 +675,43 @@ export async function applyNpcDensityIncreaseMigrationV4(settings: Settings) {
   await markMigration(MIGRATION_NAME);
   console.log(
     `[migration] ${MIGRATION_NAME}: tamamlandı (${rows.length} boş kareden ${spawnedCount} tanesi NPC kampına çevrildi).`
+  );
+}
+
+// Beşinci NPC seyreltme turu: applyNpcDensityIncreaseMigrationV4 yoğunluğu
+// artırmıştı, kullanıcı isteğiyle ("NPC'leri %40 azalt") kalan (fethedilmemiş)
+// NPC kamplarının %40'ı tekrar kaldırılıyor ve npc_spawn_chance ayarı da
+// (hâlâ eski varsayılandaysa) %40 düşürülüyor. Aynı şekilde TEK SEFERLİK,
+// oyuncu verisine dokunmuyor.
+export async function applyNpcDensityReductionMigrationV5(settings: Settings) {
+  const MIGRATION_NAME = "npc_density_reduction_v5";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  const { rows } = await pool.query<{ id: number }>(
+    "SELECT id FROM tiles WHERE tile_type = 'NPC' AND owner_id IS NULL"
+  );
+
+  const clearIds = rows.filter(() => Math.random() < 0.4).map((r) => r.id);
+
+  if (clearIds.length > 0) {
+    const production = productionForLevel(1, settings);
+    await pool.query(
+      `UPDATE tiles
+       SET tile_type = 'EMPTY', level = 1, gold_per_hour = $1, troops_per_hour = 0, stored_troops = 0
+       WHERE id = ANY($2)`,
+      [production.gold_per_hour, clearIds]
+    );
+  }
+
+  // Eski varsayılan (0.05) hâlâ ayarlıysa yeni varsayılana (0.03) taşı --
+  // admin panelinden elle değiştirilmişse dokunma.
+  await pool.query(
+    "UPDATE game_settings SET value = 0.03 WHERE key = 'npc_spawn_chance' AND value = 0.05"
+  );
+
+  await markMigration(MIGRATION_NAME);
+  console.log(
+    `[migration] ${MIGRATION_NAME}: tamamlandı (${rows.length} fethedilmemiş NPC kampından ${clearIds.length} tanesi daha boşaltıldı).`
   );
 }
 

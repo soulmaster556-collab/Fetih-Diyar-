@@ -19,9 +19,10 @@ export type MountainDef = {
   scale: number; // görsel, kendi hex'inin kaç katı bir kutuya sığdırılıp ortalanacak (kale ikonlarındaki taşma payı gibi)
 };
 
+// Kullanıcı isteğiyle ("dağları %75 büyüt") eski 2.2 -> 3.85.
 export const MOUNTAIN_DEFS: MountainDef[] = [
-  { id: "range-a", img: "/decor/mountains/range-a.png", scale: 2.2 },
-  { id: "range-b", img: "/decor/mountains/range-b.png", scale: 2.2 },
+  { id: "range-a", img: "/decor/mountains/range-a.png", scale: 3.85 },
+  { id: "range-b", img: "/decor/mountains/range-b.png", scale: 3.85 },
 ];
 
 // Basit, hızlı, deterministik tam sayı hash'i (Math.random() DEĞİL -- aynı

@@ -20,9 +20,8 @@ import { sampleBiomeIntensity, type BiomeAnchor } from "./worldRegions";
 export type ForestClusterDef = { id: string; img: string; scale: number };
 
 // Not: .iso-mountain deseniyle aynı şekilde <img src> olarak kullanılıyor
-// (bkz. MapView.tsx forestScreens render'ı) -- CASTLE_PROP_DEFS'teki
-// (castleScenes.ts) background-image kullanan `url("...")` sarmalaması
-// BURADA YOK, çıplak data URI dönüyor.
+// (bkz. MapView.tsx forestScreens render'ı) -- background-image kullanan
+// `url("...")` sarmalaması BURADA YOK, çıplak data URI dönüyor.
 function svgDataUri(svg: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

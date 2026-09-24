@@ -13,10 +13,20 @@ import { HEX_DIRECTIONS } from "./mountains";
 // (mountains/forests/rockyAreas/riversLakes/worldRegions) HİÇ dokunmuyor.
 //
 // Yaklaşım (bkz. computeTerritoryRegions / traceBoundaryLoops):
-//   1. Her karo (EMPTY hariç) bir "groupKey"e atanır -- oyuncu karoları
-//      `player:<ownerId>` (sahibi DEĞİŞMEDİĞİ sürece komşular birleşir),
-//      NPC karoları hepsi ortak `npc` key'i (renk zaten hepsinde aynı,
-//      komşuluk varsa doğal olarak birleşirler).
+//   1. Her karo (EMPTY hariç) bir "groupKey"e atanır. NPC kampları HER ZAMAN
+//      kendi tile'ına özgü bir key alır (`npc:<x>,<y>`) -- kullanıcı isteği:
+//      "NPC'lerin altındaki yuvarlaklar birleşmesin", yani iki NPC bitişik
+//      olsa bile asla aynı region'a girmiyor, her biri kendi küçük (tek hex)
+//      dairesini çiziyor. Oyuncu karoları `player:<ownerId>` groupKey'i
+//      taşıyor AMA gerçek sahiplik hücresi yerine PLAYER_INFLUENCE_OFFSETS
+//      ile genişletilmiş bir "etki alanı" diski kullanılıyor (bkz. aşağısı)
+//      -- kullanıcı isteği: "oyuncu altındaki yuvarlaklar ... 5 hex boyunca
+//      birbirine denk gelirse birleşebilir (o bölgeye hakim gibi)" (sonradan
+//      "çok oldu" geri bildirimiyle 3'e düşürüldü, bkz. PLAYER_INFLUENCE_RADIUS).
+//      Aynı
+//      hücrede birden fazla oyuncunun diski çakışırsa ilk yazan kazanır
+//      (bkz. computeTerritoryRegions) -- kesin bir Voronoi değil, ama basit
+//      ve deterministik.
 //   2. HEX_DIRECTIONS (mountains.ts -- server/mapgen.ts ile birebir aynı 6
 //      komşu yön) ile klasik flood-fill: aynı groupKey'e sahip komşu
 //      karolar TEK bir "region" (bağlı bileşen) oluşturur.
@@ -55,6 +65,30 @@ export type TerritoryRegion = {
 function tileKey(x: number, y: number): string {
   return `${x},${y}`;
 }
+
+// ---------------------------------------------------------------------
+// Oyuncu "etki alanı" (influence) diski -- kullanıcı isteği: her oyuncu
+// karosu merkezden itibaren 3 hex yarıçaplı bir daire yayıyor (ilk sürümde
+// 5'ti -- kullanıcı geri bildirimi: "çok oldu", 3'e düşürüldü), aynı sahibin
+// diskleri örtüşürse/bitişikse TEK bölge olarak birleşiyor (bkz. dosya başı
+// yorumu). Axial hex mesafesi (dx,dy) -> (|dx|+|dy|+|dx+dy|)/2 (HEX_DIRECTIONS
+// ile aynı eksen kuralı, standart axial-distance formülü). Offsets bir kere
+// hesaplanıp modül seviyesinde tutuluyor -- radius sabit olduğu için her
+// region hesaplamasında yeniden üretmeye gerek yok.
+export const PLAYER_INFLUENCE_RADIUS = 3;
+
+function hexOffsetsWithinRadius(radius: number): [number, number][] {
+  const offsets: [number, number][] = [];
+  for (let dx = -radius; dx <= radius; dx++) {
+    for (let dy = -radius; dy <= radius; dy++) {
+      const dist = (Math.abs(dx) + Math.abs(dy) + Math.abs(dx + dy)) / 2;
+      if (dist <= radius) offsets.push([dx, dy]);
+    }
+  }
+  return offsets;
+}
+
+const PLAYER_INFLUENCE_OFFSETS = hexOffsetsWithinRadius(PLAYER_INFLUENCE_RADIUS);
 
 // ---------------------------------------------------------------------
 // Hex köşe geometrisi
@@ -161,16 +195,42 @@ export function computeTerritoryRegions(
   type TileMeta = { category: TerritoryCategory; groupKey: string; ownerId: string | null };
   const meta = new Map<string, TileMeta>();
 
+  // NPC: groupKey tile'a özgü (`npc:<x>,<y>`) -- iki NPC bitişik olsa bile
+  // asla aynı region'a girmiyor, her biri kendi tek-hex dairesini çiziyor.
   for (const t of tiles) {
-    if (t.tileType === "EMPTY") continue; // boş kareler asla territory'e girmez
-    if (t.tileType === "NPC") {
-      meta.set(tileKey(t.x, t.y), { category: "npc", groupKey: "npc", ownerId: null });
-      continue;
-    }
+    if (t.tileType !== "NPC") continue;
+    meta.set(tileKey(t.x, t.y), { category: "npc", groupKey: `npc:${t.x},${t.y}`, ownerId: null });
+  }
+
+  // Oyuncu: gerçek sahiplik hücresi yerine PLAYER_INFLUENCE_RADIUS'luk
+  // genişletilmiş disk flood-fill'e/boundary tracing'e veriliyor -- aynı
+  // sahibin diskleri örtüşüyorsa (gerçek karoları arasında hiç fethedilmemiş
+  // alan olmasa bile) traceBoundaryLoops'un standart hex-bitişiklik mantığı
+  // onları otomatik olarak TEK bir birleşik bölgeye çeviriyor. İKİ geçiş:
+  // önce HER oyuncunun kendi gerçek karoları kesin/çakışmasız yazılıyor
+  // (bir kalenin kendi hücresi asla komşu bir rakibin etki diskine
+  // "çalınamaz"), SONRA genişletilmiş komşu hücreler sadece boşsa dolduruluyor.
+  for (const t of tiles) {
+    if (t.tileType !== "PLAYER" || !t.ownerId) continue;
     const isMine = t.ownerId === playerId;
-    const isAlly = !isMine && !!t.ownerId && guildMemberIds.has(t.ownerId);
+    const isAlly = !isMine && guildMemberIds.has(t.ownerId);
     const category: TerritoryCategory = isMine ? "mine" : isAlly ? "ally" : "enemy";
     meta.set(tileKey(t.x, t.y), { category, groupKey: `player:${t.ownerId}`, ownerId: t.ownerId });
+  }
+  for (const t of tiles) {
+    if (t.tileType !== "PLAYER" || !t.ownerId) continue;
+    const isMine = t.ownerId === playerId;
+    const isAlly = !isMine && guildMemberIds.has(t.ownerId);
+    const category: TerritoryCategory = isMine ? "mine" : isAlly ? "ally" : "enemy";
+    for (const [dx, dy] of PLAYER_INFLUENCE_OFFSETS) {
+      if (dx === 0 && dy === 0) continue; // kendi hücresi yukarıda zaten kesin yazıldı
+      const key = tileKey(t.x + dx, t.y + dy);
+      // Başka bir oyuncunun gerçek karosu ya da NPC hücresiyse asla ezilmez;
+      // iki farklı oyuncunun boş/fethedilmemiş hücrede çakışan diski ise ilk
+      // yazan kazanır (bkz. dosya başı yorumu) -- basit, deterministik,
+      // gerçek gameplay'e dokunmuyor (bu katman salt görsel).
+      if (!meta.has(key)) meta.set(key, { category, groupKey: `player:${t.ownerId}`, ownerId: t.ownerId });
+    }
   }
 
   const visited = new Set<string>();

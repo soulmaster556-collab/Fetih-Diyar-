@@ -26,12 +26,28 @@ export function TileMenu({
   const CARD_WIDTH = 300;
   const CARD_MAX_HEIGHT = 440;
   const margin = 12;
-  let left = screenPos.x + 18;
-  let top = screenPos.y - 20;
-  if (left + CARD_WIDTH > window.innerWidth - margin) left = screenPos.x - CARD_WIDTH - 18;
-  left = Math.max(margin, Math.min(left, window.innerWidth - CARD_WIDTH - margin));
-  top = Math.max(margin, Math.min(top, window.innerHeight - CARD_MAX_HEIGHT - margin));
   const isMineSel = selectedTile.ownerId === playerId;
+  let left: number;
+  let top: number;
+  if (isMineSel) {
+    // Kendi kalem için yüzen hilal aksiyon menüsü -- kullanıcı isteği:
+    // kalenin SAĞINDA değil ALTINDA açılsın. .hex-menu-floating'in sabit
+    // width'i (260px, bkz. App.css) ile birebir -- yatayda tıklanan noktaya
+    // ortalanıyor, dikeyde aşağı doğru açılıyor (chips üstte, hilal menü
+    // altta, bkz. JSX sırası).
+    const FLOATING_WIDTH = 260;
+    const FLOATING_MAX_HEIGHT = 260;
+    left = screenPos.x - FLOATING_WIDTH / 2;
+    top = screenPos.y + 24;
+    left = Math.max(margin, Math.min(left, window.innerWidth - FLOATING_WIDTH - margin));
+    top = Math.max(margin, Math.min(top, window.innerHeight - FLOATING_MAX_HEIGHT - margin));
+  } else {
+    left = screenPos.x + 18;
+    top = screenPos.y - 20;
+    if (left + CARD_WIDTH > window.innerWidth - margin) left = screenPos.x - CARD_WIDTH - 18;
+    left = Math.max(margin, Math.min(left, window.innerWidth - CARD_WIDTH - margin));
+    top = Math.max(margin, Math.min(top, window.innerHeight - CARD_MAX_HEIGHT - margin));
+  }
   const isGuildmateSel = !isMineSel && !!selectedTile.ownerId && guildMemberIds.has(selectedTile.ownerId);
   const hasIntelSel = selectedTile.troops !== null && selectedTile.tileType !== "EMPTY";
   // Kendi olmayan kareler için kart: üstte oyuncu adı/seviye "kalkanı"

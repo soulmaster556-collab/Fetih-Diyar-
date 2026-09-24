@@ -46,9 +46,11 @@ export const SETTING_DEFS = [
       "Yeni harita üretildiğinde adanın İÇ kısmındaki (kıyı hariç) her karenin NPC kampı olma ihtimali (0-1); geri kalanı boş kare olur (oyuncu başlangıç noktaları). Kıyı karolarında hiçbir zaman NPC/kale olmaz. Boş karelere saldırı olmadığı için ilerleme büyük ölçüde NPC fethine dayanır. Mevcut haritayı etkilemez (bkz. applyNpcBorderMigration / applyNpcDensityReductionMigration canlı haritayı bir kereliğine seyrekleştirir).",
     // Sırasıyla 0.6, 0.3, 0.15, 0.08, 0.04, 0.02, 0.01 idi -- 0.01 haritayı
     // gereğinden fazla seyrekleştirdiği için (kullanıcı geri bildirimi:
-    // "haritada sadece birkaç tane var") tekrar 0.05'e yükseltildi (bkz.
-    // applyNpcDensityIncreaseMigrationV4 canlı haritayı da yoğunlaştırır).
-    default: 0.05,
+    // "haritada sadece birkaç tane var") 0.05'e yükseltilmişti (bkz.
+    // applyNpcDensityIncreaseMigrationV4), sonra kullanıcı isteğiyle
+    // ("NPC'leri %40 azalt") tekrar 0.03'e düşürüldü (bkz.
+    // applyNpcDensityReductionMigrationV5 canlı haritayı da seyrekleştirir).
+    default: 0.03,
   },
   {
     key: "starting_troops",

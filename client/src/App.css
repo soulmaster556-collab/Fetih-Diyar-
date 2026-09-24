@@ -772,30 +772,6 @@ button:not(:disabled):active {
   animation: npc-glow-pulse 2.6s ease-in-out infinite;
 }
 
-/* FAZ 2 -- Castle Scene PROTOTİPİ (bkz. components/CastleScene.tsx,
-   game/castleScenes.ts). Bilerek AYRI bir z-index sistemi kurmuyor: bu
-   sınıflar hep .iso-castle'ın (z-index:1, yukarısı) OLDUĞU stacking
-   context'in (.iso-tile-group) içinde, position:absolute + z-index:auto
-   ile duruyor -- CSS'in kendi kuralı gereği z-index:1'in HER ZAMAN
-   altında kalıyorlar (DOM sırası önemsiz), yani "behind" prop'lar için ek
-   koda gerek yok. Sadece bayrak (görsel olarak kalenin ÜSTÜNDE durmalı)
-   z-index:2 ile bilerek kale'nin üstüne çıkıyor. */
-.castle-scene-prop {
-  position: absolute;
-  pointer-events: none;
-  background-repeat: no-repeat;
-  background-size: contain;
-  background-position: bottom center;
-  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.35));
-}
-
-.castle-scene-shadow {
-  position: absolute;
-  pointer-events: none;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.32) 0%, rgba(0, 0, 0, 0) 72%);
-}
-
 @keyframes npc-glow-pulse {
   0%, 100% {
     filter: drop-shadow(0 0 5px rgba(255, 111, 64, 0.55)) drop-shadow(0 0 11px rgba(255, 111, 64, 0.3));
@@ -2900,7 +2876,7 @@ button:not(:disabled):active {
   position: fixed;
   left: 16px;
   bottom: 16px;
-  width: 300px;
+  width: 360px;
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -2917,12 +2893,16 @@ button:not(:disabled):active {
     0 20px 40px rgba(0, 0, 0, 0.5),
     0 2px 0 rgba(0, 0, 0, 0.4),
     0 1.5px 0 rgba(255, 255, 255, 0.22) inset;
-  overflow: hidden;
+  /* overflow:hidden BİLEREK yok -- ayarlar (⚙️) popover'ı (bkz.
+     .chat-panel-settings-popover) panelin kendi sınırlarının DIŞINA taşıyor,
+     hiçbir çocuk kendi köşe-yuvarlama kırpmasına ihtiyaç duymuyor (arka
+     plan zaten kendi border-radius'unu koruyor). */
 }
 
 .chat-panel-header {
   display: flex;
   align-items: stretch;
+  justify-content: space-between;
   border-bottom: 1px solid var(--panel-border);
   flex-shrink: 0;
 }
@@ -2931,22 +2911,30 @@ button:not(:disabled):active {
   border-bottom: none;
 }
 
+/* Sekmeler (Genel/Lonca) + ayarlar (⚙️, içinde zil/satır sayısı) --
+   kullanıcı isteğiyle header'ın SAĞINA taşındı, açma/kapama (solda, TEK
+   kontrol) ile aralarında bir ayraç var. */
+.chat-panel-header-right {
+  display: flex;
+  align-items: stretch;
+  border-left: 1px solid var(--panel-border);
+}
+
 .chat-panel-tabs {
   display: flex;
-  flex: 1;
 }
 
 .chat-panel-tab {
-  flex: 1;
   background: none;
   border: none;
   outline: none;
   -webkit-tap-highlight-color: transparent;
-  padding: 9px 8px;
+  padding: 9px 10px;
   font-size: 12.5px;
   font-weight: 700;
   color: var(--text-dim);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 /* Genel `button:hover { background: #2f78e6 }` kuralı (dosya başı) tek bir
@@ -2968,7 +2956,11 @@ button:not(:disabled):active {
   cursor: not-allowed;
 }
 
+/* Açma/kapama -- kullanıcı isteğiyle header'da kalan TEK kontrol. */
 .chat-panel-collapse-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   background: none;
   border: none;
   outline: none;
@@ -2977,6 +2969,7 @@ button:not(:disabled):active {
   cursor: pointer;
   padding: 0 12px;
   font-size: 11px;
+  font-weight: 700;
 }
 
 .chat-panel-collapse-btn:hover {
@@ -2984,8 +2977,132 @@ button:not(:disabled):active {
   color: var(--text-bright);
 }
 
+/* Ayarlar (⚙️) -- tıklanınca içinde zil (autoOpen) + satır sayısı
+   stepper'ı olan bir popover açılıyor (bkz. ChatPanel.tsx). Popover
+   panelin kendi kutusunun DIŞINA taşabilsin diye .chat-panel'in
+   overflow:hidden'ından etkilenmemesi gerekiyor -- bu yüzden .chat-panel
+   overflow:visible'a çekilmek yerine popover'ı kendi position:absolute
+   bağlamında (.chat-panel-settings, position:relative) tutuyoruz ve
+   .chat-panel'e ayrıca dokunmuyoruz (üstteki en/boy zaten mesaj listesi +
+   input row'u kapsıyor, popover onların ÜSTÜNE z-index ile biniyor). */
+.chat-panel-settings {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.chat-panel-settings-btn {
+  background: none;
+  border: none;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.chat-panel-settings-btn:hover {
+  background: none;
+  color: var(--text-bright);
+}
+
+.chat-panel-settings-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: linear-gradient(165deg, rgba(30, 47, 62, 0.97) 0%, rgba(22, 34, 47, 0.97) 100%);
+  backdrop-filter: blur(10px);
+  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Zil (yeni mesajda otomatik aç) -- popover içinde tam genişlikte bir
+   satır, "aktif" durumda altın renkle vurgulanıyor ki oyuncu tercihini
+   bir bakışta görsün. */
+.chat-panel-autoopen-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 5px 6px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: left;
+}
+
+.chat-panel-autoopen-btn.active {
+  color: var(--gold-soft);
+}
+
+.chat-panel-autoopen-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-bright);
+}
+
+.chat-panel-lines-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.chat-panel-lines-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-panel-lines-stepper span {
+  min-width: 14px;
+  text-align: center;
+  color: var(--text-bright);
+  font-weight: 700;
+}
+
+.chat-panel-lines-stepper button {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  color: var(--text-bright);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+
+.chat-panel-lines-stepper button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.chat-panel-lines-stepper button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .chat-panel-messages {
-  height: 220px;
   overflow-y: auto;
   padding: 8px 10px;
   display: flex;

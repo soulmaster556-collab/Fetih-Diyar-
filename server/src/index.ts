@@ -12,6 +12,7 @@ import {
   applyNpcDensityReductionMigration,
   applyNpcDensityReductionMigrationV3,
   applyNpcDensityIncreaseMigrationV4,
+  applyNpcDensityReductionMigrationV5,
   applyLakeLockMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
@@ -100,6 +101,7 @@ async function main() {
     .then(() => applyNpcDensityReductionMigration(settings))
     .then(() => applyNpcDensityReductionMigrationV3(settings))
     .then(() => applyNpcDensityIncreaseMigrationV4(settings))
+    .then(() => applyNpcDensityReductionMigrationV5(settings))
     .then(() => applyLakeLockMigration(settings))
     .then(() => applyHomeTileBackfillMigration())
     .catch((err) => {

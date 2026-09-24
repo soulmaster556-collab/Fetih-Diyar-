@@ -16,8 +16,7 @@ import type { ReservedRoot } from "./forests";
 export type RockClusterDef = { id: string; img: string; scale: number };
 
 // Not: forests.ts ile aynı -- <img src> olarak kullanılıyor, çıplak data
-// URI (castleScenes.ts'teki background-image için sarmalanmış `url(...)`
-// biçiminden farklı, bkz. o dosyadaki not).
+// URI dönüyor.
 function svgDataUri(svg: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

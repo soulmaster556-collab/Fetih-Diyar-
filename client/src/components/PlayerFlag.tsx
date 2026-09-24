@@ -152,7 +152,6 @@ export function PlayerFlag({
           <path d={shape.path} />
         </clipPath>
       </defs>
-      <rect x="2" y="2" width="1.8" height="60" rx="0.7" fill="#caa23a" />
       <path d={shape.path} fill={color.hex} stroke="rgba(0,0,0,0.28)" strokeWidth="0.5" />
       <g clipPath={`url(#${clipId})`}>
         <FlagFolds />

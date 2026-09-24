@@ -9,11 +9,10 @@ export const VIEWPORT_MARGIN = 6;
 // ([72,104,144,200,272,320]) uzaklaşırken "az" (72'de tıkanıp kalıyor, sadece
 // 2 kademe uzaklaşma payı var), yakınlaşırken "fazla" (200->272->320 arası
 // oranlar %36/%18 -- tutarsız, üstteki sıçrama göze batıyor) hissettiriyordu.
-// Yeni dizi ~×1.31 sabit oranla (geometrik dizi) 8 kademeye çıkarıldı: hem
-// daha uzağa gidebiliyor (48 -- eskiden görülemeyen kadar geniş bir alan),
-// hem de her kademe arası fark her yerde YAKLAŞIK aynı (~%30) -- ne aşırı
-// küçük ne aşırı büyük bir sıçrama.
-export const TILE_WIDTHS = [48, 63, 83, 109, 144, 189, 248, 320];
+// Dizi ~×1.31 sabit oranla (geometrik dizi) 8 kademeye çıkarılmıştı; kullanıcı
+// isteğiyle en yakın 2 kademe (248/320) tekrar kaldırıldı -- en yakın zoom
+// artık 189px.
+export const TILE_WIDTHS = [48, 63, 83, 109, 144, 189];
 // Varsayılan değer (144) DEĞİŞMEDİ -- sadece dizideki index'i kaydı (eski
 // dizide 144 index 2'ydi, yeni dizide index 4).
 export const DEFAULT_TILE_WIDTH_INDEX = 4;
