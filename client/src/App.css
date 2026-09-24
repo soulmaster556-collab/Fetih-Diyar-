@@ -624,6 +624,77 @@ button:disabled {
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.28));
 }
 
+/* Kristal dekor kümeleri (bkz. game/crystals.ts). Ormanla/kayalıkla AYNI
+   mutlak konumlandırma + painter's algorithm katmanı, ama gerçek raster
+   görsel (webp) kendi gölgesini taşımıyor (rockShape'teki <ellipse>'in
+   aksine) -- bu yüzden ayrı bir wrap + zeminle bütünleşmesi için altına
+   ayrı bir gölge elipsi (castle-scene-shadow ile aynı radial-gradient
+   tekniği). Wrap pointer-events:none, boyutu crystalScreens'ten geliyor
+   (bkz. MapView.tsx). */
+.crystal-cluster-wrap {
+  position: absolute;
+  pointer-events: none;
+}
+
+.crystal-cluster-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 2%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0) 72%);
+}
+
+.crystal-cluster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+}
+
+/* Renk grubuna göre (mor/altın/mavi) farklı nabız atan parıltı -- diğer
+   dekorlardan (dağ: sabit turkuaz) bilerek ayrışıyor, kristalin KENDİ
+   rengiyle "değerli/özel" hissi versin diye. iso-castle-glow/iso-mountain-glow
+   ile aynı prensip: box-shadow değil drop-shadow (görsel şeffaf webp,
+   gerçek siluete göre yayılsın diye). */
+.crystal-glow-purple {
+  animation: crystal-glow-purple-pulse 3.2s ease-in-out infinite;
+}
+@keyframes crystal-glow-purple-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 5px rgba(168, 85, 247, 0.45));
+  }
+  50% {
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 10px rgba(168, 85, 247, 0.75));
+  }
+}
+
+.crystal-glow-gold {
+  animation: crystal-glow-gold-pulse 3.2s ease-in-out infinite;
+}
+@keyframes crystal-glow-gold-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 5px rgba(255, 213, 79, 0.45));
+  }
+  50% {
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 10px rgba(255, 213, 79, 0.75));
+  }
+}
+
+.crystal-glow-blue {
+  animation: crystal-glow-blue-pulse 3.2s ease-in-out infinite;
+}
+@keyframes crystal-glow-blue-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 5px rgba(56, 189, 248, 0.45));
+  }
+  50% {
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 10px rgba(56, 189, 248, 0.75));
+  }
+}
+
 /* Boş kareler "ölü alan": imleç normale dönüyor (tıklamanın kendisi
    MapView'daki onClick'te engelleniyor, bu sadece görsel ipucu). */
 .iso-tile-group.iso-tile-dead {
@@ -2833,7 +2904,12 @@ button:not(:disabled):active {
   z-index: 30;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel-1) 100%);
+  /* --panel-2/--panel-1 (opak) DEĞİL -- kullanıcı isteğiyle ("chat'i daha
+     şeffaf yap") kendi rgba sürümleri: harita panelin ARKASINDA hafifçe
+     seçilsin diye. backdrop-filter:blur zaten altındaki haritayı bulanıklaştırıp
+     okunabilirliği koruyor, bu yüzden opaklık düşürülse de metin kontrastı
+     bozulmuyor. */
+  background: linear-gradient(165deg, rgba(30, 47, 62, 0.55) 0%, rgba(22, 34, 47, 0.55) 100%);
   backdrop-filter: blur(10px);
   border: 1.5px solid rgba(255, 255, 255, 0.16);
   border-radius: 12px;

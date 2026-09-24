@@ -8,6 +8,7 @@ import {
   WORLD_SIZE,
 } from "../game/constants";
 import { isCastleSceneVisible } from "../game/castleScenes";
+import { computePlacedCrystals } from "../game/crystals";
 import { computePlacedForests } from "../game/forests";
 import { isoCenter } from "../game/hexMath";
 import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
@@ -193,6 +194,27 @@ export function MapView({
     });
   }, [placedRocks, tileWidth, tileHeight]);
 
+  // Kristal dekor kümeleri (bkz. game/crystals.ts dosya başı yorumu) --
+  // dağ kökleri (+6 komşu) VE orman/kayalık kökleri (sadece kendi hex'i)
+  // dışlanarak yerleşiyor, aynı forests/rockyAreas'ın birbirini dışlama
+  // mantığı. Su kontrolü kendi içinde (computePlacedCrystals).
+  const placedCrystals = useMemo(
+    () => computePlacedCrystals(tiles, placedMountains, [...placedForests, ...placedRocks], waterFeatures),
+    [tiles, placedMountains, placedForests, placedRocks, waterFeatures]
+  );
+
+  const crystalScreens = useMemo(() => {
+    return placedCrystals.map((c) => {
+      const { cx, cy } = isoCenter(c.rootX, c.rootY, tileWidth);
+      const scale = c.def.scale * c.scaleJitter;
+      const boxW = tileWidth * scale;
+      const boxH = tileHeight * scale;
+      const left = cx + c.jitterX * tileWidth - boxW / 2;
+      const top = cy + c.jitterY * tileWidth - boxH / 2;
+      return { crystal: c, left, top, width: boxW, height: boxH };
+    });
+  }, [placedCrystals, tileWidth, tileHeight]);
+
   // Render sırası (yukarıdan aşağıya = arkadan öne, FAZ 5 madde 2/17):
   // world-terrain(z0) -> world-water(z1) -> world-territory(z2) ->
   // iso-tile-group'lar + mountains/forests/rocky/castle-scenes (z 10+,
@@ -274,16 +296,18 @@ export function MapView({
             const castleIcon = castleImageForLevel(tile.level);
             const npcIcon = npcCastleImageForLevel(tile.level);
             const { cx, cy } = isoCenter(tile.x, tile.y, tileWidth);
-            // Kale kutusu: yükseklik tileHeight*0.94, genişlik en fazla
-            // tileWidth*1.08 (kullanıcı isteğiyle önceki 0.82/0.94'ten
-            // büyütüldü -- oyuncu kaleleri artık komşu karolara biraz daha
-            // taşıyor, bilerek: "overflow:visible" zaten kale ikonlarının
-            // karo dışına taşmasına izin veriyordu, bkz. .iso-tile-group).
-            // object-fit:contain her seviye görselinin kendi oranını koruyor
-            // (gerçek oranlar ~0.41-1.18).
-            const castleBoxHeight = tileHeight * 0.94;
-            const castleBoxWidth = Math.min(castleBoxHeight * 1.2, tileWidth * 1.08);
-            const npcBoxHeight = tileHeight * 0.58;
+            // Kale kutusu: yükseklik tileHeight*1.18, genişlik en fazla
+            // tileWidth*1.32 (kullanıcı isteğiyle "kaleleri büyüt" -- önceki
+            // 0.94/1.08'den büyütüldü -- oyuncu kaleleri artık komşu
+            // karolara daha da taşıyor, bilerek: "overflow:visible" zaten
+            // kale ikonlarının karo dışına taşmasına izin veriyordu, bkz.
+            // .iso-tile-group). object-fit:contain her seviye görselinin
+            // kendi oranını koruyor (gerçek oranlar ~0.41-1.18).
+            const castleBoxHeight = tileHeight * 1.18;
+            const castleBoxWidth = Math.min(castleBoxHeight * 1.2, tileWidth * 1.32);
+            // NPC kampları da aynı büyütme oranıyla (0.58 -> 0.7) ölçekleniyor
+            // ki oyuncu kaleleriyle orantı bozulmasın.
+            const npcBoxHeight = tileHeight * 0.7;
             const npcBoxWidth = npcBoxHeight * CASTLE_IMAGE_ASPECT;
             const castleTop = (tileHeight - castleBoxHeight) / 2;
             const npcTop = (tileHeight - npcBoxHeight) / 2;
@@ -462,6 +486,41 @@ export function MapView({
                 transformOrigin: "bottom center",
               }}
             />
+          ))}
+          {/* Kristal dekor kümeleri (bkz. game/crystals.ts). Aynı painter's
+              algorithm havuzu (10+frontSortKey). Zeminle bütünleşmesi için
+              görselin ALTINA ayrı bir gölge elipsi konuyor (castle-scene-shadow
+              ile aynı teknik, bkz. App.css) -- gerçek raster görsel kendi
+              gölgesini taşımıyor, SVG dekorların (rockShape içindeki <ellipse>)
+              aksine. rotationDeg dağ/kayalıkla aynı "hep aynı açı" tekrarını
+              kırmak için, transform-origin bottom center ile taban bozulmasın
+              diye. */}
+          {crystalScreens.map(({ crystal, left, top, width, height }) => (
+            <div
+              key={crystal.key}
+              className="crystal-cluster-wrap"
+              style={{
+                left,
+                top,
+                width,
+                height,
+                zIndex: 10 + crystal.frontSortKey,
+              }}
+            >
+              <div
+                className="crystal-cluster-shadow"
+                style={{ width: width * 0.6, height: height * 0.14 }}
+              />
+              <img
+                src={crystal.def.img}
+                alt=""
+                className={`crystal-cluster crystal-glow-${crystal.def.color}`}
+                style={{
+                  transform: `rotate(${crystal.rotationDeg}deg)`,
+                  transformOrigin: "bottom center",
+                }}
+              />
+            </div>
           ))}
           {/* Seviye rozetleri -- hiçbir karonun asla üstüne binemeyeceği,
               TEK ve en üstteki ortak bir katmanda (bkz. .iso-labels-layer,

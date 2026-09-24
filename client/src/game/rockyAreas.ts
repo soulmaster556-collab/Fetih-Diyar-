@@ -73,9 +73,11 @@ export const ROCK_CLUSTER_DEFS: RockClusterDef[] = [
 ];
 
 const ROCK_SEED = 601;
-// Orman'dan (0.62) belirgin şekilde düşük -- "merkezde daha yoğun, kenarda
-// seyrek, dışında yok" ama hiçbir zaman ormanki kadar sık/duvar gibi değil.
-const ROCK_MAX_COVERAGE = 0.3;
+// Orman'dan (0.4, bkz. forests.ts) belirgin şekilde düşük -- "merkezde daha
+// yoğun, kenarda seyrek, dışında yok" ama hiçbir zaman ormanki kadar sık/
+// duvar gibi değil. Kullanıcı isteğiyle ("dekorları azalt") eski 0.3'ten
+// daha da düşürüldü.
+const ROCK_MAX_COVERAGE = 0.18;
 
 export type PlacedRock = {
   key: string;

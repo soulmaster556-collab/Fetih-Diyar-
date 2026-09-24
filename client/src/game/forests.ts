@@ -122,8 +122,9 @@ const FOREST_SEED = 401;
 // Bölge merkezinde (intensity=1) bile boş hex'lerin EN FAZLA bu oranı
 // cluster alıyor -- geri kalanı doğal açıklık (madde 4). Ayrı bir
 // "clearing algoritması" YOK, açıklıklar bu olasılıksal seyrelmeden
-// kendiliğinden çıkıyor.
-const FOREST_MAX_COVERAGE = 0.62;
+// kendiliğinden çıkıyor. Kullanıcı isteğiyle ("dekorları azalt") eski
+// 0.62'den düşürüldü.
+const FOREST_MAX_COVERAGE = 0.4;
 
 export type PlacedForest = {
   key: string;

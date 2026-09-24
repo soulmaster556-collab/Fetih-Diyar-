@@ -40,8 +40,9 @@ export const HEX_DIRECTIONS: [number, number][] = [
 ];
 
 // Dekor yoğunluğu (büyüdükçe seyrekleşir) -- dağlar harita genelinde
-// seyrek/nadir kalsın diye yüksek tutuluyor.
-export const MOUNTAIN_DENSITY = 240;
+// seyrek/nadir kalsın diye yüksek tutuluyor. Kullanıcı isteğiyle ("dekorları
+// azalt") eski 240'tan daha da seyrekleştirildi.
+export const MOUNTAIN_DENSITY = 320;
 
 export type PlacedMountain = {
   key: string;
