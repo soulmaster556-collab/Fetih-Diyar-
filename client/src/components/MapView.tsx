@@ -10,6 +10,7 @@ import {
 import { computePlacedCrystals } from "../game/crystals";
 import { computePlacedForests } from "../game/forests";
 import { isoCenter } from "../game/hexMath";
+import { buildIslandShorePathD, computeIslandShoreLoops } from "../game/islandShore";
 import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
 import { computePlacedRocks } from "../game/rockyAreas";
 import {
@@ -77,11 +78,24 @@ export function MapView({
     [biomeAnchors, tileWidth]
   );
 
+  // Ada kıyı şeridi -- çoklu ada + gerçek deniz (bkz. islandShore.ts dosya
+  // başı yorumu). `tiles` (yüklü pencere) değiştiğinde YENİDEN hesaplanıyor
+  // -- lake/biome gibi WORLD_SIZE'a göre sabit değil, çünkü ada şekli
+  // sunucuda rastgele üretiliyor, client'ın bağımsız hesaplayabileceği
+  // deterministik bir formül YOK (göllerin aksine). Pahalı sınır çıkarma
+  // SADECE tiles değişince çalışır, zoom (tileWidth) değişince sadece
+  // buildIslandShorePathD'nin nokta çarpımı.
+  const islandShoreLoops = useMemo(() => computeIslandShoreLoops(tiles), [tiles]);
+  const islandShorePathD = useMemo(
+    () => buildIslandShorePathD(islandShoreLoops, tileWidth),
+    [islandShoreLoops, tileWidth]
+  );
+
   // Göller. AYNI prensip: WORLD_SIZE'a göre bir kez üretilir, `tiles`'tan
   // bağımsız (bkz. riversLakes.ts dosya başı yorumu). z-index sırası:
-  // .world-terrain (0) -> .world-water (1) -> .iso-tile-group'lar (10+).
-  // Territory (FAZ 5) ileride bu ikisinin arasına (z~2) girecek. Nehir
-  // sistemi kullanıcı isteğiyle kaldırıldı -- sadece göl var.
+  // .world-sea (-2) -> .world-island-shore (-1) -> .world-terrain (0,
+  // ada şekline clip-path'li) -> .world-water (1) -> .iso-tile-group'lar
+  // (10+). Nehir sistemi kullanıcı isteğiyle kaldırıldı -- sadece göl var.
   const waterFeatures = useMemo(() => ({ lakes: generateLakes(WORLD_SIZE) }), []);
   const lakePathsD = useMemo(
     () => waterFeatures.lakes.map((l) => ({ key: `lake-${l.seed}`, d: buildLakePathD(l, tileWidth) })),
@@ -250,13 +264,43 @@ export function MapView({
         height: tileHeight * 0.75 * (WORLD_SIZE - 1) + tileHeight,
       }}
     >
+      {/* Deniz -- TÜM .iso-map'i kaplayan düz mavi taban, en altta (bkz.
+          App.css z-index -2). Çoklu ada + gerçek deniz isteğiyle eklendi --
+          ada olmayan HER yer artık düz çim değil, deniz gösteriyor. */}
+      <div className="world-sea" />
+      {/* Ada kıyı bandı -- gölün radyal-gradyan halkasıyla AYNI prensip
+          (bkz. .world-coastline yorumu), ama tek merkez+yarıçap yerine
+          gerçek ada sınırı (islandShorePathD) üstünde bir STROKE olarak.
+          Stroke, path'in üstüne (yarısı kara yarısı deniz tarafına) biniyor
+          -- .world-terrain (aşağısı, ada şekline clip-path'li) üstüne
+          bindiğinde karadaki yarısını örtüyor, sadece deniz tarafına bakan
+          kum/sığ-su hilali görünür kalıyor (bkz. App.css). */}
+      <svg className="world-island-shore">
+        <path
+          d={islandShorePathD}
+          className="island-shore-shallow"
+          style={{ strokeWidth: tileWidth * 0.42 }}
+        />
+        <path
+          d={islandShorePathD}
+          className="island-shore-sand"
+          style={{ strokeWidth: tileWidth * 0.2 }}
+        />
+      </svg>
       {/* FAZ 1 -- tek parça dünya zemini. Hex başına DEĞİL, .iso-map'in
           TAMAMI için tek katman (bkz. worldRegions.ts) -- .iso-tile-group'lar
           zaten z-index 10+ ile bunun üstünde duruyor, painter's algorithm'a
           hiç katılmıyor (sabit z-index 0). İki alt-katman: biyom lekeleri
           (geniş, yumuşak geçişli renk varyasyonu) + üstünde ince bir doku/
-          gren katmanı (yakın zoomda çıplak düz renk hissi vermesin diye). */}
-      <div className="world-terrain">
+          gren katmanı (yakın zoomda çıplak düz renk hissi vermesin diye).
+          clipPath: SADECE ada sınırının içi görünsün diye -- boş path
+          (yüklü pencerede hiç kara yoksa) TÜMÜNÜ gizleyen dejenere bir
+          path'e düşüyor, aksi halde boş clip-path CSS'te tanımsız/tüm
+          alanı gösterir davranışa yol açabilirdi. */}
+      <div
+        className="world-terrain"
+        style={{ clipPath: `path("${islandShorePathD || "M0 0 Z"}")` }}
+      >
         <div
           className="world-terrain-grass"
           style={{ backgroundSize: `${tileWidth * 6}px ${tileWidth * 6}px` }}

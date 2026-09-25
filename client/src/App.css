@@ -451,11 +451,51 @@ button:disabled {
   position: relative;
 }
 
+/* Deniz -- çoklu ada + gerçek deniz isteğiyle eklendi (bkz. MapView.tsx
+   yorumu). En alt katman (z-index -2), .iso-map'in TAMAMINI kaplar; ada
+   olan yerlerde .world-terrain (üstte, ada şekline clip-path'li) bunun
+   üstünü örter. */
+.world-sea {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: #2f6f9e;
+}
+
+/* Ada kıyı bandı -- göldeki .world-coastline ile AYNI su->kum->şeffaf
+   fikri, ama tek merkezli radyal gradyan yerine gerçek ada sınırı üstünde
+   İKİ iç içe stroke (bkz. MapView.tsx yorumu -- islandShorePathD hem
+   burada hem .world-terrain'in clip-path'inde AYNI path, sapma imkansız).
+   z-index -1: .world-sea'nin üstünde, .world-terrain'in (0) altında. */
+.world-island-shore {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* stroke-width MapView.tsx'ten inline geliyor (tileWidth'e bağlı, zoom
+   değişince orantılı kalsın diye). */
+.island-shore-shallow {
+  fill: none;
+  stroke: #6fb8d9;
+  stroke-opacity: 0.55;
+}
+
+.island-shore-sand {
+  fill: none;
+  stroke: #e8d6ab;
+  stroke-opacity: 0.85;
+}
+
 /* FAZ 1 -- sürekli dünya zemini (bkz. game/worldRegions.ts). .iso-map'in
    TAMAMINI kaplayan TEK katman -- hex başına ayrı zemin YOK, bu yüzden
    hex sınırlarında asla dikiş/tekrar deseni oluşmaz. z-index sabit 0,
    .iso-tile-group'ların (10+) HER ZAMAN altında -- painter's algorithm'a
-   katılmıyor (bkz. MapView.tsx yorumu). */
+   katılmıyor (bkz. MapView.tsx yorumu). clip-path ile SADECE ada sınırının
+   içi görünür -- ada dışı artık .world-sea'nin mavi tabanını gösterir. */
 .world-terrain {
   position: absolute;
   inset: 0;

@@ -138,7 +138,9 @@ function pointKey(p: TerritoryPoint): string {
 // OLMAYAN bir komşuya bakan kenarları "sınır kenarı"dır -- bunları uçlarına
 // göre zincirleyip kapalı poligon(lar) elde ediyoruz. Bu standart bir
 // "grid boundary tracing" tekniği, gerçek pathfinding/görüntü işleme değil.
-function traceBoundaryLoops(memberSet: Set<string>): TerritoryPoint[][] {
+// export edildi: islandShore.ts da AYNI hex-sınır çıkarma tekniğini
+// "sahiplik" değil "adaya ait mi" (bkz. o dosya) için kullanıyor.
+export function traceBoundaryLoops(memberSet: Set<string>): TerritoryPoint[][] {
   const edges: { from: TerritoryPoint; to: TerritoryPoint }[] = [];
   for (const key of memberSet) {
     const [xs, ys] = key.split(",");
@@ -279,7 +281,7 @@ export function computeTerritoryRegions(
 // önceki nokta.
 const CHAIKIN_ITERATIONS = 2;
 
-function chaikinSmooth(pts: TerritoryPoint[], iterations: number): TerritoryPoint[] {
+export function chaikinSmooth(pts: TerritoryPoint[], iterations: number): TerritoryPoint[] {
   let cur = pts;
   for (let iter = 0; iter < iterations; iter++) {
     const next: TerritoryPoint[] = [];
@@ -295,7 +297,7 @@ function chaikinSmooth(pts: TerritoryPoint[], iterations: number): TerritoryPoin
   return cur;
 }
 
-function closedPathD(pts: TerritoryPoint[]): string {
+export function closedPathD(pts: TerritoryPoint[]): string {
   if (pts.length < 3) return "";
   let d = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)} `;
   for (let i = 1; i < pts.length; i++) {
