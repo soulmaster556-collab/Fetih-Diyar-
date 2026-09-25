@@ -534,12 +534,23 @@ button:disabled {
   overflow: visible;
 }
 
+/* Kenar konturu (stroke) BİLEREK yok -- kıyı şeridi eklenmeden önce göl ile
+   çim arasındaki sert kesimi belli etsin diye konmuştu, artık kum geçişi
+   zaten yumuşak bir sınır çiziyor; kontur üstüne binince suyla kum arasında
+   gereksiz sert bir beyaz çizgi gibi duruyordu (kullanıcı geri bildirimi). */
 .lake-shape {
   fill: #3f8fbf;
   fill-opacity: 0.88;
-  stroke: #cdeeff;
-  stroke-opacity: 0.5;
-  stroke-width: 2;
+}
+
+/* Kum dokusu overlay'i (bkz. MapView.tsx world-coastline-grain path'i) --
+   .world-terrain-grain ile AYNI prensip: mix-blend-mode:overlay ile
+   alttaki (gradyan) rengi karartıp/aydınlatıp tane hissi veriyor, kendi
+   rengi yok. Opacity grain'den (0.35) biraz yüksek -- kum daha "pürüzlü"
+   görünsün diye. */
+.world-coastline-grain {
+  mix-blend-mode: overlay;
+  opacity: 0.5;
 }
 
 /* FAZ 5 -- Territory (bkz. game/territory.ts, MapView.tsx .world-territory

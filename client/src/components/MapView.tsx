@@ -96,6 +96,7 @@ export function MapView({
       waterFeatures.lakes.map((l) => ({
         key: `coast-${l.seed}`,
         gradientId: `coast-gradient-${l.seed}`,
+        maskId: `coast-mask-${l.seed}`,
         d: buildCoastRingPathD(l, tileWidth),
         geo: coastGradientGeometry(l, tileWidth),
       })),
@@ -286,16 +287,60 @@ export function MapView({
               cy={r.geo.cy}
               r={r.geo.r}
             >
+              {/* Su -> ıslak kum (koyu, dalganın hemen üstü) -> kuru kum ->
+                  şeffaf (çime karışsın diye) -- kullanıcı isteğiyle eski
+                  4-durak/düz-plato geçiş daha kademeli/doğal hale getirildi. */}
               <stop offset="0%" stopColor="#3f8fbf" stopOpacity="0.9" />
-              <stop offset="15%" stopColor="#3f8fbf" stopOpacity="0.9" />
-              <stop offset="55%" stopColor="#e6d2a5" stopOpacity="0.85" />
-              <stop offset="75%" stopColor="#e6d2a5" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#e6d2a5" stopOpacity="0" />
+              <stop offset="30%" stopColor="#3f8fbf" stopOpacity="0.85" />
+              <stop offset="42%" stopColor="#b9a276" stopOpacity="0.85" />
+              <stop offset="58%" stopColor="#e8d6ab" stopOpacity="0.85" />
+              <stop offset="85%" stopColor="#e8d6ab" stopOpacity="0.5" />
+              <stop offset="100%" stopColor="#e8d6ab" stopOpacity="0" />
             </radialGradient>
+          ))}
+          {/* Kum dokusu -- .world-terrain-grain ile AYNI teknik (feTurbulence,
+              gerçek asset yok), ama kum daha ince taneli hissetsin diye
+              yüksek baseFrequency. patternUnits userSpaceOnUse + tileWidth'e
+              bağlı boyut ki zoom değişince tane boyutu da orantılı kalsın. */}
+          <pattern
+            id="sand-grain-pattern"
+            patternUnits="userSpaceOnUse"
+            width={tileWidth * 0.35}
+            height={tileWidth * 0.35}
+          >
+            <filter id="sand-grain-filter">
+              <feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="2" stitchTiles="stitch" />
+              <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.55 0" />
+            </filter>
+            <rect width="100%" height="100%" filter="url(#sand-grain-filter)" />
+          </pattern>
+          {/* Kum dokusunun (aşağısı) sadece gradyanın GÖRÜNÜR olduğu yerde
+              (su/çim'e karıştığı kenarlarda değil) belirmesi için -- mask
+              içindeki path AYNI gradyanla dolduruluyor, o yüzden tane de
+              rengin soluma eğrisini birebir takip ediyor. */}
+          {/* style={{colorInterpolation:'sRGB'}} ÖNEMLİ -- SVG mask'lar
+              varsayılan olarak linearRGB uzayında luminance hesaplıyor, bu da
+              orta tonları (buradaki gradyan renkleri gibi) olması gerekenden
+              çok daha karanlık/görünmez gösteriyor (bkz. dosya başı yorumu --
+              maskesiz test edilince tane net görünüyordu, mask eklenince
+              neredeyse kayboluyordu, sebebi buydu). */}
+          {coastRings.map((r) => (
+            <mask key={r.maskId} id={r.maskId} style={{ colorInterpolation: "sRGB" }}>
+              <path d={r.d} fill={`url(#${r.gradientId})`} />
+            </mask>
           ))}
         </defs>
         {coastRings.map((r) => (
           <path key={r.key} d={r.d} fill={`url(#${r.gradientId})`} />
+        ))}
+        {coastRings.map((r) => (
+          <path
+            key={`${r.key}-grain`}
+            d={r.d}
+            fill="url(#sand-grain-pattern)"
+            mask={`url(#${r.maskId})`}
+            className="world-coastline-grain"
+          />
         ))}
       </svg>
       <svg className="world-water">
