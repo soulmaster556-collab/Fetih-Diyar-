@@ -243,6 +243,130 @@ function fillSmallWaterPockets(occupied: Map<string, number>): LandTile[] {
   return filled;
 }
 
+// fillSmallWaterPockets SADECE tümüyle kapalı (asıl açık denize hiç
+// bağlı olmayan) su bölgelerini yakalıyor. Ama iki ada arasındaki bir
+// körfez/boğaz, ince bir şeritle asıl açık denize bağlıysa (neredeyse
+// hep öyle), flood-fill bileşeni koca okyanusla birleşip WATER_POCKET_
+// MAX_SIZE'ı fena halde aşıyor -- bu yüzden "adalar arasında hâlâ büyük,
+// çirkin boşluklar var" geri bildirimi devam ediyordu (bkz. kullanıcının
+// sarı/kırmızı işaretli ekran görüntüsü: sarıdaki adalar puzzle parçası
+// gibi oturuyor, kırmızıdaki geniş körfezler oturmuyor).
+//
+// Çözüm klasik görüntü işleme tekniği: MORFOLOJİK KAPAMA (dilate + erode).
+// Karayı CLOSING_RADIUS kadar suya doğru şişirip sonra aynı miktarda geri
+// küçültüyoruz -- bu yarıçaptan DAHA DAR olan her su şeridi (nereye bağlı
+// olursa olsun, ulaşılabilirlik hiç önemli değil) tamamen kapanıyor, sadece
+// bu yarıçaptan GENİŞ gerçek açık deniz büyük ölçüde etkilenmeden kalıyor.
+// (bkz. https://en.wikipedia.org/wiki/Closing_(morphology))
+// Not: bu değeri denerken gördüm ki HATTA küçük yarıçaplarda bile (1-2) kara
+// kapsamı %75-80'e fırlıyor -- çünkü "iyi" görünen ince kanallar (iki ada
+// arasındaki tutarlı dar şerit) ile "kötü" görünen dar boğazlar (bir körfezin
+// ağzı) GEOMETRİK OLARAK AYNI genişlikte, saf genişlik testiyle ayırt
+// edilemiyor. 3 civarı, çirkin boşlukların çoğunu kapatırken haritayı
+// tamamen tek düz kara yapmayan bir orta nokta (bkz. script doğrulaması:
+// kapsam ~%82-88).
+const CLOSING_RADIUS = 3;
+
+// Verilen tohum karo kümesinden başlayıp hex-komşuluğunda en fazla maxDist
+// adım uzaklıktaki TÜM karoları (tohumlar dahil) döndürür -- multi-source
+// BFS, "wavefront" halinde ilerliyor (dilate işleminin temel yapı taşı).
+function multiSourceDilate(seeds: Set<string>, maxDist: number): Set<string> {
+  const within = new Set(seeds);
+  let frontier: [number, number][] = [];
+  for (const k of seeds) {
+    const [xs, ys] = k.split(",");
+    frontier.push([Number(xs), Number(ys)]);
+  }
+  for (let step = 0; step < maxDist && frontier.length > 0; step++) {
+    const next: [number, number][] = [];
+    for (const [x, y] of frontier) {
+      for (const [nx, ny] of neighbors6(x, y)) {
+        if (!inBounds(nx, ny)) continue;
+        const k = key(nx, ny);
+        if (within.has(k)) continue;
+        within.add(k);
+        next.push([nx, ny]);
+      }
+    }
+    frontier = next;
+  }
+  return within;
+}
+
+function closeSmallWaterGaps(occupied: Map<string, number>): LandTile[] {
+  const landKeys = new Set<string>(occupied.keys());
+  // 1) Karayı CLOSING_RADIUS kadar şişir (dilate).
+  const dilatedLand = multiSourceDilate(landKeys, CLOSING_RADIUS);
+
+  // 2) Şişirilmiş karanın dışında kalan (yani hâlâ gerçekten su olan) karolar.
+  const trueWater = new Set<string>();
+  for (let x = 0; x < WORLD_SIZE; x++) {
+    for (let y = 0; y < WORLD_SIZE; y++) {
+      const k = key(x, y);
+      if (!dilatedLand.has(k)) trueWater.add(k);
+    }
+  }
+
+  // 3) Gerçek suyu da CLOSING_RADIUS kadar şişir -- bunun DIŞINDA kalan her
+  // (kara olmayan) karo, kapatma sonrası kara demektir (erosion'un tümleyeni).
+  const dilatedTrueWater = multiSourceDilate(trueWater, CLOSING_RADIUS);
+
+  // 4) Kapatılacak karoları (toClose) bul, sonra bunları -- fillSmallWaterPockets
+  // ile AYNI bağlı-bileşen + çoğunluk-komşu deseniyle -- en yakın adaya ata.
+  // Tek bir karonun komşuları da toClose ise (geniş bir boşluğun ortası),
+  // bileşenin TÜM sınırındaki gerçek kara komşuları sayılıyor.
+  const toClose = new Set<string>();
+  for (let x = 0; x < WORLD_SIZE; x++) {
+    for (let y = 0; y < WORLD_SIZE; y++) {
+      const k = key(x, y);
+      if (occupied.has(k) || dilatedTrueWater.has(k)) continue;
+      toClose.add(k);
+    }
+  }
+
+  const filled: LandTile[] = [];
+  const visited = new Set<string>();
+  for (const startKey of toClose) {
+    if (visited.has(startKey)) continue;
+    const [sx, sy] = startKey.split(",").map(Number);
+    const component: [number, number][] = [[sx, sy]];
+    visited.add(startKey);
+    const neighborCounts = new Map<number, number>();
+    let head = 0;
+    while (head < component.length) {
+      const [px, py] = component[head++];
+      for (const [nx, ny] of neighbors6(px, py)) {
+        if (!inBounds(nx, ny)) continue;
+        const nk = key(nx, ny);
+        const owner = occupied.get(nk);
+        if (owner !== undefined) {
+          neighborCounts.set(owner, (neighborCounts.get(owner) ?? 0) + 1);
+          continue;
+        }
+        if (!toClose.has(nk) || visited.has(nk)) continue;
+        visited.add(nk);
+        component.push([nx, ny]);
+      }
+    }
+    if (neighborCounts.size === 0) continue; // karaya hiç komşu değil -- olmamalı ama güvenlik payı
+
+    let bestId = -1;
+    let bestCount = -1;
+    for (const [id, count] of neighborCounts) {
+      if (count > bestCount) {
+        bestId = id;
+        bestCount = count;
+      }
+    }
+    for (const [px, py] of component) {
+      occupied.set(key(px, py), bestId);
+      filled.push({ x: px, y: py, islandId: bestId, isCoastal: false, isNpcSafe: false, isBridge: false });
+    }
+  }
+
+  return filled;
+}
+
 function key(x: number, y: number) {
   return `${x},${y}`;
 }
@@ -442,9 +566,16 @@ function generateIslandLayout(maxBridgeHexLength: number): LandTile[] {
     });
   }
 
-  // Küçük/orta boy su boşluklarını kara ile doldur (bkz. fillSmallWaterPockets
-  // dosya başı yorumu) -- kıyı/isNpcSafe hesabından ÖNCE çalışmalı ki bu yeni
-  // kara karoları da doğru şekilde işaretlensin.
+  // 1) Önce dar körfez/boğazları morfolojik kapama ile tamamen kapat (bkz.
+  // closeSmallWaterGaps dosya başı yorumu) -- asıl açık denize ince bir
+  // şeritle bağlı olan büyük ama çirkin boşlukları temizliyor.
+  for (const t of closeSmallWaterGaps(occupied)) {
+    allTiles.push(t);
+  }
+  // 2) Kalan, tümüyle kapalı küçük/orta boy cepleri de doldur (bkz.
+  // fillSmallWaterPockets dosya başı yorumu) -- kapama sonrası ortaya
+  // çıkabilecek küçük göletleri yakalıyor. İkisi de kıyı/isNpcSafe
+  // hesabından ÖNCE çalışmalı ki bu yeni kara karoları da doğru işaretlensin.
   for (const t of fillSmallWaterPockets(occupied)) {
     allTiles.push(t);
   }
@@ -938,6 +1069,29 @@ export async function applyLargeWaterGapFixMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita dolgulu haritayla yeniden üretilecek.`);
+}
+
+// Boyut tabanlı dolgu (yukarısı) hâlâ yetersizdi: kullanıcı sarı/kırmızı
+// işaretli ekran görüntüsüyle gösterdi ki adalar arasındaki büyük körfezler
+// ince bir boğazdan asıl açık denize bağlı olduğu için o test onları hâlâ
+// atlıyordu. Bu geçiş morfolojik kapama ekliyor (bkz. closeSmallWaterGaps
+// dosya başı yorumu, CLOSING_RADIUS=3) -- bu yarıçaptan dar HER su şeridi
+// (nereye bağlı olursa olsun) kapanıyor. Not: bu, "iyi" ince kanalların bir
+// kısmını da kapatıyor (genişlik olarak "kötü" boğazlardan ayırt edilemez),
+// bu yüzden kara kapsamı belirgin şekilde artıyor (~%82-88).
+export async function applyMorphologicalClosingMigration() {
+  const MIGRATION_NAME = "morphological_closing_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: dar boğazlar kapatılıyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita kapatılmış boğazlarla yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {

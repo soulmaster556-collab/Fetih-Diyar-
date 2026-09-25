@@ -22,6 +22,7 @@ import {
   applyShortBridgeCapMigration,
   applyCloserIslandsMigration,
   applyLargeWaterGapFixMigration,
+  applyMorphologicalClosingMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -79,6 +80,10 @@ async function main() {
   // yukarıdakiler gibi ÖNCE ve senkron (bkz. mapgen.ts
   // applyLargeWaterGapFixMigration yorumu).
   await applyLargeWaterGapFixMigration();
+  // Morfolojik kapama ile dar boğazları tamamen kapatan düzeltme --
+  // yukarıdakiler gibi ÖNCE ve senkron (bkz. mapgen.ts
+  // applyMorphologicalClosingMigration yorumu).
+  await applyMorphologicalClosingMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);
