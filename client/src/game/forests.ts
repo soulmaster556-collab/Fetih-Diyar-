@@ -120,9 +120,31 @@ const FOREST_SEED = 401;
 // Bölge merkezinde (intensity=1) bile boş hex'lerin EN FAZLA bu oranı
 // cluster alıyor -- geri kalanı doğal açıklık (madde 4). Ayrı bir
 // "clearing algoritması" YOK, açıklıklar bu olasılıksal seyrelmeden
-// kendiliğinden çıkıyor. Kullanıcı isteğiyle ("dekorları azalt") eski
-// 0.62'den düşürüldü.
-const FOREST_MAX_COVERAGE = 0.4;
+// kendiliğinden çıkıyor. Kullanıcı isteğiyle ("dekorları biraz daha çoğalt")
+// eski 0.4'ten yükseltildi.
+const FOREST_MAX_COVERAGE = 0.52;
+
+// ---------------------------------------------------------------------
+// Sık ağaçlık ("ormanlık gibi yoğun") bölgeler
+// ---------------------------------------------------------------------
+// Kullanıcı isteği: "sık ağaçlık bölgeler ekle, ormanlık gibi yoğun ağaç
+// olsun" -- düz FOREST_MAX_COVERAGE tavanı TÜM orman lekesine eşit uygulanır,
+// yani hiçbir nokta gerçekten "duvar gibi sık" hissettirmiyordu. Bunun
+// yerine SADECE bir biyom lekesinin tam merkezine yakın kısımda (intensity
+// FOREST_DENSE_THRESHOLD'un üstünde -- bkz. sampleBiomeIntensity'deki 0-35%
+// düz plato) kapsama, normal tavanın belirgin üstünde FOREST_DENSE_COVERAGE'a
+// doğru YUMUŞAKÇA yükseliyor. Eşiğin altında davranış TAMAMEN eskisiyle aynı
+// (intensity * FOREST_MAX_COVERAGE), yani sıradan orman kenarları hâlâ seyrek
+// -- sadece leke merkezleri artık gerçekten yoğun bir orman gibi.
+const FOREST_DENSE_THRESHOLD = 0.7;
+const FOREST_DENSE_COVERAGE = 0.9;
+
+function forestCoverageAt(intensity: number): number {
+  if (intensity < FOREST_DENSE_THRESHOLD) return intensity * FOREST_MAX_COVERAGE;
+  const base = FOREST_DENSE_THRESHOLD * FOREST_MAX_COVERAGE;
+  const t = (intensity - FOREST_DENSE_THRESHOLD) / (1 - FOREST_DENSE_THRESHOLD);
+  return base + t * (FOREST_DENSE_COVERAGE - base);
+}
 
 export type PlacedForest = {
   key: string;
@@ -140,21 +162,19 @@ export type PlacedForest = {
 
 export type ReservedRoot = { rootX: number; rootY: number };
 
-// `reserved`: dağların (bkz. mountains.ts computePlacedMountains) kapladığı
-// kökler -- bir orman kümesi asla bir dağın üstüne/hemen yanına binmesin
-// diye kendisi VE 6 komşusu dışlanıyor. Kale/NPC karoları da aynı şekilde
-// (+6 komşusu) dışlanıyor ki Castle Scene'in etrafında doğal bir açıklık
-// kalsın (bkz. dosya başı yorumu madde 10) -- bu salt görsel bir kural,
-// gameplay'e bağlı değil. Orman kümeleri KENDİ ARALARINDA komşu dışlaması
-// YAPMIYOR (bilerek): sık, kesintisiz bir orman kütlesi hissi için bitişik
-// köklerin de cluster alabilmesi gerekiyor.
+// Kale/NPC karoları (+6 komşusu) dışlanıyor ki Castle Scene'in etrafında
+// doğal bir açıklık kalsın (bkz. dosya başı yorumu madde 10) -- bu salt
+// görsel bir kural, gameplay'e bağlı değil. Orman kümeleri KENDİ ARALARINDA
+// komşu dışlaması YAPMIYOR (bilerek): sık, kesintisiz bir orman kütlesi
+// hissi için bitişik köklerin de cluster alabilmesi gerekiyor. (Eskiden
+// ayrıca dağ köklerini +6 komşusuyla dışlayan bir `reserved` parametresi de
+// vardı -- dağ dekoru kaldırıldığı için o parametre de kaldırıldı.)
 // FAZ 4A -- göller kaldırıldı (bkz. MapView.tsx yorumu, sohbet geçmişi);
 // `seaDistance` (bkz. islandShore.ts) artık ağaçların denize/ada dışına
 // taşmasını önleyen TEK kontrol.
 export function computePlacedForests(
   tiles: Tile[],
   biomeAnchors: BiomeAnchor[],
-  reserved: ReservedRoot[],
   seaDistance: Map<string, number>
 ): PlacedForest[] {
   const occupied = new Set<string>();
@@ -162,10 +182,6 @@ export function computePlacedForests(
     if (t.tileType === "EMPTY") continue;
     occupied.add(`${t.x},${t.y}`);
     for (const [dx, dy] of HEX_DIRECTIONS) occupied.add(`${t.x + dx},${t.y + dy}`);
-  }
-  for (const r of reserved) {
-    occupied.add(`${r.rootX},${r.rootY}`);
-    for (const [dx, dy] of HEX_DIRECTIONS) occupied.add(`${r.rootX + dx},${r.rootY + dy}`);
   }
 
   const candidates = tiles
@@ -188,7 +204,7 @@ export function computePlacedForests(
     // Ada bazlı yoğunluk (bkz. islandDecorFactor) -- bazı adalar diğerlerinden
     // belirgin şekilde daha ormanlık.
     const islandFactor = islandDecorFactor(t.islandId, 101);
-    if (roll >= intensity * FOREST_MAX_COVERAGE * islandFactor) continue;
+    if (roll >= forestCoverageAt(intensity) * islandFactor) continue;
 
     const defIdx = hashXY(t.x, t.y, FOREST_SEED + 1) % FOREST_CLUSTER_DEFS.length;
     const jitterX = ((hashXY(t.x, t.y, FOREST_SEED + 2) % 100) / 100 - 0.5) * 0.5;

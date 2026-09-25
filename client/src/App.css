@@ -2,27 +2,32 @@
   box-sizing: border-box;
 }
 
-/* Renk sistemi -- kale görsellerindeki lacivert/gece-mavisi taş + turkuaz +
-   altın paletini tüm arayüze (üst menü, paneller, kartlar, butonlar)
-   taşıyor, böylece kaleler ile arayüz aynı görsel dile ait. */
+/* Renk sistemi -- "altın-mermer + gök mavisi kristal" krallık teması
+   (kullanıcının sağladığı çerçeve/rozet görsel setine göre, bkz.
+   client/public/ui/frames/ ve client/design-reference/). Eskiden turkuaz
+   ağırlıklıydı; --teal* değişkenleri artık kristal-mavi bir vurgu taşıyor
+   ama İSİM aynı kaldı ki dosyadaki yüzlerce var(--teal...) kullanımı tek
+   noktadan (buradan) yeni temaya geçsin. */
 :root {
-  --ink: #101b26;
-  --panel-1: #16222f;
-  --panel-2: #1e2f3e;
-  --panel-border: rgba(94, 234, 212, 0.18);
-  --hairline-gold: rgba(240, 180, 41, 0.55);
-  --teal: #1fb6a6;
-  --teal-strong: #14a396;
-  --teal-soft: #5eead4;
+  --ink: #0a1526;
+  --panel-1: #11213a;
+  --panel-2: #1c3357;
+  --panel-border: rgba(125, 211, 252, 0.16);
+  --hairline-gold: rgba(240, 189, 76, 0.65);
+  --teal: #38bdf8;
+  --teal-strong: #0ea5e9;
+  --teal-soft: #7dd3fc;
   --gold: #f0b429;
-  --gold-strong: #d99a0f;
+  --gold-strong: #c9860c;
   --gold-soft: #ffe08a;
   --danger: #e5484d;
   --danger-strong: #c53137;
   --good: #35b56a;
   --blue-guild: #3f8cff;
-  --text-bright: #eef6f5;
-  --text-dim: #9db4c2;
+  --text-bright: #f3f8ff;
+  --text-dim: #9fb7d4;
+  /* Kristal parıltısı -- rozet/çerçeve glow'ları için. */
+  --gem-glow: rgba(56, 189, 248, 0.5);
 }
 
 /* Koyu/gece temasından, canlı ve açık bir "çizgi film" temasına geçildi --
@@ -34,6 +39,39 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
   background: #cdeeff;
   color: #1f2d3a;
+  scrollbar-color: var(--gold-strong) rgba(255, 255, 255, 0.06);
+}
+
+/* Koyu panellerin/tabloların (modal-body, kingdom-table, admin listeleri,
+   sohbet kutusu, ...) kaydırma çubuğu -- tarayıcı varsayılanı yerine
+   temanın altın rengiyle ince bir çubuk. */
+.modal-body::-webkit-scrollbar,
+.kingdom-table::-webkit-scrollbar,
+.tile-card::-webkit-scrollbar,
+.admin-players-list::-webkit-scrollbar,
+.admin-tiles-list::-webkit-scrollbar,
+.chat-panel-messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.modal-body::-webkit-scrollbar-track,
+.kingdom-table::-webkit-scrollbar-track,
+.tile-card::-webkit-scrollbar-track,
+.admin-players-list::-webkit-scrollbar-track,
+.admin-tiles-list::-webkit-scrollbar-track,
+.chat-panel-messages::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+}
+
+.modal-body::-webkit-scrollbar-thumb,
+.kingdom-table::-webkit-scrollbar-thumb,
+.tile-card::-webkit-scrollbar-thumb,
+.admin-players-list::-webkit-scrollbar-thumb,
+.admin-tiles-list::-webkit-scrollbar-thumb,
+.chat-panel-messages::-webkit-scrollbar-thumb {
+  background: var(--gold-strong);
+  border-radius: 999px;
 }
 
 /* Valerion rebrand: giriş ekranı artık tam ekran bir illüstrasyon (kristal
@@ -74,14 +112,16 @@ body {
   align-items: center;
   gap: 12px;
   text-align: center;
-  padding: 24px 22px;
+  padding: 28px 22px 24px;
+  margin: 0 22px;
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(22, 34, 47, 0.82) 0%, rgba(16, 27, 38, 0.9) 100%);
-  border: 1px solid var(--hairline-gold);
+  background: linear-gradient(180deg, rgba(22, 38, 58, 0.86) 0%, rgba(12, 22, 38, 0.92) 100%);
+  border: 2px solid var(--gold-strong);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 12px 32px rgba(0, 0, 0, 0.5),
-    0 0 40px rgba(94, 234, 212, 0.12);
+    0 0 0 1px rgba(240, 189, 76, 0.3),
+    0 0 40px rgba(56, 189, 248, 0.12);
   backdrop-filter: blur(6px);
 }
 
@@ -139,24 +179,58 @@ body {
   background: var(--gold-strong);
 }
 
+/* Varsayılan (sınıfsız) buton -- eskiden düz mavi, artık temanın altın
+   madeni parası gibi cilalı/kabartmalı varsayılan aksiyon düğmesi. Özel
+   davranış isteyen düğmeler (.confirm-action-btn, .icon-btn, .hex-action,
+   .kingdom-toggle, .filter-chip, ...) kendi arka planlarını zaten
+   ezdiği için bu sadece "işaretlenmemiş" düğmeleri (Davet Et, Lonca Kur,
+   Kabul Et, Çıkış, ...) etkiliyor. */
 button {
-  padding: 8px 14px;
-  border-radius: 6px;
-  border: none;
-  background: #3f8cff;
-  color: white;
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  background: linear-gradient(180deg, var(--gold) 0%, var(--gold-strong) 100%);
+  color: #2a1e02;
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 2px 0 rgba(0, 0, 0, 0.25),
+    0 3px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.12s ease;
 }
 
 button:hover {
-  background: #2f78e6;
+  filter: brightness(1.06);
+}
+
+button:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 1px 0 rgba(0, 0, 0, 0.25),
+    0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 button:disabled {
-  background: #c3d0da;
-  color: #7c8b96;
+  background: #4a5763;
+  color: #93a2ae;
+  border-color: rgba(0, 0, 0, 0.2);
+  box-shadow: none;
+  filter: none;
   cursor: not-allowed;
+}
+
+/* Anlam bazlı aksiyon renkleri -- referans arayüzdeki "Katıl yeşil /
+   Loncadan Ayrıl kırmızı" mantığı (bkz. GuildModal.tsx). */
+.btn-success {
+  background: linear-gradient(180deg, #4bd082 0%, var(--good) 100%);
+  color: #06331a;
+}
+
+.btn-danger {
+  background: linear-gradient(180deg, #f0696d 0%, var(--danger-strong) 100%);
+  color: #3a0708;
 }
 
 .error {
@@ -176,6 +250,10 @@ button:disabled {
 
 /* Üst menü: hafif cilalı/kabartma ("HUD") hissi veren gradyan + gölge
    katmanlı bir şerit. */
+/* Referanstaki gibi tek parça koyu bir şerit YOK -- her HUD öğesi (avatar,
+   altın/asker rozetleri, ikon butonları) kendi arka planıyla doğrudan
+   haritanın üzerinde yüzüyor, üstlerinde ayrıca birleştirici bir bar/gradyan
+   kutusu yok. */
 .topbar {
   position: absolute;
   top: 0;
@@ -186,7 +264,7 @@ button:disabled {
   justify-content: space-between;
   align-items: center;
   padding: 14px 20px 32px;
-  background: linear-gradient(to bottom, rgba(16, 27, 38, 0.97) 0%, rgba(16, 27, 38, 0.86) 65%, rgba(16, 27, 38, 0) 100%);
+  background: none;
   pointer-events: none;
 }
 
@@ -194,6 +272,18 @@ button:disabled {
 .topbar .summary-bar,
 .topbar .player-info {
   pointer-events: auto;
+}
+
+/* Avatar (üst satır) + altında altın/asker rozetleri (bkz. .summary-bar)
+   -- ikisi de tek bir dikey sütun, referanstaki "portre üstte, para
+   birimleri altında istiflenir" düzenine karşılık geliyor. */
+.profile-column {
+  display: flex;
+  flex-direction: column;
+  /* Kanatlı halka avatarın kendi kutusundan ~26px taşıyor (bkz. aşağısı) --
+     bu boşluk olmadan rozetler halkanın altındaki kanatlarla çakışırdı
+     (kullanıcı geri bildirimi: "King yazılı yerde çakışma var"). */
+  gap: 30px;
 }
 
 /* Üst menünün sol ucunda büyükçe yuvarlak profil fotoğrafı + kullanıcı
@@ -207,35 +297,69 @@ button:disabled {
 
 /* .topbar'ın yüksekliği içeriğe göre belirleniyor ve arka planı aşağı
    doğru şeffaflaşıyor -- bu yüzden avatarın alt kısmı doğal olarak barın
-   dışına taşıyor, ekstra negatif margin gerekmiyor. */
+   dışına taşıyor, ekstra negatif margin gerekmiyor. Üst/sol/sağ tarafta ise
+   TERSİ sorun var: kanatlı halka (::after, bkz. aşağısı) avatarın kendi
+   kutusundan taşıyor, .topbar da (0,0) köşesinden başladığı için halka
+   ekranın SOL/ÜST kenarından taşıp kırpılabiliyor VE sağdan isme
+   binebiliyor -- bu margin halkaya yetecek boşluğu bırakıyor. */
 .profile-avatar-btn {
   position: relative;
-  width: 76px;
-  height: 76px;
+  z-index: 1;
+  /* Halkanın iç deliği ölçüldü (kaynak 527x466 görselde x:113-411,
+     y:111-403) ve foto kutusu bu deliği HER kenardan ~3px taşacak şekilde
+     matematiksel olarak hesaplandı (bkz. offset/boyut ::after'da) -- bir
+     önceki deneme "merkeze göre büyüt" varsayımıyla elle ayarlanmıştı ve
+     yanlış çıkmıştı (sol/üstte boşluk kalıyordu). Artık gerçek piksel
+     hesaplı, taşma yok. */
+  width: 104px;
+  height: 104px;
+  margin: 30px 50px 0 24px;
   border-radius: 50%;
   padding: 0;
   flex-shrink: 0;
   cursor: pointer;
   background: linear-gradient(180deg, #24384a 0%, #17242f 100%);
-  border: 3px solid var(--hairline-gold);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 6px 16px rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: visible;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+
+/* Kanatlı altın-mermer madalyon çerçevesi (bkz.
+   client/public/ui/frames/frame-circle-winged.png) -- fotoğrafın/rozetin
+   ÜSTÜNE, ölçülmüş iç deliği (delik merkezi görselin %49.7 genişlik / %55.1
+   yükseklik noktasında, çapı ~%63 yükseklik) tam foto dairesiyle
+   çakışacak şekilde bindiriliyor. */
+.profile-avatar-btn::after {
+  content: "";
+  position: absolute;
+  left: -34px;
+  top: -33px;
+  width: 173px;
+  height: 153px;
+  background-image: url("/ui/frames/frame-circle-winged.png");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 2;
+  filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.5));
+  transition: filter 0.12s ease;
 }
 
 .profile-avatar-btn:hover {
   transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 5px 14px rgba(0, 0, 0, 0.45);
+}
+
+.profile-avatar-btn:hover::after {
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4)) drop-shadow(0 0 8px var(--gem-glow));
 }
 
 .profile-avatar-img {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   border-radius: 50%;
@@ -243,25 +367,12 @@ button:disabled {
 }
 
 .profile-avatar-fallback {
-  font-size: 26px;
+  position: relative;
+  z-index: 1;
+  font-size: 34px;
   font-weight: 800;
   color: var(--gold-soft);
   letter-spacing: 0.02em;
-}
-
-.profile-avatar-edit-badge {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: var(--teal-strong);
-  border: 2px solid var(--ink);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
 }
 
 .profile-avatar-input {
@@ -288,106 +399,180 @@ button:disabled {
   white-space: nowrap;
 }
 
-/* Profil widget'ındaki küçük flama düğmesi -- tıklanınca PlayerFlagModal
-   açılır (bkz. TopBar.tsx onOpenFlagEditor). */
-.profile-flag-btn {
-  padding: 2px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  transition: background 0.12s ease, transform 0.12s ease;
-}
-
-.profile-flag-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  transform: translateY(-1px);
-}
-
+/* Sağ üstteki ikon rozet sırası. .profile-column (avatar + altın/asker
+   istifi) artık çok daha uzun olduğu için .topbar'ın satır yüksekliği de
+   uzadı -- align-items:center (topbar) bu satırı dikey ORTAYA doğru
+   çekiyordu (kullanıcı geri bildirimi: "ikonları yukarı al"). align-self
+   ile bu satırı üstte, avatarla aynı hizada sabitliyoruz. */
 .player-info {
   display: flex;
+  align-self: flex-start;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  margin-top: 20px;
   color: var(--text-bright);
   font-weight: 600;
 }
 
-/* Kabartma/cilalı buton hissi: üstte parlak vurgu, altta koyu "kenar"
-   gölgesi -- basılınca (active/tıklama) o kenar payı azalıp buton bir
-   tık aşağı iner, gerçek bir fiziksel düğmeye basılmış gibi. Yüzey kale
-   görselleriyle aynı lacivert/turkuaz cam; seçili (active) durum
-   turkuaz/altın parıltıyla öne çıkıyor. */
-.kingdom-toggle {
-  background: linear-gradient(180deg, #24384a 0%, #17242f 100%);
-  color: var(--text-bright);
-  border: 1px solid var(--panel-border);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 2px 0 rgba(0, 0, 0, 0.35),
-    0 4px 8px rgba(0, 0, 0, 0.3);
-  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
-}
-
-.kingdom-toggle:hover {
-  background: linear-gradient(180deg, #2c4457 0%, #1c2c3a 100%);
-  border-color: rgba(94, 234, 212, 0.4);
-}
-
-.kingdom-toggle:active {
-  transform: translateY(2px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 rgba(0, 0, 0, 0.3),
-    0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
-.kingdom-toggle.active {
-  background: linear-gradient(180deg, var(--teal-soft) 0%, var(--teal-strong) 100%);
-  color: #05221d;
-  border-color: rgba(20, 130, 110, 0.5);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 2px 0 rgba(13, 90, 80, 0.45),
-    0 4px 10px rgba(0, 0, 0, 0.3);
-}
-
-/* Toplam altın/asker üretimi + ortak altın havuzu. Her rakam kendi
-   "kristal/rozet" kutucuğunda, iç/dış gölgelerle kabartma hissi. */
-.summary-bar {
-  display: flex;
-  gap: 8px;
-  font-size: 14px;
-}
-
-.summary-item {
+/* Üst menü aksiyonları -- referanstaki gibi metin-hap yerine kare ikon
+   rozeti, artık gerçek altın-mermer kare çerçeve varlığıyla (bkz.
+   client/public/ui/frames/frame-square.png). Çerçevenin içi şeffaf olduğu
+   için altına ayrı bir dolgu katmanı (koyu lacivert) kondu -- simge dolgu
+   üzerinde, çerçeve onun üstünde durur. Seçili (active)/hover durumları
+   artık border-color yerine parıltılı bir box-shadow halkasıyla (çerçeve
+   görselini ezmeden) gösteriliyor. */
+.hud-icon-btn {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background-image: url("/ui/frames/frame-square.png"), linear-gradient(180deg, #24405f 0%, #16283f 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-size: 100% 100%, 72% 72%;
+  background-position: center, center;
+  border: none;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.35);
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  color: var(--text-bright);
-  font-weight: 700;
-  background: linear-gradient(180deg, #223345 0%, #16232f 100%);
-  border: 1px solid var(--panel-border);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 0 -3px 4px rgba(0, 0, 0, 0.2),
-    0 3px 6px rgba(0, 0, 0, 0.25);
+  justify-content: center;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.12s ease;
 }
 
-.summary-item small {
-  color: var(--teal-soft);
+.hud-icon-glyph {
+  font-size: 27px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+}
+
+.hud-icon-btn:hover {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+
+.hud-icon-btn:active {
+  transform: translateY(2px);
+  filter: brightness(0.95);
+}
+
+.hud-icon-btn:disabled {
+  opacity: 0.45;
+  filter: grayscale(0.4);
+}
+
+.hud-icon-btn.active {
+  box-shadow: 0 0 0 3px var(--teal-soft), 0 0 12px var(--gem-glow), 0 4px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* Sağ üstte taşan kırmızı sayaç rozeti (bildirim/davet/okunmamış sayısı). */
+.hud-icon-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ink);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.hud-icon-badge-neutral {
+  background: var(--gold-strong);
+  color: #2a1e02;
+}
+
+.hud-icon-btn-logout:hover {
+  filter: brightness(1.1) drop-shadow(0 0 6px rgba(229, 72, 77, 0.6));
+}
+
+/* Toplam altın/asker üretimi -- referanstaki elmas/altın istifi gibi
+   avatarın ALTINDA dikey sıralı iki rozet (bkz. .profile-column). Sütun
+   olarak tasarlandı ki ileride üçüncü bir kaynak eklenirse aynı yere alt
+   alta eklensin. */
+.summary-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  /* Avatarın (kendi margin-left'i 30px) SOLUNA hafif taşıp altında ortalı
+     durması için -- kullanıcı isteğiyle "avatarla orantılı" konum. */
+  margin-left: 10px;
+}
+
+/* Altın ve asker artık TEK bir birleşik hap değil, referanstaki gibi İKİ
+   AYRI rozet. Dolgu + çerçeveyi iki ayrı katman olarak üst üste koymak
+   (bir önceki deneme) çerçevenin kavisli/sivri uçlarının DIŞINA taşan
+   dikdörtgen bir dolgu köşesi bırakıyordu (kullanıcı geri bildirimi: "1
+   milim bile taşmayacak"). Bunun yerine dolgu, çerçevenin GERÇEK silüetine
+   (kenarlık + iç boşluk, dıştaki köşeler hariç) göre ÖNCEDEN piksel piksel
+   pişirilmiş tek bir PNG (bkz. client/public/ui/frames/bar-gold-filled.png
+   / bar-troop-filled.png, üretim script'i client/design-reference/) --
+   taşma matematiksel olarak imkansız çünkü dolgu artık görselin kendi
+   alfa kanalının parçası. */
+.summary-item {
+  position: relative;
+  /* 31px yükseklikte çerçevenin ince altın çizgisi neredeyse görünmüyordu
+     (kullanıcı geri bildirimi) -- 40px'te oran (604:135 kaynağıyla birebir)
+     korunarak çerçeve net okunuyor. */
+  width: 178px;
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 30px;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.4));
 }
 
 .summary-item-gold {
-  background: linear-gradient(180deg, #3a2f14 0%, #241d0d 100%);
-  border-color: var(--hairline-gold);
-  color: var(--gold-soft);
+  background-image: url("/ui/frames/bar-gold-filled.png");
 }
 
 .summary-item-troops {
-  background: linear-gradient(180deg, #3a1f1c 0%, #241512 100%);
-  border-color: rgba(229, 72, 77, 0.35);
+  background-image: url("/ui/frames/bar-troop-filled.png");
+}
+
+.summary-item-value {
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.summary-item-rate {
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.summary-item-gold .summary-item-value {
+  color: var(--gold-soft);
+}
+
+.summary-item-gold .summary-item-rate {
+  color: var(--gold);
+}
+
+.summary-item-troops .summary-item-value {
+  color: #ffb2a0;
+}
+
+.summary-item-troops .summary-item-rate {
+  color: #ff8a70;
 }
 
 /* Bildirim/hata banner'ları artık üst menünün altında, ortada yüzen bir
@@ -405,22 +590,25 @@ button:disabled {
 }
 
 .banner {
-  padding: 8px 16px;
+  padding: 8px 18px;
   font-size: 14px;
-  font-weight: 600;
-  border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(31, 45, 58, 0.25);
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1.5px solid transparent;
+  box-shadow: 0 4px 14px rgba(31, 45, 58, 0.3);
   white-space: nowrap;
 }
 
 .banner.success {
   background: #e1f7e6;
   color: #1e7a35;
+  border-color: var(--good);
 }
 
 .banner.error {
   background: #fde7e5;
   color: #b3261e;
+  border-color: var(--danger);
 }
 
 .map-viewport {
@@ -614,8 +802,8 @@ button:disabled {
   cursor: pointer;
   /* z-index artık BURADA sabit değil -- her karo App.tsx'te kendi (x+y)
      toplamına göre bir inline z-index taşıyor (10 + x + y), ki aşağıdaki
-     ayrı dağ katmanı (.iso-mountain) painter's algorithm sırasına doğru
-     şekilde araya girebilsin (bkz. App.tsx MOUNTAIN_DEFS yorumu). Eski
+     ayrı dekor katmanları (forest-cluster/rock-cluster/crystal-cluster)
+     painter's algorithm sırasına doğru şekilde araya girebilsin. Eski
      düz z-index:1 sadece DOM sırasına güveniyordu, bu yeterliydi çünkü o
      zaman araya girmesi gereken ayrı bir katman yoktu. 1 burada sadece
      inline stil her nasılsa uygulanmazsa diye bir güvenlik payı. */
@@ -625,24 +813,12 @@ button:disabled {
   overflow: visible;
 }
 
-/* Dağ / çoklu-hex dekor sprite'ı -- bkz. App.tsx MOUNTAIN_DEFS ve
-   mountainScreens. Karo grubu gibi mutlak konumlanıyor ama .iso-map'in
-   doğrudan altında (bir karonun İÇİNDE değil), çünkü birden fazla karonun
-   üzerine yayılıyor. z-index inline olarak (10 + frontSortKey) veriliyor,
-   bkz. yukarıdaki .iso-tile-group notu. */
-.iso-mountain {
-  position: absolute;
-  pointer-events: none;
-  object-fit: contain;
-  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.45));
-}
-
 /* FAZ 3 -- orman/kayalık kümeleri (bkz. game/forests.ts, game/rockyAreas.ts).
-   .iso-mountain ile AYNI konumlandırma prensibi (mutlak, .iso-map'in
-   doğrudan altında, kendi kök hex'inin ekran alanına scale oranında
-   taşarak) -- ayrı bir stacking/painter's-algorithm kuralı YOK, z-index
-   inline olarak mountain'lerle aynı numaralandırmada veriliyor (bkz.
-   MapView.tsx). */
+   Mutlak konumlanıyor ama .iso-map'in doğrudan altında (bir karonun
+   İÇİNDE değil), çünkü birden fazla karonun üzerine yayılabiliyor -- ayrı
+   bir stacking/painter's-algorithm kuralı YOK, z-index inline olarak
+   karolarla aynı numaralandırmada (10 + frontSortKey) veriliyor (bkz.
+   MapView.tsx, yukarıdaki .iso-tile-group notu). */
 .forest-cluster,
 .rock-cluster {
   position: absolute;
@@ -689,11 +865,10 @@ button:disabled {
   object-position: bottom center;
 }
 
-/* Renk grubuna göre (mor/altın/mavi) farklı nabız atan parıltı -- diğer
-   dekorlardan (dağ: sabit turkuaz) bilerek ayrışıyor, kristalin KENDİ
-   rengiyle "değerli/özel" hissi versin diye. iso-castle-glow/iso-mountain-glow
-   ile aynı prensip: box-shadow değil drop-shadow (görsel şeffaf webp,
-   gerçek siluete göre yayılsın diye). Kullanıcı isteğiyle ("yüksek parıltı")
+/* Renk grubuna göre (mor/altın/mavi) farklı nabız atan parıltı -- kristalin
+   KENDİ rengiyle "değerli/özel" hissi versin diye. iso-castle-glow ile aynı
+   prensip: box-shadow değil drop-shadow (görsel şeffaf webp, gerçek siluete
+   göre yayılsın diye). Kullanıcı isteğiyle ("yüksek parıltı")
    eski tek-katmanlı, ince (5-10px) parıltı iki katmana çıkarıldı: dar/parlak
    bir iç çekirdek + geniş/yumuşak bir dış hale (bloom) -- tek katman
    büyütülseydi sadece bulanık bir leke gibi dururdu, iki farklı blur yarıçapı
@@ -826,25 +1001,12 @@ button:not(:disabled):active {
   }
 }
 
-.iso-mountain-glow {
-  animation: mountain-glow-pulse 3.4s ease-in-out infinite;
-}
-
-@keyframes mountain-glow-pulse {
-  0%, 100% {
-    filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 6px rgba(94, 234, 212, 0.35));
-  }
-  50% {
-    filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 12px rgba(94, 234, 212, 0.6));
-  }
-}
-
 /* Eski hex-başına zemin sistemi (.iso-ground / .iso-ground-grass) FAZ 1'de
    kaldırıldı -- yerini tek parça .world-terrain katmanı aldı (bkz. yukarıda
    .iso-map'in hemen altındaki kural bloğu). */
 
-/* Seviye rozeti katmanı -- tüm .iso-tile-group'ların VE .iso-mountain'ların
-   üstünde durur ki hiçbir karo/dağ bir rozetin üstüne binemesin. Karoların
+/* Seviye rozeti katmanı -- tüm .iso-tile-group'ların ve dekor katmanlarının
+   üstünde durur ki hiçbir karo/dekor bir rozetin üstüne binemesin. Karoların
    z-index'i 10 + x + y (WORLD_SIZE=200 için üst sınır ~410), bu yüzden
    bu katman 500'de. */
 .iso-labels-layer {
@@ -1077,7 +1239,7 @@ button:not(:disabled):active {
   width: 300px;
   background: linear-gradient(165deg, var(--panel-2) 0%, var(--panel-1) 100%);
   backdrop-filter: blur(10px);
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  border: 2px solid var(--gold-strong);
   border-radius: 12px;
   padding: 14px 16px;
   overflow-y: auto;
@@ -1086,12 +1248,13 @@ button:not(:disabled):active {
   box-shadow:
     0 20px 40px rgba(0, 0, 0, 0.55),
     0 2px 0 rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(240, 189, 76, 0.3),
     0 1.5px 0 rgba(255, 255, 255, 0.22) inset,
     0 -14px 22px rgba(0, 0, 0, 0.35) inset;
 }
 
 .kingdom-dropdown {
-  top: 64px;
+  top: 104px;
   right: 20px;
   max-height: min(70vh, 560px);
 }
@@ -1308,12 +1471,6 @@ button:not(:disabled):active {
   height: 22px;
   border-radius: 6px;
   border: 1px solid rgba(255, 255, 255, 0.35);
-}
-
-.kingdom-toggle-guild {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 
 /* Raporlar panelindeki tür filtre çipleri. */
@@ -1630,10 +1787,11 @@ button:not(:disabled):active {
   align-items: center;
   gap: 14px;
   background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel-1) 100%);
-  border: 1px solid var(--panel-border);
+  border: 2px solid var(--gold-strong);
   border-radius: 16px;
-  padding: 32px 36px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  padding: 36px 36px 32px;
+  margin: 0 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(240, 189, 76, 0.3);
 }
 
 .admin-login-card h1 {
@@ -2093,13 +2251,19 @@ button:not(:disabled):active {
   max-height: 86vh;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, var(--panel-2) 0%, var(--panel-1) 100%);
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  background-image: radial-gradient(140% 60% at 50% 0%, rgba(240, 189, 76, 0.1), transparent 55%), linear-gradient(180deg, var(--panel-2) 0%, var(--panel-1) 100%);
+  background-repeat: no-repeat, no-repeat;
+  background-position: 0 0, 0 0;
+  background-size: 100% 100%, 100% 100%;
+  border: 2px solid var(--gold-strong);
   border-radius: 16px;
-  /* 3D panel reçetesi -- bkz. .tile-card/.kingdom-dropdown. */
+  /* 3D panel reçetesi -- bkz. .tile-card/.kingdom-dropdown -- üstüne bu
+     krallık temasına özgü altın hairline + kristal parıltı halkası. */
   box-shadow:
     0 26px 60px rgba(0, 0, 0, 0.58),
     0 2px 0 rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(240, 189, 76, 0.35),
+    0 0 36px rgba(240, 189, 76, 0.12),
     0 2px 0 rgba(255, 255, 255, 0.2) inset,
     0 -18px 30px rgba(0, 0, 0, 0.35) inset;
   overflow: hidden;
@@ -2111,9 +2275,12 @@ button:not(:disabled):active {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px 24px;
-  background: linear-gradient(180deg, #223345 0%, #16222e 100%);
-  border-bottom: 1px solid var(--hairline-gold);
+  padding: 18px 26px;
+  border-radius: 14px 14px 0 0;
+  background:
+    radial-gradient(120% 220% at 50% 0%, rgba(240, 189, 76, 0.16), transparent 60%),
+    linear-gradient(180deg, #24405f 0%, #16283f 100%);
+  border-bottom: 2px solid var(--hairline-gold);
   color: var(--gold-soft);
   flex-shrink: 0;
 }
@@ -2124,18 +2291,37 @@ button:not(:disabled):active {
   letter-spacing: 0.02em;
 }
 
+/* Kapatma (✕) butonu: kare altın-mermer rozet çerçevesi (bkz.
+   client/public/ui/frames/frame-square.png) -- sabit boyutlu bir rozet
+   olduğu için (metin/genişlik bağımsız) burada background-image doğrudan
+   uygulanabiliyor, .modal-screen'deki gibi katman birleştirmeye gerek yok. */
 .modal-header .icon-btn {
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 16px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image: url("/ui/frames/frame-square.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  color: var(--text-bright);
+  font-size: 13px;
+  font-weight: 700;
+  transition: transform 0.12s ease, filter 0.12s ease;
 }
 
 .modal-header .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background-image: url("/ui/frames/frame-square.png");
+  transform: translateY(-1px) scale(1.05);
+  filter: drop-shadow(0 0 6px var(--gem-glow));
   color: #fff;
 }
 
 .modal-body {
   padding: 22px 24px 26px;
+  border-radius: 0 0 14px 14px;
   overflow-y: auto;
 }
 
@@ -2155,6 +2341,187 @@ button:not(:disabled):active {
   max-width: 440px;
 }
 
+/* Oyuncu Bilgileri (bkz. components/ProfileModal.tsx) -- solda büyük
+   kanatlı avatar + isim + flama kısayolu, sağda gerçek verilerle (altın/
+   asker/şehir/lonca) bir istatistik ızgarası -- referanstaki "Danışmanlar/
+   Şehir görünümleri" gibi bizde karşılığı olmayan bölümler YOK. */
+.modal-profile {
+  max-width: 580px;
+}
+
+.profile-modal-top {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.profile-modal-avatar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Halka avatarın kendi kutusundan ~16px aşağı taşıyor (bkz.
+     .profile-modal-avatar-btn::after) -- yetersiz boşluk isimle
+     ("King") çakışmaya sebep oluyordu (kullanıcı geri bildirimi). */
+  gap: 28px;
+  flex-shrink: 0;
+  width: 150px;
+  /* Kanatlı halka üstten ~31px taşıyor (bkz. ::after top:-31px) --
+     header'a çarpmasın diye. */
+  padding-top: 34px;
+}
+
+.profile-modal-avatar-btn {
+  position: relative;
+  /* bkz. .profile-avatar-btn yorumu -- gerçek piksel hesabıyla, delik her
+     kenardan ~3px taşıyor, boşluk kalmıyor. */
+  width: 100px;
+  height: 100px;
+  padding: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #24384a 0%, #17242f 100%);
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.profile-modal-avatar-btn:hover {
+  transform: translateY(-1px);
+}
+
+.profile-modal-avatar-btn::after {
+  content: "";
+  position: absolute;
+  left: -33px;
+  top: -31px;
+  width: 166px;
+  height: 147px;
+  background-image: url("/ui/frames/frame-circle-winged.png");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.5));
+}
+
+.profile-modal-avatar-img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  position: relative;
+}
+
+.profile-modal-avatar-fallback {
+  position: relative;
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--gold-soft);
+}
+
+.profile-modal-avatar-edit-badge {
+  position: absolute;
+  right: -2px;
+  bottom: 4px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--teal-strong);
+  border: 2px solid var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+}
+
+.profile-modal-name {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--gold-soft);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-modal-username {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: -6px;
+}
+
+.profile-modal-flag-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid var(--panel-border);
+  color: var(--text-bright);
+  border-radius: 999px;
+}
+
+.profile-modal-flag-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.profile-modal-stat-grid {
+  flex: 1;
+  min-width: 220px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.profile-modal-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.profile-modal-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.profile-modal-stat-value {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-bright);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.profile-modal-stat-sub {
+  font-size: 11px;
+  color: var(--teal-soft);
+  font-weight: 700;
+}
+
+.profile-modal-guild-value {
+  font-size: 15px;
+}
+
+.profile-modal-stat-empty {
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
 /* Liderlik Panosu -- iki ayrı sıralama (asker / kale), tam ekran modalda
    artık yan yana iki sütun halinde, ilk üç sıra madalya rengiyle vurgulu. */
 .leaderboard-sections {
@@ -2172,6 +2539,170 @@ button:not(:disabled):active {
   text-transform: uppercase;
   color: var(--teal-soft);
   margin: 0 0 8px;
+}
+
+/* İlk 3 sıra: referanstaki gibi taçlı/madalyonlu bir podyum -- 2. solda,
+   1. ortada (daha büyük ve altın parıltılı), 3. sağda. */
+.leaderboard-podium {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.leaderboard-podium-card {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 30px 6px 12px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+}
+
+.leaderboard-podium-crown {
+  position: absolute;
+  top: -20px;
+  font-size: 26px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+}
+
+/* Podyum avatarı -- kanatlı kalkan deseni (bkz.
+   client/public/ui/frames/frame-shield-winged.png, kullanıcının verdiği
+   şablon). TopBar/ProfilModal'da kanatlı DAİRE, kale seviyesinde de aynı
+   kalkan kullanıldığı için burada rütbe/derece hissi veren kalkan tercih
+   edildi -- ama kare değil, kullanıcının "başka çerçeve" isteğine uygun
+   üçüncü bir desen. */
+.leaderboard-podium-avatar {
+  position: relative;
+  z-index: 1;
+  width: 47px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 6px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+/* Dolgu, kutunun kendi kutusundan TAŞAN ayrı bir katman (::before, negatif
+   z-index) -- kalkanın iç boşluğu üstte sivri/dar bir noktaya kadar
+   uzandığı için (bkz. ölçüm), sabit boyutlu kutu oraya kadar yetişmiyor ve
+   kristalin hemen altında koyu bir boşluk kalıyordu (kullanıcı geri
+   bildirimi, kırmızı oklar). Negatif z-index sayesinde metnin (KI/DE)
+   ALTINDA, ama çerçeve görselinin (::after, z-index:2) arkasında kalıyor
+   -- çerçevenin opak kısımları fazlalığı zaten örtüyor. */
+.leaderboard-podium-avatar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -6px;
+  top: -18px;
+  width: 59px;
+  /* Önceki değer (76px) kalkanın sivri alt UCUNUN altına taşıyor, çerçevenin
+     dışında yuvarlak bir "çıkıntı" olarak görünüyordu (kullanıcı geri
+     bildirimi, kırmızı oklar) -- kutunun kendi alt kenarını (50px + bu
+     kutunun -18 üst ofseti = 68) sadece 2px geçecek kadar kısaltıldı. */
+  height: 70px;
+  border-radius: 10px 10px 6px 6px;
+  background: linear-gradient(180deg, #e7edf3, #b9c4cf);
+}
+
+/* Gerçek profil fotoğrafı varsa (bkz. LeaderboardModal.tsx) -- kalkanın
+   deliği kare değil ama fotoğraf kutuyu dolduruyor, üstteki çerçeve
+   (::after) zaten taşan köşeleri örtüyor. */
+.leaderboard-podium-avatar-img {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.leaderboard-podium-avatar::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: -33px;
+  top: -38px;
+  width: 114px;
+  height: 105px;
+  background-image: url("/ui/frames/frame-shield-winged.png");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+.leaderboard-podium-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-bright);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-podium-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--teal-soft);
+}
+
+.leaderboard-podium-1 {
+  order: 2;
+  z-index: 2;
+  padding-top: 38px;
+  padding-bottom: 16px;
+  background: linear-gradient(180deg, rgba(240, 180, 41, 0.22) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border-color: var(--gold);
+  box-shadow: 0 0 18px rgba(240, 180, 41, 0.3);
+}
+
+.leaderboard-podium-1 .leaderboard-podium-avatar {
+  width: 57px;
+  height: 60px;
+  font-size: 20px;
+}
+
+.leaderboard-podium-1 .leaderboard-podium-avatar::before {
+  left: -7px;
+  top: -22px;
+  width: 71px;
+  height: 84px;
+  background: linear-gradient(180deg, var(--gold-soft), var(--gold));
+}
+
+.leaderboard-podium-1 .leaderboard-podium-avatar::after {
+  left: -40px;
+  top: -46px;
+  width: 137px;
+  height: 126px;
+}
+
+.leaderboard-podium-1 .leaderboard-podium-value {
+  color: var(--gold-soft);
+}
+
+.leaderboard-podium-2 {
+  order: 1;
+}
+
+.leaderboard-podium-3 {
+  order: 3;
+}
+
+.leaderboard-podium-3 .leaderboard-podium-avatar::before {
+  background: linear-gradient(180deg, #e3b48f, #c98a5c);
 }
 
 .leaderboard-list {
@@ -2214,39 +2745,6 @@ button:not(:disabled):active {
   color: var(--teal-soft);
 }
 
-/* İlk üç sıra: altın/gümüş/bronz vurgusu -- profesyonel bir liderlik
-   panosunun beklenen "podyum" hissi. */
-.leaderboard-top {
-  border: 1px solid transparent;
-}
-
-.leaderboard-top-1 {
-  background: linear-gradient(90deg, rgba(240, 180, 41, 0.22) 0%, rgba(255, 255, 255, 0.04) 100%);
-  border-color: var(--gold);
-}
-
-.leaderboard-top-1 .leaderboard-rank {
-  color: var(--gold-soft);
-}
-
-.leaderboard-top-2 {
-  background: linear-gradient(90deg, rgba(200, 210, 220, 0.18) 0%, rgba(255, 255, 255, 0.04) 100%);
-  border-color: #b7c2cc;
-}
-
-.leaderboard-top-2 .leaderboard-rank {
-  color: #d3dbe2;
-}
-
-.leaderboard-top-3 {
-  background: linear-gradient(90deg, rgba(219, 160, 119, 0.22) 0%, rgba(255, 255, 255, 0.04) 100%);
-  border-color: #dba077;
-}
-
-.leaderboard-top-3 .leaderboard-rank {
-  color: #e3ac81;
-}
-
 @media (max-width: 620px) {
   .leaderboard-sections {
     grid-template-columns: 1fr;
@@ -2266,8 +2764,8 @@ button:not(:disabled):active {
 
 .report-row {
   background: rgba(255, 255, 255, 0.04);
-  border-left: 3px solid var(--text-dim);
-  border-radius: 6px;
+  border-left: 4px solid var(--text-dim);
+  border-radius: 0 6px 6px 0;
   padding: 8px 10px;
   color: var(--text-bright);
 }
@@ -2275,16 +2773,19 @@ button:not(:disabled):active {
 .report-row.report-attack_won,
 .report-row.report-defended_win {
   border-left-color: var(--good);
+  background: linear-gradient(90deg, rgba(53, 181, 106, 0.14) 0%, rgba(255, 255, 255, 0.04) 100%);
 }
 
 .report-row.report-attack_lost,
 .report-row.report-defended_loss {
   border-left-color: var(--danger);
+  background: linear-gradient(90deg, rgba(229, 72, 77, 0.14) 0%, rgba(255, 255, 255, 0.04) 100%);
 }
 
 .report-row.report-scout_sent,
 .report-row.report-scouted_by {
   border-left-color: var(--gold);
+  background: linear-gradient(90deg, rgba(240, 180, 41, 0.14) 0%, rgba(255, 255, 255, 0.04) 100%);
 }
 
 .report-row-header {
@@ -2482,8 +2983,18 @@ button:not(:disabled):active {
 .confirm-action-btn {
   font-size: 14px;
   padding: 10px 14px;
-  color: var(--text-bright);
+  width: 100%;
   font-weight: 700;
+  /* Alt sınıfsız hâli (bkz. PlayerFlagModal "Kaydet") global `button`'ın
+     altın gradyanını miras alır -- bu yüzden koyu metin, .confirm-attack/
+     reinforce/scout ise KENDİ arka planını (kırmızı/mavi/altın) ezip
+     text-bright'a dönüyor. */
+  color: #2a1e02;
+}
+
+.confirm-action-btn.confirm-attack,
+.confirm-action-btn.confirm-reinforce {
+  color: var(--text-bright);
 }
 
 .confirm-action-btn.confirm-attack {
@@ -2515,7 +3026,7 @@ button:not(:disabled):active {
    altıgen şekilli eylem butonları. */
 .hex-menu {
   padding: 0;
-  border: 1.5px solid var(--hairline-gold);
+  border: 2px solid var(--gold-strong);
   /* .tile-card tabanındaki 3D reçeteyle aynı katmanlar (üst ışık şeridi +
      alt iç gölge), üstüne bu panele özel altın parıltı halkası. */
   box-shadow:
@@ -2523,7 +3034,7 @@ button:not(:disabled):active {
     0 2px 0 rgba(0, 0, 0, 0.4),
     0 1.5px 0 rgba(255, 255, 255, 0.22) inset,
     0 -14px 22px rgba(0, 0, 0, 0.35) inset,
-    0 0 0 1px rgba(240, 180, 41, 0.1);
+    0 0 0 1px rgba(240, 189, 76, 0.25);
 }
 
 .hex-menu-close {
@@ -2555,31 +3066,39 @@ button:not(:disabled):active {
 .hex-menu-banner {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 34px 14px 14px;
+  gap: 10px;
+  padding: 12px 34px 12px 12px;
   background:
-    radial-gradient(120% 160% at 0% 0%, rgba(31, 182, 166, 0.25), transparent 60%),
+    radial-gradient(120% 160% at 0% 0%, rgba(56, 189, 248, 0.22), transparent 60%),
     linear-gradient(135deg, var(--panel-2), var(--ink));
-  border-bottom: 1px solid var(--hairline-gold);
+  border-bottom: 2px solid var(--hairline-gold);
   box-shadow: inset 0 -6px 14px rgba(0, 0, 0, 0.25);
 }
 
+/* Kanatlı altın-mermer kalkan rozeti (bkz.
+   client/public/ui/frames/frame-shield-winged.png) -- seviye numarası
+   kalkanın alt-orta gövdesine oturuyor (üstteki kristal + kanatlar boş
+   bırakılıyor diye içerik flex ile aşağı hizalanıyor). */
 .hex-menu-level-shield {
   flex-shrink: 0;
-  width: 40px;
-  height: 44px;
-  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-  background: linear-gradient(180deg, var(--gold), var(--gold-strong));
+  width: 58px;
+  height: 54px;
+  background-image: url("/ui/frames/frame-shield-winged.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 0 0 2px rgba(255, 255, 255, 0.12) inset;
+  padding-bottom: 8px;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.45));
 }
 
 .hex-menu-level-shield span {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
-  color: #2a1e02;
+  color: var(--gold-soft);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
 
 .hex-menu-owner-block {
@@ -2930,13 +3449,17 @@ button:not(:disabled):active {
      seçilsin diye. backdrop-filter:blur zaten altındaki haritayı bulanıklaştırıp
      okunabilirliği koruyor, bu yüzden opaklık düşürülse de metin kontrastı
      bozulmuyor. */
-  background: linear-gradient(165deg, rgba(30, 47, 62, 0.55) 0%, rgba(22, 34, 47, 0.55) 100%);
+  background-image: var(--corner-img-sm), linear-gradient(165deg, rgba(30, 47, 62, 0.55) 0%, rgba(22, 34, 47, 0.55) 100%);
+  background-repeat: var(--corner-repeat), no-repeat;
+  background-position: top left, top right, bottom left, bottom right, 0 0;
+  background-size: var(--corner-size-sm), 100% 100%;
   backdrop-filter: blur(10px);
-  border: 1.5px solid rgba(255, 255, 255, 0.16);
+  border: 2px solid var(--gold-strong);
   border-radius: 12px;
   box-shadow:
     0 20px 40px rgba(0, 0, 0, 0.5),
     0 2px 0 rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(240, 189, 76, 0.25),
     0 1.5px 0 rgba(255, 255, 255, 0.22) inset;
   /* overflow:hidden BİLEREK yok -- ayarlar (⚙️) popover'ı (bkz.
      .chat-panel-settings-popover) panelin kendi sınırlarının DIŞINA taşıyor,

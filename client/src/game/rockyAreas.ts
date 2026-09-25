@@ -71,11 +71,11 @@ export const ROCK_CLUSTER_DEFS: RockClusterDef[] = [
 ];
 
 const ROCK_SEED = 601;
-// Orman'dan (0.4, bkz. forests.ts) belirgin şekilde düşük -- "merkezde daha
+// Orman'dan (0.52, bkz. forests.ts) belirgin şekilde düşük -- "merkezde daha
 // yoğun, kenarda seyrek, dışında yok" ama hiçbir zaman ormanki kadar sık/
-// duvar gibi değil. Kullanıcı isteğiyle ("dekorları azalt") eski 0.3'ten
-// daha da düşürüldü.
-const ROCK_MAX_COVERAGE = 0.18;
+// duvar gibi değil. Kullanıcı isteğiyle ("dekorları biraz daha çoğalt") eski
+// 0.18'den hafifçe yükseltildi.
+const ROCK_MAX_COVERAGE = 0.23;
 
 export type PlacedRock = {
   key: string;
@@ -94,18 +94,17 @@ export type PlacedRock = {
   rotationDeg: number;
 };
 
-// `reservedRoots`: dağ kökleri (+6 komşu, dağın büyük taşma payı yüzünden)
-// VE kale/NPC karoları (+6 komşu, Castle Scene çevresinde açıklık için).
-// `forestRoots`: SADECE kendi hex'i dışlanıyor (komşu dışlaması YOK) --
-// bir kaya kümesi bir ağaç kümesiyle aynı karoyu paylaşamaz ama hemen
-// yanında durabilir (doğal orman kenarı/kayalık geçişi, bkz. dosya başı
-// yorumu).
+// Kale/NPC karoları (+6 komşu, Castle Scene çevresinde açıklık için)
+// dışlanıyor. `forestRoots`: SADECE kendi hex'i dışlanıyor (komşu dışlaması
+// YOK) -- bir kaya kümesi bir ağaç kümesiyle aynı karoyu paylaşamaz ama
+// hemen yanında durabilir (doğal orman kenarı/kayalık geçişi, bkz. dosya
+// başı yorumu). (Eskiden ayrıca dağ köklerini +6 komşusuyla dışlayan bir
+// `reservedRoots` de vardı -- dağ dekoru kaldırıldığı için kaldırıldı.)
 // FAZ 4A -- göller kaldırıldı, forests.ts ile aynı prensip (bkz. o dosyadaki
 // not): `seaDistance` artık denize/ada dışına taşmayı önleyen TEK kontrol.
 export function computePlacedRocks(
   tiles: Tile[],
   biomeAnchors: BiomeAnchor[],
-  reservedRoots: ReservedRoot[],
   forestRoots: ReservedRoot[],
   seaDistance: Map<string, number>
 ): PlacedRock[] {
@@ -114,10 +113,6 @@ export function computePlacedRocks(
     if (t.tileType === "EMPTY") continue;
     occupied.add(`${t.x},${t.y}`);
     for (const [dx, dy] of HEX_DIRECTIONS) occupied.add(`${t.x + dx},${t.y + dy}`);
-  }
-  for (const r of reservedRoots) {
-    occupied.add(`${r.rootX},${r.rootY}`);
-    for (const [dx, dy] of HEX_DIRECTIONS) occupied.add(`${r.rootX + dx},${r.rootY + dy}`);
   }
   for (const f of forestRoots) {
     occupied.add(`${f.rootX},${f.rootY}`);

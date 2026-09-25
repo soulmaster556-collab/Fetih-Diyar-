@@ -177,7 +177,7 @@ export function GuildModal({
                 </>
               )}
 
-              <button onClick={handleLeaveGuild}>Loncadan Ayrıl</button>
+              <button className="btn-danger" onClick={handleLeaveGuild}>Loncadan Ayrıl</button>
             </div>
           ) : (
             <div>
@@ -194,7 +194,7 @@ export function GuildModal({
                           </div>
                         </div>
                         <div className="row-actions">
-                          <button onClick={() => handleAcceptInvite(inv.id)}>Kabul Et</button>
+                          <button className="btn-success" onClick={() => handleAcceptInvite(inv.id)}>Kabul Et</button>
                           <button className="icon-btn" onClick={() => handleDeclineInvite(inv.id)}>Reddet</button>
                         </div>
                       </li>
@@ -241,7 +241,7 @@ export function GuildModal({
                       </div>
                     </div>
                     <div className="row-actions">
-                      <button onClick={() => handleJoinGuild(g.id)}>Katıl</button>
+                      <button className="btn-success" onClick={() => handleJoinGuild(g.id)}>Katıl</button>
                     </div>
                   </li>
                 ))}

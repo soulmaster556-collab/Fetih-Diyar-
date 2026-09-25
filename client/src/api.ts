@@ -513,6 +513,7 @@ export function declineGuildInvite(token: string, inviteId: number) {
 // Herkese açık (giriş gerekmez).
 export interface LeaderboardEntry {
   username: string;
+  avatarData: string | null;
   value: number;
 }
 

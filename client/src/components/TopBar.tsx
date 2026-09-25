@@ -1,7 +1,5 @@
-import { useRef } from "react";
 import type { Guild, MyProfile, PlayerSummary, Session } from "../api";
 import { GuildFlag } from "./GuildFlag";
-import { PlayerFlag } from "./PlayerFlag";
 
 export function TopBar({
   session,
@@ -16,13 +14,12 @@ export function TopBar({
   showGuildPanel,
   showLeaderboard,
   showReports,
-  onAvatarFile,
+  onOpenProfile,
   onGoHome,
   onToggleKingdom,
   onToggleGuild,
   onToggleLeaderboard,
   onToggleReports,
-  onOpenFlagEditor,
   onLogout,
 }: {
   session: Session;
@@ -37,17 +34,14 @@ export function TopBar({
   showGuildPanel: boolean;
   showLeaderboard: boolean;
   showReports: boolean;
-  onAvatarFile: (file: File) => void;
+  onOpenProfile: () => void;
   onGoHome: () => void;
   onToggleKingdom: () => void;
   onToggleGuild: () => void;
   onToggleLeaderboard: () => void;
   onToggleReports: () => void;
-  onOpenFlagEditor: () => void;
   onLogout: () => void;
 }) {
-  // Üst menüdeki yuvarlak profil widget'ı (avatar yükleme).
-  const avatarInputRef = useRef<HTMLInputElement>(null);
   // Profilde gösterilen isim artık takma ad (diğer oyunculara görünen
   // kimlik) -- `session.username` sadece login kimlik bilgisi, profil henüz
   // yüklenmediği/nickname hiç seçilmediği çok kısa bir ara durumda ona
@@ -56,84 +50,84 @@ export function TopBar({
 
   return (
     <header className="topbar">
-      <div className="profile-widget">
-        <button
-          type="button"
-          className="profile-avatar-btn"
-          onClick={() => avatarInputRef.current?.click()}
-          title="Profil fotoğrafını değiştir"
-        >
-          {profile?.avatarData ? (
-            <img src={profile.avatarData} alt="" className="profile-avatar-img" />
-          ) : (
-            <span className="profile-avatar-fallback">{displayName.slice(0, 2).toUpperCase()}</span>
-          )}
-          <span className="profile-avatar-edit-badge">📷</span>
-        </button>
-        <input
-          ref={avatarInputRef}
-          type="file"
-          accept="image/*"
-          className="profile-avatar-input"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = "";
-            if (file) onAvatarFile(file);
-          }}
-        />
-        <span className="profile-widget-name">{displayName}</span>
-        {profile && (
-          <button type="button" className="profile-flag-btn" onClick={onOpenFlagEditor} title="Flamanı tasarla">
-            <PlayerFlag shapeId={profile.flagShape} colorId={profile.flagColor} logoId={profile.flagLogo} size={20} />
+      <div className="profile-column">
+        <div className="profile-widget">
+          {/* Avatar artık dosya seçiciyi değil, büyük "Oyuncu Bilgileri"
+              penceresini açıyor (bkz. ProfileModal.tsx -- fotoğraf
+              değiştirme oraya taşındı). İsim TIKLANMIYOR -- avatar zaten
+              aynı işi yapıyor, ikinci bir tıklanabilir alan gereksizdi. */}
+          <button type="button" className="profile-avatar-btn" onClick={onOpenProfile} title="Oyuncu bilgileri">
+            {profile?.avatarData ? (
+              <img src={profile.avatarData} alt="" className="profile-avatar-img" />
+            ) : (
+              <span className="profile-avatar-fallback">{displayName.slice(0, 2).toUpperCase()}</span>
+            )}
           </button>
+          <span className="profile-widget-name">{displayName}</span>
+        </div>
+        {summary && (
+          <div className="summary-bar">
+            {/* Altın/asker artık avatarın ALTINDA, referanstaki elmas/altın
+                istifi gibi dikey sıralı, dolu (şeffaf değil) çerçeveli iki
+                ayrı rozet (bkz. client/public/ui/frames/frame-bar-long-alt.png).
+                İleride başka bir kaynak eklenirse aynı sütuna alt alta
+                eklenecek şekilde tasarlandı. */}
+            <span className="summary-item summary-item-gold">
+              <span className="summary-item-value">🪙 {Math.floor(summary.gold)}</span>
+              <span className="summary-item-rate">+{summary.goldPerHour}/sa</span>
+            </span>
+            <span className="summary-item summary-item-troops">
+              <span className="summary-item-value">⚔️ {totalTroops}</span>
+              <span className="summary-item-rate">+{summary.troopsPerHour}/sa</span>
+            </span>
+          </div>
         )}
       </div>
-      {summary && (
-        <div className="summary-bar">
-          <span className="summary-item summary-item-gold">
-            🪙 {Math.floor(summary.gold)} <small>(+{summary.goldPerHour}/sa)</small>
-          </span>
-          {/* Toplam asker, altınla aynı "toplam (+üretim/sa)" biçiminde. */}
-          <span className="summary-item summary-item-troops">
-            ⚔️ {totalTroops} <small>(+{summary.troopsPerHour}/sa)</small>
-          </span>
-        </div>
-      )}
       <div className="player-info">
         <button
-          className="kingdom-toggle"
+          className="hud-icon-btn"
           disabled={myTilesCount === 0}
           onClick={onGoHome}
           title="Ana kalene git"
         >
-          🧭 Krallığıma Git
+          <span className="hud-icon-glyph">🧭</span>
         </button>
         <button
-          className={`kingdom-toggle ${showKingdomList ? "active" : ""}`}
+          className={`hud-icon-btn ${showKingdomList ? "active" : ""}`}
           onClick={onToggleKingdom}
+          title={`Krallığım (${myTilesCount})`}
         >
-          🏰 Krallığım ({myTilesCount})
+          <span className="hud-icon-glyph">🏰</span>
+          {myTilesCount > 0 && <span className="hud-icon-badge hud-icon-badge-neutral">{myTilesCount}</span>}
         </button>
         <button
-          className={`kingdom-toggle kingdom-toggle-guild ${showGuildPanel ? "active" : ""}`}
+          className={`hud-icon-btn ${showGuildPanel ? "active" : ""}`}
           onClick={onToggleGuild}
+          title={guild ? guild.name : "Lonca"}
         >
-          {guild ? <GuildFlag flagId={guild.flagId} size={20} /> : "🛡️"} {guild ? guild.name : "Lonca"}
-          {receivedInvitesCount > 0 ? ` (${receivedInvitesCount})` : ""}
+          <span className="hud-icon-glyph">
+            {guild ? <GuildFlag flagId={guild.flagId} size={22} /> : "🛡️"}
+          </span>
+          {receivedInvitesCount > 0 && <span className="hud-icon-badge">{receivedInvitesCount}</span>}
         </button>
         <button
-          className={`kingdom-toggle ${showLeaderboard ? "active" : ""}`}
+          className={`hud-icon-btn ${showLeaderboard ? "active" : ""}`}
           onClick={onToggleLeaderboard}
+          title="Liderlik Panosu"
         >
-          🏆 Liderlik
+          <span className="hud-icon-glyph">🏆</span>
         </button>
         <button
-          className={`kingdom-toggle ${showReports ? "active" : ""}`}
+          className={`hud-icon-btn ${showReports ? "active" : ""}`}
           onClick={onToggleReports}
+          title="Mesaj &amp; Raporlar"
         >
-          📨 Raporlar{unreadReportCount > 0 ? ` (${unreadReportCount})` : ""}
+          <span className="hud-icon-glyph">📨</span>
+          {unreadReportCount > 0 && <span className="hud-icon-badge">{unreadReportCount}</span>}
         </button>
-        <button onClick={onLogout}>Çıkış</button>
+        <button className="hud-icon-btn hud-icon-btn-logout" onClick={onLogout} title="Çıkış">
+          <span className="hud-icon-glyph">🚪</span>
+        </button>
       </div>
     </header>
   );

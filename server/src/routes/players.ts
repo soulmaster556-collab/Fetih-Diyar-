@@ -334,14 +334,14 @@ playersRouter.get("/leaderboard", async (_req, res) => {
     // oyunculara gösterilen HER yerde artık nickname esas (bkz. db.ts sütun
     // yorumu), login kullanıcı adı sadece onboarding tamamlanmamış (nickname
     // hâlâ NULL) çok nadir bir ara durumun geri düşüşü.
-    const { rows } = await pool.query<TileRow & { username: string }>(
-      `SELECT t.*, COALESCE(p.nickname, p.username) as username FROM tiles t
+    const { rows } = await pool.query<TileRow & { username: string; avatar_data: string | null }>(
+      `SELECT t.*, COALESCE(p.nickname, p.username) as username, p.avatar_data FROM tiles t
        JOIN players p ON p.id = t.owner_id
        WHERE t.tile_type = 'PLAYER' AND t.owner_id IS NOT NULL`
     );
-    const byPlayer = new Map<string, { username: string; troops: number; castles: number }>();
+    const byPlayer = new Map<string, { username: string; avatarData: string | null; troops: number; castles: number }>();
     for (const t of rows) {
-      const entry = byPlayer.get(t.owner_id as string) ?? { username: t.username, troops: 0, castles: 0 };
+      const entry = byPlayer.get(t.owner_id as string) ?? { username: t.username, avatarData: t.avatar_data, troops: 0, castles: 0 };
       entry.troops += computeLiveTroops(t, settings, now);
       entry.castles += 1;
       byPlayer.set(t.owner_id as string, entry);
@@ -350,11 +350,11 @@ playersRouter.get("/leaderboard", async (_req, res) => {
     const topTroops = [...list]
       .sort((a, b) => b.troops - a.troops)
       .slice(0, 10)
-      .map((e) => ({ username: e.username, value: Math.floor(e.troops) }));
+      .map((e) => ({ username: e.username, avatarData: e.avatarData, value: Math.floor(e.troops) }));
     const topCastles = [...list]
       .sort((a, b) => b.castles - a.castles)
       .slice(0, 10)
-      .map((e) => ({ username: e.username, value: e.castles }));
+      .map((e) => ({ username: e.username, avatarData: e.avatarData, value: e.castles }));
     res.json({ topTroops, topCastles });
   } catch (err) {
     console.error(err);

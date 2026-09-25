@@ -49,6 +49,7 @@ import { MapView } from "./components/MapView";
 import { NicknameModal } from "./components/NicknameModal";
 import { PendingActionCard } from "./components/PendingActionCard";
 import { PlayerFlagModal } from "./components/PlayerFlagModal";
+import { ProfileModal } from "./components/ProfileModal";
 import { ReportsModal } from "./components/ReportsModal";
 import { TileMenu } from "./components/TileMenu";
 import { TopBar } from "./components/TopBar";
@@ -90,6 +91,9 @@ export default function App() {
   const [showReports, setShowReports] = useState(false);
   // Flama tasarım ekranı (bkz. components/PlayerFlagModal.tsx).
   const [showFlagEditor, setShowFlagEditor] = useState(false);
+  // Oyuncu bilgileri penceresi (bkz. components/ProfileModal.tsx) -- üst
+  // menüdeki avatara tıklayınca açılır.
+  const [showProfile, setShowProfile] = useState(false);
   const [reports, setReports] = useState<Report[]>([]);
   const unreadReportCount = useMemo(() => reports.filter((r) => r.readAt === null).length, [reports]);
   // Sohbet -- Genel Chat / Lonca Chat (bkz. components/ChatPanel.tsx,
@@ -548,6 +552,7 @@ export default function App() {
     setShowLeaderboard(false);
     setShowReports(false);
     setShowFlagEditor(false);
+    setShowProfile(false);
   }
 
   function startAction(type: ActionType, fromTile: Tile) {
@@ -720,6 +725,12 @@ export default function App() {
     setShowFlagEditor(next);
   }
 
+  function openProfile() {
+    const next = !showProfile;
+    closeFloatingPanels();
+    setShowProfile(next);
+  }
+
   // Raporlar panelini açınca hem en güncel listeyi çekiyoruz hem de hepsini
   // okunmuş işaretliyoruz -- rozet sayısı böylece panel kapanınca sıfırlanır.
   function openReports() {
@@ -822,7 +833,7 @@ export default function App() {
         showGuildPanel={showGuildPanel}
         showLeaderboard={showLeaderboard}
         showReports={showReports}
-        onAvatarFile={handleAvatarFile}
+        onOpenProfile={openProfile}
         onGoHome={() => myTiles[0] && goToTile(myTiles[0])}
         onToggleKingdom={() => {
           const next = !showKingdomList;
@@ -832,7 +843,6 @@ export default function App() {
         onToggleGuild={openGuildPanel}
         onToggleLeaderboard={openLeaderboard}
         onToggleReports={openReports}
-        onOpenFlagEditor={openFlagEditor}
         onLogout={handleLogout}
       />
 
@@ -883,6 +893,20 @@ export default function App() {
           setError={setError}
           setMessage={setMessage}
           onClose={() => setShowFlagEditor(false)}
+        />
+      )}
+
+      {showProfile && (
+        <ProfileModal
+          session={session}
+          profile={profile}
+          summary={summary}
+          totalTroops={totalTroops}
+          myTilesCount={myTiles.length}
+          guild={guild}
+          onAvatarFile={handleAvatarFile}
+          onOpenFlagEditor={openFlagEditor}
+          onClose={() => setShowProfile(false)}
         />
       )}
 

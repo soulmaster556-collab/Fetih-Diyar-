@@ -11,7 +11,6 @@ import { computePlacedCrystals } from "../game/crystals";
 import { computePlacedForests } from "../game/forests";
 import { isoCenter } from "../game/hexMath";
 import { buildIslandShorePathD, computeIslandShoreLoops, computeSeaDistanceMap } from "../game/islandShore";
-import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
 import { computePlacedRocks } from "../game/rockyAreas";
 import { castleImageForLevel, npcCastleImageForLevel } from "../game/tileImages";
 import { buildTerritoryPathD, computeTerritoryRegions } from "../game/territory";
@@ -101,59 +100,19 @@ export function MapView({
     [territoryRegions, tileWidth]
   );
 
-  // Dağ yerleşimi -- sadece o an yüklü (viewport'taki) karolara göre
-  // hesaplanıyor, bkz. computePlacedMountains yorumu.
-  const placedMountains = useMemo(() => computePlacedMountains(tiles), [tiles]);
-
-  // Her dağın kapladığı EKRAN dikdörtgenini/dairesini hesaplar -- hem dağ
-  // görselinin render boyutu/konumu hem de saldırı hattının bükülme kontrolü
-  // (bkz. bendAttackPath) AYNI bu veriyi kullanıyor, tek yerden hesaplanıp
-  // tutarlılık garanti ediliyor.
-  const mountainScreens = useMemo(() => {
-    return placedMountains.map((m) => {
-      const { cx, cy } = isoCenter(m.rootX, m.rootY, tileWidth);
-      const boxW = tileWidth * m.def.scale;
-      const boxH = tileHeight * m.def.scale;
-      const box: MountainScreenBox = { key: m.key, centerX: cx, centerY: cy, radius: (boxW + boxH) / 4 };
-      return { mountain: m, left: cx - boxW / 2, top: cy - boxH / 2, width: boxW, height: boxH, box };
-    });
-  }, [placedMountains, tileWidth, tileHeight]);
-
-  // FAZ 4A madde 6 -- "dağların suyla kötü çakışmaması", ama
-  // `computePlacedMountains`'ın KENDİSİNE (mountains.ts) dokunmadan: dağ
-  // YERLEŞİMİ hiç değişmedi, sadece burada -- render'a hangi dağların
-  // ÇİZİLECEĞİNE karar veren MapView katmanında -- kökü suya denk gelen
-  // dağlar listeden çıkarılıyor. Attack-line bükülmesi de (aşağıda) AYNI
-  // filtrelenmiş listeyi kullanıyor ki görünmeyen bir dağın etrafında
-  // saldırı hattı bükülmesin.
-  // Dağ sprite'ı (scale 2.2) diğer dekorlardan daha büyük taştığı için pay
-  // da daha geniş -- "adaların dışına taşan dekorlar var" düzeltmesi (bkz.
-  // islandShore.ts computeSeaDistanceMap yorumu, forests.ts/rockyAreas.ts
-  // ile aynı prensip).
-  const visibleMountainScreens = useMemo(
-    () =>
-      mountainScreens.filter(
-        (m) => (seaDistance.get(`${m.mountain.rootX},${m.mountain.rootY}`) ?? Infinity) > 1
-      ),
-    [mountainScreens, seaDistance]
-  );
-
-  // FAZ 3 -- Forest + Rocky Areas. `mountains.ts` HİÇ değişmedi; bu iki
-  // sistem sadece onunla aynı painter's-algorithm havuzuna (10+x+y,
-  // aşağıdaki render'da mountainScreens ile yan yana) katılıyor. Sıra
-  // önemli: dağlar önce yerleşiyor (değişmedi), ormanlar dağ köklerini
-  // (+6 komşu) dışlayarak yerleşiyor, kayalıklar hem dağları hem de
-  // (sadece kendi hex'i, komşu dışlaması olmadan) orman köklerini
-  // dışlayarak yerleşiyor -- bkz. forests.ts/rockyAreas.ts dosya başı
-  // yorumları. world-terrain'e (biomeAnchors'ın KENDİSİ değişmiyor, sadece
-  // okunuyor) hiç dokunulmuyor.
+  // FAZ 3 -- Forest + Rocky Areas (bkz. forests.ts/rockyAreas.ts dosya başı
+  // yorumları). Dağ dekoru kullanıcı isteğiyle tamamen kaldırıldı (eskiden
+  // ormanlar/kayalıklar dağ köklerini de dışlayarak yerleşiyordu) -- artık
+  // sadece kale/NPC karoları VE (kayalıklar için) orman kökleri dışlanıyor.
+  // world-terrain'e (biomeAnchors'ın KENDİSİ değişmiyor, sadece okunuyor)
+  // hiç dokunulmuyor.
   const placedForests = useMemo(
-    () => computePlacedForests(tiles, biomeAnchors, placedMountains, seaDistance),
-    [tiles, biomeAnchors, placedMountains, seaDistance]
+    () => computePlacedForests(tiles, biomeAnchors, seaDistance),
+    [tiles, biomeAnchors, seaDistance]
   );
   const placedRocks = useMemo(
-    () => computePlacedRocks(tiles, biomeAnchors, placedMountains, placedForests, seaDistance),
-    [tiles, biomeAnchors, placedMountains, placedForests, seaDistance]
+    () => computePlacedRocks(tiles, biomeAnchors, placedForests, seaDistance),
+    [tiles, biomeAnchors, placedForests, seaDistance]
   );
 
   const forestScreens = useMemo(() => {
@@ -181,15 +140,15 @@ export function MapView({
   }, [placedRocks, tileWidth, tileHeight]);
 
   // Kristal dekor kümeleri (bkz. game/crystals.ts dosya başı yorumu) --
-  // dağ kökleri (+6 komşu) VE orman/kayalık kökleri (sadece kendi hex'i)
-  // dışlanarak yerleşiyor, aynı forests/rockyAreas'ın birbirini dışlama
-  // mantığı. Su kontrolü kendi içinde (computePlacedCrystals).
+  // orman/kayalık kökleri (sadece kendi hex'i) dışlanarak yerleşiyor, aynı
+  // forests/rockyAreas'ın birbirini dışlama mantığı. Su kontrolü kendi
+  // içinde (computePlacedCrystals).
   const placedCrystals = useMemo(
-    () => computePlacedCrystals(tiles, placedMountains, [...placedForests, ...placedRocks], seaDistance),
-    [tiles, placedMountains, placedForests, placedRocks, seaDistance]
+    () => computePlacedCrystals(tiles, [...placedForests, ...placedRocks], seaDistance),
+    [tiles, placedForests, placedRocks, seaDistance]
   );
 
-  // "Havada duruyor" düzeltmesi: kutuyu (mountains/forests/rocks gibi) cy
+  // "Havada duruyor" düzeltmesi: kutuyu (forests/rocks gibi) cy
   // etrafında ortalamak yerine, kalenin (castleTop hesabı, aşağısı) oturduğu
   // AYNI zemin çizgisine (cy + 0.35*tileHeight) ALT kenardan sabitliyoruz.
   // Eskiden top = cy - boxH/2 idi -- boxH scale'e göre değiştiği için
@@ -213,7 +172,7 @@ export function MapView({
 
   // Render sırası (yukarıdan aşağıya = arkadan öne, FAZ 5 madde 2/17):
   // world-sea(-2) -> world-island-shore(-1) -> world-terrain(0) ->
-  // world-territory(2) -> iso-tile-group'lar + mountains/forests/rocky/
+  // world-territory(2) -> iso-tile-group'lar + forests/rocky/crystals/
   // castle-scenes (z 10+, painter's algorithm havuzu) -> iso-labels-layer
   // (z500) -> attack-lines-layer(en üst). Göller (kullanıcı isteğiyle)
   // tamamen kaldırıldı -- eskiden adaların rastgele konumundan habersiz
@@ -416,39 +375,12 @@ export function MapView({
               </div>
             );
           })}
-          {/* Dağ / dekor katmanı -- bkz. yukarıdaki MOUNTAIN_DEFS/
-              computePlacedMountains yorumu. Kale görsellerinin karo
-              dışına taşması gibi: her <img> kendi kök hex'inin ekran
-              alanına `scale` oranında taşarak konumlanıyor (bkz.
-              mountainScreens), z-index'i de frontSortKey'e göre
-              yukarıdaki karolarla AYNI numaralandırmada -- böylece dağın
-              önünden geçen bir karo dağın üstüne, arkasındaki bir karo
-              dağın altına doğru çiziliyor (painter's algorithm, bkz.
-              sortedTiles yorumu). pointer-events:none -- tıklama her
-              zaman altındaki (zaten "ölü alan" olan EMPTY) karoya
-              gidiyor, ayrıca bir tıklama davranışı eklemeye gerek yok. */}
-          {visibleMountainScreens.map(({ mountain, left, top, width, height }) => (
-            <img
-              key={mountain.key}
-              src={mountain.def.img}
-              alt=""
-              className="iso-mountain iso-mountain-glow"
-              style={{
-                left,
-                top,
-                width,
-                height,
-                zIndex: 10 + mountain.frontSortKey,
-                transform: `rotate(${mountain.rotationDeg}deg)${mountain.flipX ? " scaleX(-1)" : ""}`,
-                transformOrigin: "bottom center",
-              }}
-            />
-          ))}
-          {/* FAZ 3 -- orman kümeleri. Dağlarla AYNI z-index numaralandırması
-              (10+frontSortKey) -- ayrı bir katman değil, aynı painter's
-              algorithm havuzuna karışıyor (bkz. yukarıdaki placedForests
-              yorumu), böylece önünden geçen bir karo kümenin üstünde,
-              arkasındaki bir karo altında doğru şekilde görünüyor. */}
+          {/* FAZ 3 -- orman kümeleri. Diğer karo/dekor katmanlarıyla AYNI
+              z-index numaralandırması (10+frontSortKey) -- ayrı bir katman
+              değil, aynı painter's algorithm havuzuna karışıyor (bkz.
+              yukarıdaki placedForests yorumu), böylece önünden geçen bir
+              karo kümenin üstünde, arkasındaki bir karo altında doğru
+              şekilde görünüyor. */}
           {forestScreens.map(({ forest, left, top, width, height }) => (
             <img
               key={forest.key}
@@ -629,16 +561,7 @@ export function MapView({
               {activeAttacks.map((atk) => {
                 const from = isoCenter(atk.fromX, atk.fromY, tileWidth);
                 const to = isoCenter(atk.targetX, atk.targetY, tileWidth);
-                // Araya bir dağ giriyorsa (bkz. bendAttackPath) düz çizgi
-                // yerine hafif kavisli bir Bézier path.
-                const d = bendAttackPath(
-                  from.cx,
-                  from.cy,
-                  to.cx,
-                  to.cy,
-                  visibleMountainScreens.map((m) => m.box),
-                  tileWidth
-                );
+                const d = `M ${from.cx} ${from.cy} L ${to.cx} ${to.cy}`;
                 return (
                   <path
                     key={atk.id}
@@ -653,17 +576,8 @@ export function MapView({
               const from = isoCenter(atk.fromX, atk.fromY, tileWidth);
               const to = isoCenter(atk.targetX, atk.targetY, tileWidth);
               // Marker'ın izlediği yol da SVG'deki ile birebir aynı
-              // (bkz. yukarıdaki d hesaplaması) -- yoksa asker ikonu
-              // çizgiden bağımsız, dağın içinden düz gidiyormuş gibi
-              // görünürdü.
-              const d = bendAttackPath(
-                from.cx,
-                from.cy,
-                to.cx,
-                to.cy,
-                visibleMountainScreens.map((m) => m.box),
-                tileWidth
-              );
+              // (bkz. yukarıdaki d hesaplaması).
+              const d = `M ${from.cx} ${from.cy} L ${to.cx} ${to.cy}`;
               // Ham Date.now() yerine sunucuyla senkronize "şu an" (bkz.
               // clockOffsetRef) -- markör GERÇEKTEN süre dolduğunda ulaşsın.
               const estServerNow = Date.now() + clockOffsetMs;

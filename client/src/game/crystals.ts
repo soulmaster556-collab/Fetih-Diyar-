@@ -1,5 +1,5 @@
 import type { Tile } from "../api";
-import { HEX_DIRECTIONS, hashXY, islandDecorFactor } from "./mountains";
+import { hashXY, islandDecorFactor } from "./mountains";
 import type { ReservedRoot } from "./forests";
 
 // ---------------------------------------------------------------------
@@ -27,13 +27,22 @@ import type { ReservedRoot } from "./forests";
 //      kırpma oranına göre aşağı ayarlandı -- görsel artık kutusunun
 //      ~%93'ünü dolduruyor (öncesinde ~%40-50), yani aynı ekran boyutu için
 //      daha küçük bir `scale` yeterli.
-//   3) YOĞUNLUK bilerek düşük -- kullanıcı isteği: "az olmalı, çünkü
-//      ileride başka renklerde kristaller de eklenecek" (bkz. CRYSTAL_DENSITY).
-//      DÜZELTME: ilk sürümde kale/NPC karolarının 6 komşusu da (mountains.ts
-//      GİBİ değil, forests.ts gibi) dışlanıyordu -- yoğun bir NPC haritasında
-//      bu, aday havuzunu neredeyse tamamen siliyordu (kullanıcı geri
-//      bildirimi: "haritada kristalleri hiç göremiyorum"). Artık mountains.ts
-//      ile AYNI, daha hafif kural: sadece kale/NPC'nin KENDİ hex'i dışlanıyor.
+//      DÜZELTME: bu ilk ayar 9 görsel arasında tutarsızdı (0.34-0.60 arası,
+//      neredeyse 2 kat fark) -- kullanıcı geri bildirimi ("bazıları büyük
+//      bazıları küçük, hepsini en büyük olanı baz alarak düzenle"). Artık
+//      hepsi eski en büyük değere (0.60, crystal-blue-1) EŞİT -- object-fit
+//      contain zaten kutunun genişliğiyle sınırlandığı için (9 görselin
+//      en/boy oranı da kutununkinden geniş, bkz. crystal PNG'leri) aynı
+//      `scale` = aynı render GENİŞLİĞİ, sadece görselin kendi en/boy oranına
+//      göre yüksekliği ~%25 içinde değişiyor -- artık hepsi gözle görülür
+//      şekilde aynı boyutta.
+//   3) YOĞUNLUK -- ilk sürümde kale/NPC karolarının 6 komşusu da
+//      (mountains.ts GİBİ değil, forests.ts gibi) dışlanıyordu -- yoğun bir
+//      NPC haritasında bu, aday havuzunu neredeyse tamamen siliyordu
+//      (kullanıcı geri bildirimi: "haritada kristalleri hiç göremiyorum").
+//      Artık mountains.ts ile AYNI, daha hafif kural: sadece kale/NPC'nin
+//      KENDİ hex'i dışlanıyor. Kullanıcı isteğiyle ("kristalleri biraz daha
+//      çoğalt") CRYSTAL_DENSITY ayrıca düşürüldü (bkz. aşağısı).
 // 3 renk (purple/gold/blue) × 3 varyant = 9 sabit görsel; hangisinin
 // seçileceği (mountains.ts'teki gibi) deterministik hash'e göre.
 export type CrystalColor = "purple" | "gold" | "blue";
@@ -42,33 +51,31 @@ export type CrystalDef = {
   id: string;
   img: string;
   color: CrystalColor;
-  // Görsel, kendi hex'inin kaç katı bir kutuya sığdırılıp ortalanacak --
-  // kompozisyonu daha "dolu" olan varyantlar (geniş taç/daha çok döküntü)
-  // hafifçe daha büyük, tek sivri uçlu/kompakt varyantlar daha küçük.
+  // Görsel, kendi hex'inin kaç katı bir kutuya sığdırılıp ortalanacak.
+  // Kullanıcı isteğiyle ("en büyük olanı baz al") 9 görselin TAMAMI eski en
+  // büyük değere (0.60) eşitlendi -- artık aralarında boyut farkı yok.
   scale: number;
 };
 
+const CRYSTAL_UNIFORM_SCALE = 0.6;
+
 export const CRYSTAL_DEFS: CrystalDef[] = [
-  { id: "crystal-purple-1", img: "/decor/crystals/crystal-purple-1.png", color: "purple", scale: 0.48 },
-  { id: "crystal-purple-2", img: "/decor/crystals/crystal-purple-2.png", color: "purple", scale: 0.43 },
-  { id: "crystal-purple-3", img: "/decor/crystals/crystal-purple-3.png", color: "purple", scale: 0.53 },
-  { id: "crystal-gold-1", img: "/decor/crystals/crystal-gold-1.png", color: "gold", scale: 0.59 },
-  { id: "crystal-gold-2", img: "/decor/crystals/crystal-gold-2.png", color: "gold", scale: 0.37 },
-  { id: "crystal-gold-3", img: "/decor/crystals/crystal-gold-3.png", color: "gold", scale: 0.51 },
-  { id: "crystal-blue-1", img: "/decor/crystals/crystal-blue-1.png", color: "blue", scale: 0.60 },
-  { id: "crystal-blue-2", img: "/decor/crystals/crystal-blue-2.png", color: "blue", scale: 0.45 },
-  { id: "crystal-blue-3", img: "/decor/crystals/crystal-blue-3.png", color: "blue", scale: 0.34 },
+  { id: "crystal-purple-1", img: "/decor/crystals/crystal-purple-1.png", color: "purple", scale: CRYSTAL_UNIFORM_SCALE },
+  { id: "crystal-purple-2", img: "/decor/crystals/crystal-purple-2.png", color: "purple", scale: CRYSTAL_UNIFORM_SCALE },
+  { id: "crystal-purple-3", img: "/decor/crystals/crystal-purple-3.png", color: "purple", scale: CRYSTAL_UNIFORM_SCALE },
+  { id: "crystal-gold-1", img: "/decor/crystals/crystal-gold-1.png", color: "gold", scale: CRYSTAL_UNIFORM_SCALE },
+  { id: "crystal-gold-2", img: "/decor/crystals/crystal-gold-2.png", color: "gold", scale: CRYSTAL_UNIFORM_SCALE },
+  { id: "crystal-gold-3", img: "/decor/crystals/crystal-gold-3.png", color: "gold", scale: CRYSTAL_UNIFORM_SCALE },
+  { id: "crystal-blue-1", img: "/decor/crystals/crystal-blue-1.png", color: "blue", scale: CRYSTAL_UNIFORM_SCALE },
+  { id: "crystal-blue-2", img: "/decor/crystals/crystal-blue-2.png", color: "blue", scale: CRYSTAL_UNIFORM_SCALE },
+  { id: "crystal-blue-3", img: "/decor/crystals/crystal-blue-3.png", color: "blue", scale: CRYSTAL_UNIFORM_SCALE },
 ];
 
 const CRYSTAL_SEED = 911;
-// Kristaller haritada nadir/özel bir "define rastladım" hissi versin diye
-// mountains.ts'teki MOUNTAIN_DENSITY'den (320) BİRAZ daha seyrek tutulmak
-// istenmişti, ama harita boyu sabit (WORLD_SIZE'a göre değil, gerçekte
-// üretilen tek ada ~birkaç bin karo) olduğu için 420 -- özellikle eski
-// (madde 3 yukarısı) 6-komşu dışlama hatasıyla birleşince -- pratikte
-// SIFIRA yakın bir sayı üretiyordu. Kullanıcı geri bildirimiyle ("hiç yok")
-// gerçek bir keşfedilebilir yoğunluğa çekildi.
-export const CRYSTAL_DENSITY = 130;
+// Kullanıcı isteğiyle ("kristalleri biraz daha çoğalt") eski 130'dan
+// düşürüldü -- density modulo'nun BÖLENİ olduğu için küçülmesi = aday
+// havuzunun daha büyük bir yüzdesinin seçilmesi = daha sık kristal.
+export const CRYSTAL_DENSITY = 90;
 
 export type PlacedCrystal = {
   key: string;
@@ -82,27 +89,21 @@ export type PlacedCrystal = {
   rotationDeg: number;
 };
 
-// `bigReservedRoots`: dağ kökleri (+6 komşu -- dağın scale 2.2 taşma payı
-// yüzünden geniş dışlama gerekiyor, rockyAreas.ts'teki reservedRoots ile
-// aynı prensip). `smallReservedRoots`: orman/kayalık kökleri -- SADECE
-// kendi hex'i dışlanıyor (rockyAreas.ts'teki forestRoots kuralıyla aynı),
-// bir kristal bir ağaç/kaya kümesinin hemen yanında durabilir ama aynı
-// karoyu paylaşamaz.
+// `reservedRoots`: orman/kayalık kökleri -- SADECE kendi hex'i dışlanıyor
+// (rockyAreas.ts'teki forestRoots kuralıyla aynı), bir kristal bir ağaç/kaya
+// kümesinin hemen yanında durabilir ama aynı karoyu paylaşamaz. (Eskiden
+// ayrıca dağ köklerini +6 komşusuyla dışlayan bir `bigReservedRoots` de
+// vardı -- dağ dekoru kaldırıldığı için o parametre de kaldırıldı.)
 export function computePlacedCrystals(
   tiles: Tile[],
-  bigReservedRoots: ReservedRoot[],
-  smallReservedRoots: ReservedRoot[],
+  reservedRoots: ReservedRoot[],
   seaDistance: Map<string, number>
 ): PlacedCrystal[] {
   const occupied = new Set<string>();
   for (const t of tiles) {
     if (t.tileType !== "EMPTY") occupied.add(`${t.x},${t.y}`);
   }
-  for (const r of bigReservedRoots) {
-    occupied.add(`${r.rootX},${r.rootY}`);
-    for (const [dx, dy] of HEX_DIRECTIONS) occupied.add(`${r.rootX + dx},${r.rootY + dy}`);
-  }
-  for (const r of smallReservedRoots) {
+  for (const r of reservedRoots) {
     occupied.add(`${r.rootX},${r.rootY}`);
   }
 
