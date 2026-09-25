@@ -530,6 +530,32 @@ button:disabled {
   stroke-width: 2;
 }
 
+/* Kıyı şeridi (bkz. game/riversLakes.ts computeCoastSegments, MapView.tsx).
+   .world-water'ın (düz mavi göl dolgusu) HEMEN üstünde -- AYNI z-index (1)
+   ama sonraki DOM kardeşi olduğu için üstte boyanıyor (bkz. MapView.tsx
+   yorumu), böylece kıyı dokusu düz dolgunun kenarını örtüyor. */
+.world-coastline {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* Her segment public/terrain/coastline-1.webp'nin GERİLMİŞ (background-size
+   100% 100%) bir kopyası -- dokunun kendi üst kenarı (çim) her zaman
+   segmentin döndürülmemiş "üstü", MapView.tsx'teki rotate() bunu gölün o
+   noktadaki dışa (kara) yönüne çeviriyor. transform-origin varsayılan
+   (center) kalmalı ki rotate segmenti kendi merkezi etrafında döndürsün --
+   left/top zaten döndürülmemiş kutunun merkezini o noktaya oturtacak şekilde
+   hesaplanıyor (bkz. MapView.tsx: left = x - length/2, top = y - depth/2). */
+.world-coastline-segment {
+  position: absolute;
+  background-image: url("/terrain/coastline-1.webp");
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
+
 /* FAZ 5 -- Territory (bkz. game/territory.ts, MapView.tsx .world-territory
    yorumu). .world-water'ın HEMEN üstünde, TÜM .iso-tile-group'ların (z 10+)
    HER ZAMAN altında -- sabit z-index 2, painter's algorithm'a katılmıyor

@@ -136,6 +136,106 @@ function closedSmoothPath(pts: { x: number; y: number }[]): string {
   return d + "Z";
 }
 
+// ---------------------------------------------------------------------
+// Kıyı şeridi (çim -> kum -> su geçiş dokusu, bkz. public/terrain/coastline-1.webp)
+// ---------------------------------------------------------------------
+// Gölün kıyı çizgisi boyunca döndürülmüş küçük doku parçaları dizmek için
+// closedSmoothPath'in çizdiği AYNI kapalı Bézier eğrisi üzerinde örnekleme
+// yapıyor -- path'in kendi 'd' string'ini ayrıştırmak yerine, closedSmoothPath
+// ile TAMAMEN aynı quadratic Bézier segmentlerini (kontrol noktaları:
+// midpoint(prev,cur) -> cur -> midpoint(cur,next)) burada yeniden hesaplayıp
+// her segmenti stepsPerVertex parçaya bölüyoruz -- böylece örnek noktalar
+// ekranda görünen eğrinin TAM üstünde duruyor, ayrı bir yaklaşık eğri değil.
+function quadraticBezierPoint(
+  p0: { x: number; y: number },
+  p1: { x: number; y: number },
+  p2: { x: number; y: number },
+  t: number
+): { x: number; y: number } {
+  const mt = 1 - t;
+  return {
+    x: mt * mt * p0.x + 2 * mt * t * p1.x + t * t * p2.x,
+    y: mt * mt * p0.y + 2 * mt * t * p1.y + t * t * p2.y,
+  };
+}
+
+export type CoastSegment = {
+  key: string;
+  x: number; // ekran piksel konumu (segment merkezi)
+  y: number;
+  angleDeg: number; // CSS rotate() değeri -- dokunun "çim" ucu dışa (kara tarafına) baksın diye
+  length: number; // kıyı boyunca (döşemenin genişliği)
+};
+
+// Her göl için kıyı boyunca eşit aralıklı örnekler üretir. `stepsPerVertex`
+// köşe başına kaç segment demek (fazlası daha pürüzsüz ama daha çok DOM
+// elemanı). Dokunun kıyıya dik derinliği (çim-kum-su'nun tamamı) segment
+// başına değil ÇAĞIRAN tarafta (MapView.tsx) sabit bir div height olarak
+// veriliyor -- burada sadece kıyı boyunca konum/açı/uzunluk üretiliyor.
+// Segment uzunluğu komşularla örtüşsün diye (bkz. OVERLAP_FACTOR) örnekler
+// arası mesafeden biraz büyük tutuluyor.
+const OVERLAP_FACTOR = 1.5;
+
+export function computeCoastSegments(
+  lakes: LakeAnchor[],
+  tileWidth: number,
+  stepsPerVertex = 4
+): CoastSegment[] {
+  const segments: CoastSegment[] = [];
+  lakes.forEach((lake, lakeIdx) => {
+    const pts = lakePolygonPoints(lake, tileWidth);
+    const n = pts.length;
+    if (n < 3) return;
+    const center = isoCenter(lake.cx, lake.cy, tileWidth);
+
+    // Bézier eğrisi üzerindeki tüm örnek noktaları önce toplanıyor (açı ve
+    // segment uzunluğu, ardışık örnekler arasındaki mesafeden hesaplanacağı
+    // için hepsine ihtiyaç var).
+    const curvePts: { x: number; y: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const prev = pts[(i - 1 + n) % n];
+      const cur = pts[i];
+      const next = pts[(i + 1) % n];
+      const m0 = midpoint(prev, cur);
+      const m1 = midpoint(cur, next);
+      for (let s = 0; s < stepsPerVertex; s++) {
+        curvePts.push(quadraticBezierPoint(m0, cur, m1, s / stepsPerVertex));
+      }
+    }
+
+    const cn = curvePts.length;
+    for (let i = 0; i < cn; i++) {
+      const p = curvePts[i];
+      const nextP = curvePts[(i + 1) % cn];
+      const prevP = curvePts[(i - 1 + cn) % cn];
+      // Teğet yönü: bir önceki/sonraki örnekten (merkezi fark) -- eğrinin
+      // yerel akış yönü, segmentin "kıyı boyunca" eksenini verir.
+      const tangentAngle = Math.atan2(nextP.y - prevP.y, nextP.x - prevP.x);
+      // Dışa (kara) yön: merkezden örneğe giden vektör -- dokunun "çim" ucu
+      // (üst kenarı) bu yöne baksın istiyoruz. Teğeti +90/-90 çevirip
+      // hangisinin merkezden uzaklaştığına (dışa baktığına) bakıyoruz.
+      const outward = { x: p.x - center.cx, y: p.y - center.cy };
+      const perp = { x: -Math.sin(tangentAngle), y: Math.cos(tangentAngle) };
+      const sign = perp.x * outward.x + perp.y * outward.y >= 0 ? 1 : -1;
+      const outwardAngle = tangentAngle + (sign > 0 ? Math.PI / 2 : -Math.PI / 2);
+      // CSS rotate(): 0deg'de div'in "üstü" (-Y yönü, dokunun çim ucu) ekranda
+      // yukarı bakar (-90deg konumunda) -- bu yüzden istenen dışa açıya
+      // ulaşmak için +90 ekleniyor (bkz. dosya başı yorumundaki türetme).
+      const angleDeg = (outwardAngle * 180) / Math.PI + 90;
+      const length = Math.hypot(nextP.x - p.x, nextP.y - p.y) * OVERLAP_FACTOR;
+
+      segments.push({
+        key: `${lakeIdx}:${i}`,
+        x: p.x,
+        y: p.y,
+        angleDeg,
+        length: Math.max(length, 1),
+      });
+    }
+  });
+  return segments;
+}
+
 export type WaterFeatures = { lakes: LakeAnchor[] };
 
 // forests.ts/rockyAreas.ts/crystals.ts (ve MapView.tsx'teki dağ

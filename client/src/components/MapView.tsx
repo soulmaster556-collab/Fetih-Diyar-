@@ -12,7 +12,12 @@ import { computePlacedForests } from "../game/forests";
 import { isoCenter } from "../game/hexMath";
 import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
 import { computePlacedRocks } from "../game/rockyAreas";
-import { buildLakePathD, generateLakes, isWaterAtWorldPosition } from "../game/riversLakes";
+import {
+  buildLakePathD,
+  computeCoastSegments,
+  generateLakes,
+  isWaterAtWorldPosition,
+} from "../game/riversLakes";
 import { castleImageForLevel, npcCastleImageForLevel } from "../game/tileImages";
 import { buildTerritoryPathD, computeTerritoryRegions } from "../game/territory";
 import { buildBiomeBackground, generateBiomeAnchors, TERRAIN_GRAIN_BACKGROUND } from "../game/worldRegions";
@@ -79,6 +84,17 @@ export function MapView({
   const waterFeatures = useMemo(() => ({ lakes: generateLakes(WORLD_SIZE) }), []);
   const lakePathsD = useMemo(
     () => waterFeatures.lakes.map((l) => ({ key: `lake-${l.seed}`, d: buildLakePathD(l, tileWidth) })),
+    [waterFeatures, tileWidth]
+  );
+  // Kıyı şeridi (çim->kum->su geçiş dokusu, bkz. public/terrain/coastline-1.webp
+  // + riversLakes.ts computeCoastSegments dosya başı yorumu) -- gölün ÇİZİLEN
+  // eğrisi boyunca döndürülmüş küçük doku parçaları. COAST_BAND_DEPTH kıyıya
+  // dik derinlik (dokunun tamamı -- çim ucu dışa, su ucu göle bakacak şekilde
+  // bu derinliğe sığdırılıyor); tileWidth'e bağlı ki zoom değişince de
+  // orantılı kalsın.
+  const COAST_BAND_DEPTH_FACTOR = 2;
+  const coastSegments = useMemo(
+    () => computeCoastSegments(waterFeatures.lakes, tileWidth),
     [waterFeatures, tileWidth]
   );
 
@@ -254,6 +270,31 @@ export function MapView({
           <path key={l.key} d={l.d} className="lake-shape" />
         ))}
       </svg>
+      {/* Kıyı şeridi -- .world-water'ın (düz mavi dolgu) HEMEN üstünde, AYNI
+          DOM-sıra kuralına göre (sabit z-index 1, ama sonraki kardeş olduğu
+          için üstte boyanıyor) -- painter's algorithm'a katılmıyor (bkz.
+          riversLakes.ts computeCoastSegments dosya başı yorumu). Her segment
+          gölün eğrisi üstünde bir nokta + o noktadaki dışa-açı; div'in
+          transform-origin'i merkezde kaldığı için rotate() segmenti kendi
+          merkezi etrafında döndürüyor. */}
+      <div className="world-coastline">
+        {coastSegments.map((s) => {
+          const depth = tileWidth * COAST_BAND_DEPTH_FACTOR;
+          return (
+            <div
+              key={s.key}
+              className="world-coastline-segment"
+              style={{
+                left: s.x - s.length / 2,
+                top: s.y - depth / 2,
+                width: s.length,
+                height: depth,
+                transform: `rotate(${s.angleDeg}deg)`,
+              }}
+            />
+          );
+        })}
+      </div>
       {/* FAZ 5 -- Territory katmanı. .world-water'ın HEMEN üstünde, TÜM
           .iso-tile-group'ların (z 10+) altında -- sabit z-index 2, terrain/su
           gibi zemine yapışık bir katman, painter's algorithm'a katılmıyor.
