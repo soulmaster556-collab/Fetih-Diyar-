@@ -18,6 +18,8 @@ import {
   applyMultiIslandBridgeMigration,
   applyClusteredIslandsMigration,
   applyDenseArchipelagoMigration,
+  applyBridgeRangeFixMigration,
+  applyShortBridgeCapMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -62,6 +64,12 @@ async function main() {
   // yukarıdakiler gibi ÖNCE ve senkron (bkz. mapgen.ts
   // applyDenseArchipelagoMigration yorumu).
   await applyDenseArchipelagoMigration();
+  // Köprü uzunluğunu naval_attack_range'e bağlayan düzeltme -- yukarıdakiler
+  // gibi ÖNCE ve senkron (bkz. mapgen.ts applyBridgeRangeFixMigration yorumu).
+  await applyBridgeRangeFixMigration();
+  // Köprüleri sabit bir üst sınırla kısaltan düzeltme -- yukarıdakiler gibi
+  // ÖNCE ve senkron (bkz. mapgen.ts applyShortBridgeCapMigration yorumu).
+  await applyShortBridgeCapMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);

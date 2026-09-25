@@ -41,14 +41,12 @@ const ISLAND_MAX_SIZE = 650;
 // kenarların hücre sınırında keskin bir dikdörtgen gibi kesilmesini önler.
 const CELL_OVERFLOW = 5;
 const MAX_SEED_ATTEMPTS_PER_ISLAND = 80;
-// İki adanın ızgarada komşu sayılıp aralarına köprü kurulması için üst sınır
-// (hex mesafe). Izgara-komşu hücrelerin adaları normalde çok daha yakın
-// çıkıyor (bkz. CELL_OVERFLOW), bu sadece bir hücrenin ada üretimi başarısız
-// olup (bkz. "if (!seed) return") beklenmedik derecede büyük bir boşluk
-// kaldığı nadir durumda saçma uzunlukta bir köprü çizilmesini önlemek için
-// bir güvenlik sınırı -- bu durumda bağlılık, aşağıdaki union-find onarım
-// geçişiyle (uzunluk sınırı olmadan) yine de sağlanır.
-const MAX_BRIDGE_HEX_LENGTH = 30;
+// Köprüler kısa/dar bir geçiş hissi vermeli -- kullanıcı isteği net: "uzun
+// köprü istemiyorum". Gerçek üst sınır her zaman bunun VE canlı
+// naval_attack_range ayarının (bkz. generateIslandLayout yorumu) küçüğü,
+// yani bu sabit hiçbir zaman aşılmaz, naval_attack_range daha yüksek
+// ayarlansa bile.
+const MAX_BRIDGE_HEX_LENGTH_HARD_CAP = 8;
 // Izgara hücrelerinin 8 yönlü komşuluğu (çapraz dahil) -- pickClusteredCellIndices
 // (kümeleme) VE generateBridges (hangi ada çiftlerinin köprüyle bağlanacağı)
 // AYNI komşuluk tanımını kullanıyor, aksi halde kümelenmiş ama köprüsüz
@@ -369,7 +367,14 @@ function generateRectangleIsland(): LandTile[] {
  * fazla parçaya bölmek istenirse ISLAND_COUNT'u 10'a çıkarmak bu fonksiyonu
  * tekrar devreye sokar.
  */
-function generateIslandLayout(): LandTile[] {
+// maxBridgeHexLength: çağıran taraf (ensureMapGenerated) min(naval_attack_range,
+// MAX_BRIDGE_HEX_LENGTH_HARD_CAP) hesaplayıp veriyor -- iki ayrı sınır: (1)
+// naval_attack_range'den uzun bir köprü zaten hiçbir zaman saldırıyla
+// geçilemiyor (bkz. routes/tiles.ts canReach), (2) kullanıcı isteği ayrıca
+// ve net: "uzun köprü istemiyorum" -- bu ikincisi, naval_attack_range admin
+// panelinden yüksek bir değere çekilse bile köprülerin kısa/dar kalmasını
+// garanti eden sabit bir üst sınır (bkz. MAX_BRIDGE_HEX_LENGTH_HARD_CAP).
+function generateIslandLayout(maxBridgeHexLength: number): LandTile[] {
   const allTiles: LandTile[] = ISLAND_COUNT === 1 ? generateRectangleIsland() : [];
   const occupied = new Map<string, number>(); // "x,y" -> islandId
   for (const t of allTiles) occupied.set(key(t.x, t.y), t.islandId);
@@ -491,7 +496,7 @@ function generateIslandLayout(): LandTile[] {
   // hiçbir ada karosunun isCoastal/isNpcSafe değerini bozmasınlar -- köprü
   // bitişiğindeki ada karoları zaten kıyı/tampon olarak işaretli kalır,
   // bu FAZLADAN güvenli (eksik değil), bilerek dokunulmuyor.
-  const bridgeTiles = generateBridges(allTiles, occupied, islandCellIndex);
+  const bridgeTiles = generateBridges(allTiles, occupied, islandCellIndex, maxBridgeHexLength);
   for (const b of bridgeTiles) {
     occupied.set(key(b.x, b.y), b.islandId);
     allTiles.push(b);
@@ -589,7 +594,8 @@ function nearestCoastalPair(
 function generateBridges(
   allTiles: LandTile[],
   occupied: Map<string, number>,
-  islandCellIndex: Map<number, number>
+  islandCellIndex: Map<number, number>,
+  maxBridgeHexLength: number
 ): LandTile[] {
   const islandIds = Array.from(new Set(allTiles.map((t) => t.islandId)));
   if (islandIds.length <= 1) return [];
@@ -623,7 +629,7 @@ function generateBridges(
       const k = edgeKey(islandId, neighborIslandId);
       if (edges.has(k)) continue;
       const pair = nearestCoastalPair(coastalByIsland, islandId, neighborIslandId);
-      if (!pair || pair.dist > MAX_BRIDGE_HEX_LENGTH) continue;
+      if (!pair || pair.dist > maxBridgeHexLength) continue;
       edges.set(k, { from: islandId, to: neighborIslandId, a: pair.a, b: pair.b, dist: pair.dist });
     }
   }
@@ -631,9 +637,13 @@ function generateBridges(
   // 2) Bağlılık onarımı: yukarıdaki ızgara-komşuluğu bazlı köprüler bazı
   // adaları (bir hücrenin üretimi başarısız olduğu nadir durumda) bağlı
   // bırakmayabilir. Union-Find ile bağlı bileşenleri bulup, birden fazla
-  // bileşen kaldığı sürece en yakın çifti (uzunluk sınırı OLMADAN) Prim
-  // mantığıyla birbirine bağlıyoruz -- bu SADECE eksik kalanlar için
-  // çalışır, ana köprü ağı zaten yukarıda kuruldu.
+  // bileşen kaldığı sürece en yakın çifti Prim mantığıyla birbirine
+  // bağlıyoruz -- bu SADECE eksik kalanlar için çalışır, ana köprü ağı
+  // zaten yukarıda kuruldu. Burada da AYNI maxBridgeHexLength sınırı
+  // geçerli: en yakın çift bile bu mesafeden uzaksa köprü kurmuyoruz (o
+  // bileşen köprüsüz kalır) -- naval_attack_range zaten o mesafedeki bir
+  // saldırıyı köprü olsa da reddedeceği için "her ne pahasına bağla" anlamsız,
+  // sadece görsel olarak asla kullanılamayacak dev bir köprü üretirdi.
   const parent = new Map<number, number>();
   islandIds.forEach((id) => parent.set(id, id));
   function find(id: number): number {
@@ -677,7 +687,7 @@ function generateBridges(
         }
       }
     }
-    if (!best) break; // olmamalı ama sonsuz döngüye girmeyelim
+    if (!best || best.dist > maxBridgeHexLength) break; // menzil dışında -- köprüsüz bırak
     const k = edgeKey(best.from, best.to);
     if (!edges.has(k)) edges.set(k, best);
     union(best.from, best.to);
@@ -854,12 +864,52 @@ export async function applyDenseArchipelagoMigration() {
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita yoğun takımada olarak yeniden üretilecek.`);
 }
 
+// Köprü uzunluk sınırı (eski sabit MAX_BRIDGE_HEX_LENGTH=30) canlı
+// `naval_attack_range` ayarından (varsayılan 15) bağımsızdı -- routes/tiles.ts
+// canReach FARKLI adadaki bir saldırıyı bu mesafeden uzaksa köprü olsa da
+// reddettiği için, 15'ten uzun her köprü asla kullanılamayan saf bir dekordu
+// ("adam bu köprüyü geçmek için bekliyor" sorusu bunu ortaya çıkardı). Bu
+// geçiş TEK SEFERLİK olarak haritayı, köprü sınırı artık settings.naval_
+// attack_range'e bağlı yeni algoritmayla yeniden üretiyor.
+export async function applyBridgeRangeFixMigration() {
+  const MIGRATION_NAME = "bridge_range_fix_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: köprü uzunluğu naval_attack_range'e bağlanıyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita menzil-uyumlu köprülerle yeniden üretilecek.`);
+}
+
+// Kullanıcı geri bildirimi net: "uzun köprü istemiyorum" -- naval_attack_range
+// (15) hâlâ görsel olarak uzun kalabiliyordu. Bu geçiş MAX_BRIDGE_HEX_LENGTH_
+// HARD_CAP'i (8) devreye sokup haritayı kısa köprülerle yeniden üretiyor.
+export async function applyShortBridgeCapMigration() {
+  const MIGRATION_NAME = "short_bridge_cap_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: köprüler kısaltılıyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita kısa köprülerle yeniden üretilecek.`);
+}
+
 export async function ensureMapGenerated(settings: Settings) {
   const { rows } = await pool.query<{ count: string }>("SELECT COUNT(*)::int as count FROM tiles");
   if (Number(rows[0].count) > 0) return;
 
   const now = Date.now();
-  const layout = generateIslandLayout();
+  const layout = generateIslandLayout(Math.min(settings.naval_attack_range, MAX_BRIDGE_HEX_LENGTH_HARD_CAP));
   // Göl konumları client'la (riversLakes.ts) BİREBİR aynı, dünya
   // koordinatına göre deterministik üretiliyor (bkz. decor.ts) -- göl
   // altındaki hiçbir karo asla NPC/oyuncu kalesi olamaz (bkz. aşağıdaki
