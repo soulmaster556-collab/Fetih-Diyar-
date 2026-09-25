@@ -100,6 +100,8 @@ async function removeFromGuild(client: { query: (typeof pool)["query"] }, player
   }
   return true;
 }
+    await client.query("DELETE FROM chat_messages WHERE player_id = $1", [id]);
+    await client.query("DELETE FROM reinforcement_orders WHERE from_player_id = $1", [id]);
 
 // GET /admin/players?q=&limit=&offset= -- aranabilir, sayfalanabilir liste.
 // Canlı altın/asker leaderboard'daki (players.ts) aynı yaklaşımla, tüm
