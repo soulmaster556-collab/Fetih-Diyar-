@@ -68,15 +68,18 @@ function tileKey(x: number, y: number): string {
 }
 
 // ---------------------------------------------------------------------
-// Oyuncu "etki alanı" (influence) diski -- kullanıcı isteği: her oyuncu
-// karosu merkezden itibaren 3 hex yarıçaplı bir daire yayıyor (ilk sürümde
-// 5'ti -- kullanıcı geri bildirimi: "çok oldu", 3'e düşürüldü), aynı sahibin
-// diskleri örtüşürse/bitişikse TEK bölge olarak birleşiyor (bkz. dosya başı
-// yorumu). Axial hex mesafesi (dx,dy) -> (|dx|+|dy|+|dx+dy|)/2 (HEX_DIRECTIONS
-// ile aynı eksen kuralı, standart axial-distance formülü). Offsets bir kere
-// hesaplanıp modül seviyesinde tutuluyor -- radius sabit olduğu için her
-// region hesaplamasında yeniden üretmeye gerek yok.
-export const PLAYER_INFLUENCE_RADIUS = 3;
+// Oyuncu "etki alanı" (influence) diski -- ilk sürümde 5, sonra 3 hex
+// yarıçaplıydı ("çok oldu" geri bildirimiyle düşürülmüştü), ama 3'te bile
+// TEK bir düşük seviyeli kale gerçek sahiplik alanından çok daha büyük,
+// dağınık bir taralı bölge gösteriyordu ("kale aldıkça kendi alanı gibi
+// ilerlemeli, çok dağılıyor" geri bildirimi). Artık 0 -- yani disk devre
+// dışı, taralı bölge SADECE gerçekten sahip olunan (ve birbirine bitişik)
+// karoları kapsıyor. İki kale bitişik/komşu değilse ayrı ayrı taralı kalır;
+// bölge yalnızca oyuncu gerçekten bitişik karo fethettikçe büyür. Axial hex
+// mesafesi (dx,dy) -> (|dx|+|dy|+|dx+dy|)/2 (HEX_DIRECTIONS ile aynı eksen
+// kuralı, standart axial-distance formülü). Mekanizma ileride tekrar
+// istenirse (bkz. hexOffsetsWithinRadius) sadece bu sabiti artırmak yeterli.
+export const PLAYER_INFLUENCE_RADIUS = 0;
 
 function hexOffsetsWithinRadius(radius: number): [number, number][] {
   const offsets: [number, number][] = [];

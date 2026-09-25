@@ -12,11 +12,15 @@ export const VIEWPORT_MARGIN = 6;
 // Dizi ~×1.31 sabit oranla (geometrik dizi) 8 kademeye çıkarılmıştı; kullanıcı
 // isteğiyle en yakın 2 kademe (248/320) tekrar kaldırıldı -- en yakın zoom
 // artık 189px.
-export const TILE_WIDTHS = [48, 63, 83, 109, 144, 189];
-// Varsayılan başlangıç zoom'u kullanıcı isteğiyle bir kademe geri çekildi
-// (144 -> 109, index 4 -> 3) -- standart oyun mesafesi artık biraz daha
-// uzaktan, haritadan daha fazlası tek ekranda görünüyor.
-export const DEFAULT_TILE_WIDTH_INDEX = 3;
+// Kullanıcı isteğiyle ("zoom'u x2 daha uzaklaştır, adaları daha net açık
+// görmek istiyorum") uzaklaşma ucuna iki yeni kademe (34, 24) eklendi --
+// eski en uzak kademe (48) artık ne varsayılan ne de dizinin sonu, sadece bir
+// ara basamak. Varsayılan da eski varsayılandan (109) yaklaşık 2 kat daha
+// uzağa (48) çekildi ki haritayı açar açmaz adaların genel şekli tek ekranda
+// görünsün; isteyen kullanıcı yine de 2 kademe daha (34, 24) yakınlaşmadan
+// önce uzaklaşabilir.
+export const TILE_WIDTHS = [24, 34, 48, 63, 83, 109, 144, 189];
+export const DEFAULT_TILE_WIDTH_INDEX = 2;
 
 // Kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın diye
 // NPC kale boyutu bu orana göre hesaplanıyor (bkz. components/MapView.tsx npcBoxWidth).

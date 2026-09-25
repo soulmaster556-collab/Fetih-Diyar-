@@ -16,6 +16,7 @@ import {
   applyLakeLockMigration,
   applyLakePolygonFixMigration,
   applyMultiIslandBridgeMigration,
+  applyClusteredIslandsMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -52,6 +53,10 @@ async function main() {
   // Tek dev adadan çoklu adaya + köprülere geçiş -- yukarıdakiler gibi ÖNCE
   // ve senkron (bkz. mapgen.ts applyMultiIslandBridgeMigration yorumu).
   await applyMultiIslandBridgeMigration();
+  // Ada ızgara seçimi kümelenmiş hale getirildi + kapalı deniz cepleri
+  // dolduruldu -- yukarıdakiler gibi ÖNCE ve senkron (bkz. mapgen.ts
+  // applyClusteredIslandsMigration yorumu).
+  await applyClusteredIslandsMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);

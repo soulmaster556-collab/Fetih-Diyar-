@@ -87,13 +87,155 @@ function buildGridCells(): CellBounds[] {
   return cells;
 }
 
-function shuffled<T>(arr: T[]): T[] {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
+// Izgara hücreleri eskiden TAMAMEN rastgele seçiliyordu (shuffled(...).slice)
+// -- bu, adaların haritanın rastgele köşelerine saçılıp aralarında devasa,
+// boş bir deniz şeridi (ve o şeridi geçen anlamsız derecede uzun köprüler,
+// bkz. generateBridges) bırakmasına yol açıyordu ("adalar birbirine çok
+// uzak" geri bildirimi). Bunun yerine rastgele bir hücreden başlayıp her
+// adımda o ana kadar seçilmiş hücrelerden birinin ızgara komşusunu (8 yönlü
+// -- çapraz komşuluk da dahil, kümeyi daha sıkı tutar) rastgele ekleyerek
+// KÜMELENMİŞ bir seçim yapıyoruz. Sonuç: seçilen hücreler ızgarada bitişik
+// bir "leke" oluşturur, dolayısıyla adalar da birbirine yakın büyür ve MST
+// köprüleri (bkz. generateBridges) sadece komşu hücreler arası kısa
+// mesafeler olur.
+function pickClusteredCellIndices(rows: number, cols: number, count: number): number[] {
+  const total = rows * cols;
+  const take = Math.min(count, total);
+  const toIndex = (row: number, col: number) => row * cols + col;
+
+  const GRID_DIRS_8: [number, number][] = [
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [1, 1], [1, -1], [-1, 1], [-1, -1],
+  ];
+
+  const startRow = Math.floor(Math.random() * rows);
+  const startCol = Math.floor(Math.random() * cols);
+  const selected: number[] = [toIndex(startRow, startCol)];
+  const selectedSet = new Set<number>(selected);
+
+  while (selected.length < take) {
+    const frontier: number[] = [];
+    for (const idx of selected) {
+      const row = Math.floor(idx / cols);
+      const col = idx % cols;
+      for (const [dr, dc] of GRID_DIRS_8) {
+        const nr = row + dr;
+        const nc = col + dc;
+        if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+        const nIdx = toIndex(nr, nc);
+        if (selectedSet.has(nIdx)) continue;
+        frontier.push(nIdx);
+      }
+    }
+
+    let next: number;
+    if (frontier.length > 0) {
+      next = frontier[Math.floor(Math.random() * frontier.length)];
+    } else {
+      // Izgara komşuluğu tükendi (çok küçük bir ızgarada teorik olarak
+      // mümkün) -- kalan herhangi bir hücreyle devam et.
+      const remaining: number[] = [];
+      for (let i = 0; i < total; i++) if (!selectedSet.has(i)) remaining.push(i);
+      if (remaining.length === 0) break;
+      next = remaining[Math.floor(Math.random() * remaining.length)];
+    }
+    selected.push(next);
+    selectedSet.add(next);
   }
-  return copy;
+
+  return selected;
+}
+
+// Büyüme algoritması (bkz. pickGrowthOrigin) ince koy/körfezleri teşvik
+// ettiği için bazen böyle bir koyun ağzı kazayla tamamen kapanıp adanın
+// ortasında erişilemez, yuvarlak/blob görünümlü küçük bir deniz cebi
+// bırakabiliyor ("haritada gereksiz yuvarlak göletler var" geri bildirimi --
+// göl sistemi client'tan tamamen kaldırılmış olsa bile bu cepler düz
+// .world-sea mavisiyle görünmeye devam ediyordu). Dünyanın dört kenarından
+// başlayan bir flood-fill ile GERÇEKTEN açık denize ulaşan boş karoları
+// buluyoruz; ulaşamayan her bağlı boş karo kümesi tanım gereği kapalı bir
+// cep demektir -- cebi çevreleyen komşu karoların en çok ait olduğu adaya
+// (birden fazla adayla sınırsa çoğunluk kazanır) kara olarak katıyoruz.
+function fillEnclosedSeaPockets(occupied: Map<string, number>): LandTile[] {
+  const reachable = new Set<string>();
+  const queue: [number, number][] = [];
+
+  function markReachable(x: number, y: number) {
+    if (occupied.has(key(x, y))) return;
+    const k = key(x, y);
+    if (reachable.has(k)) return;
+    reachable.add(k);
+    queue.push([x, y]);
+  }
+
+  for (let x = 0; x < WORLD_SIZE; x++) {
+    markReachable(x, 0);
+    markReachable(x, WORLD_SIZE - 1);
+  }
+  for (let y = 0; y < WORLD_SIZE; y++) {
+    markReachable(0, y);
+    markReachable(WORLD_SIZE - 1, y);
+  }
+  while (queue.length > 0) {
+    const [x, y] = queue.pop()!;
+    for (const [nx, ny] of neighbors6(x, y)) {
+      if (!inBounds(nx, ny)) continue;
+      if (occupied.has(key(nx, ny))) continue;
+      markReachable(nx, ny);
+    }
+  }
+
+  const filled: LandTile[] = [];
+  const visitedPocket = new Set<string>();
+
+  for (let x = 0; x < WORLD_SIZE; x++) {
+    for (let y = 0; y < WORLD_SIZE; y++) {
+      const startKey = key(x, y);
+      if (occupied.has(startKey) || reachable.has(startKey) || visitedPocket.has(startKey)) continue;
+
+      // Bu kapalı cebin tüm hücrelerini BFS ile topla, aynı anda sınırdaki
+      // kara komşularını da say (cep birden fazla adaya komşuysa çoğunluk
+      // kazanır).
+      const pocket: [number, number][] = [[x, y]];
+      visitedPocket.add(startKey);
+      const neighborCounts = new Map<number, number>();
+      let head = 0;
+      while (head < pocket.length) {
+        const [px, py] = pocket[head++];
+        for (const [nx, ny] of neighbors6(px, py)) {
+          if (!inBounds(nx, ny)) continue;
+          const nk = key(nx, ny);
+          const owner = occupied.get(nk);
+          if (owner !== undefined) {
+            neighborCounts.set(owner, (neighborCounts.get(owner) ?? 0) + 1);
+            continue;
+          }
+          if (reachable.has(nk) || visitedPocket.has(nk)) continue;
+          visitedPocket.add(nk);
+          pocket.push([nx, ny]);
+        }
+      }
+
+      if (neighborCounts.size === 0) continue; // kuşatılmamış -- olmamalı ama güvenlik payı
+
+      let bestId = -1;
+      let bestCount = -1;
+      for (const [id, count] of neighborCounts) {
+        if (count > bestCount) {
+          bestId = id;
+          bestCount = count;
+        }
+      }
+
+      for (const [px, py] of pocket) {
+        const k = key(px, py);
+        occupied.set(k, bestId);
+        filled.push({ x: px, y: py, islandId: bestId, isCoastal: false, isNpcSafe: false, isBridge: false });
+      }
+    }
+  }
+
+  return filled;
 }
 
 function key(x: number, y: number) {
@@ -225,7 +367,10 @@ function generateIslandLayout(): LandTile[] {
   }
 
   if (ISLAND_COUNT > 1) {
-    const cells: CellBounds[] = shuffled(buildGridCells()).slice(0, ISLAND_COUNT);
+    const allCells = buildGridCells();
+    const cells: CellBounds[] = pickClusteredCellIndices(GRID_ROWS, GRID_COLS, ISLAND_COUNT).map(
+      (i) => allCells[i]
+    );
 
     cells.forEach((cell, idx) => {
       const islandId = idx + 1;
@@ -277,6 +422,13 @@ function generateIslandLayout(): LandTile[] {
         allTiles.push({ x, y, islandId, isCoastal: false, isNpcSafe: false, isBridge: false });
       }
     });
+  }
+
+  // Büyüme sırasında kazayla kapanmış deniz ceplerini kara ile doldur (bkz.
+  // fillEnclosedSeaPockets dosya başı yorumu) -- kıyı/isNpcSafe hesabından
+  // ÖNCE çalışmalı ki bu yeni kara karoları da doğru şekilde işaretlensin.
+  for (const t of fillEnclosedSeaPockets(occupied)) {
+    allTiles.push(t);
   }
 
   // Kıyı hesaplama: bir karo, aynı adaya ait OLMAYAN (farklı ada ya da boş
@@ -538,6 +690,28 @@ export async function applyMultiIslandBridgeMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita çoklu ada olarak yeniden üretilecek.`);
+}
+
+// Ada ızgara hücre seçimi TAMAMEN rastgeleden KÜMELENMİŞ seçime (bkz.
+// pickClusteredCellIndices) çevrildi ve büyüme sırasında kazayla oluşan
+// kapalı deniz cepleri artık kara ile dolduruluyor (bkz.
+// fillEnclosedSeaPockets) -- kullanıcı geri bildirimi: "adalar birbirine çok
+// uzak, aralarında saçma derecede uzun köprüler var" ve "haritada gereksiz
+// yuvarlak göletler var". Koordinat sistemi aynı ama önceki haritayla
+// uyuşmuyor, bir kez daha tam sıfırlama gerekiyor -- aynı TRUNCATE deseni.
+export async function applyClusteredIslandsMigration() {
+  const MIGRATION_NAME = "clustered_islands_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: adalar kümelenmiş yerleşime geçiyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita kümelenmiş adalarla yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {
