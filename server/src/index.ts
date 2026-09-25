@@ -17,6 +17,7 @@ import {
   applyLakePolygonFixMigration,
   applyMultiIslandBridgeMigration,
   applyClusteredIslandsMigration,
+  applyDenseArchipelagoMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -57,6 +58,10 @@ async function main() {
   // dolduruldu -- yukarıdakiler gibi ÖNCE ve senkron (bkz. mapgen.ts
   // applyClusteredIslandsMigration yorumu).
   await applyClusteredIslandsMigration();
+  // Uçtan uca bitişik/yoğun takımada + çoklu köprü sistemine geçiş --
+  // yukarıdakiler gibi ÖNCE ve senkron (bkz. mapgen.ts
+  // applyDenseArchipelagoMigration yorumu).
+  await applyDenseArchipelagoMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);

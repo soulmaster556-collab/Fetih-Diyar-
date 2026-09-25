@@ -17,14 +17,22 @@ const WORLD_SIZE = 200;
 // Hücre sayısından daha az ada üretilerek (ISLAND_COUNT < GRID_COLS×GRID_ROWS)
 // birkaç hücre boş deniz olarak kalır — uzaktan bakınca aşırı düzenli/ızgara
 // gibi görünmesini engelleyen doğal boşluklar.
-const GRID_COLS = 6;
-const GRID_ROWS = 6;
+//
+// Kullanıcı isteği ("dünyada baştan sona bitişik bir takımada olsun, adalar
+// arası tek değil birkaç geçiş/köprü olabilsin"): ızgara 6×6'dan 7×7'ye (49
+// hücre) sıklaştırıldı, ISLAND_COUNT da 10'dan 45'e çıkarıldı -- hücrelerin
+// neredeyse tamamı (49'da 45'i) dolu, sadece birkaçı doğal boşluk için boş
+// kalıyor. Köprüler de artık her adanın SADECE bir komşusuna değil, ızgarada
+// gerçekten bitişik olduğu HER komşusuna kuruluyor (bkz. generateBridges) --
+// bu yüzden iki ada kümesi arasında birden fazla geçiş noktası olabiliyor.
+const GRID_COLS = 7;
+const GRID_ROWS = 7;
 // Kullanıcı isteğiyle (çoklu ada + köprü) tek dev adadan çoklu adaya geri
 // dönüldü. ISLAND_COUNT === 1 olduğunda generateIslandLayout() yukarıdaki
 // GRID_COLS×GRID_ROWS hücre sistemini tamamen atlayıp doğrudan
 // generateRectangleIsland()'ı çağırıyordu (düz kenarlı dikdörtgen) -- o kod
 // yolu hâlâ duruyor, ISLAND_COUNT'u tekrar 1 yapmak yeterli geri dönüş için.
-const ISLAND_COUNT: number = 10;
+const ISLAND_COUNT: number = 45;
 const ISLAND_MIN_SIZE = 400;
 const ISLAND_MAX_SIZE = 650;
 // Bir ada, organik/yuvarlak kenarlar oluşturabilsin diye kendi hücresinin
@@ -33,6 +41,22 @@ const ISLAND_MAX_SIZE = 650;
 // kenarların hücre sınırında keskin bir dikdörtgen gibi kesilmesini önler.
 const CELL_OVERFLOW = 5;
 const MAX_SEED_ATTEMPTS_PER_ISLAND = 80;
+// İki adanın ızgarada komşu sayılıp aralarına köprü kurulması için üst sınır
+// (hex mesafe). Izgara-komşu hücrelerin adaları normalde çok daha yakın
+// çıkıyor (bkz. CELL_OVERFLOW), bu sadece bir hücrenin ada üretimi başarısız
+// olup (bkz. "if (!seed) return") beklenmedik derecede büyük bir boşluk
+// kaldığı nadir durumda saçma uzunlukta bir köprü çizilmesini önlemek için
+// bir güvenlik sınırı -- bu durumda bağlılık, aşağıdaki union-find onarım
+// geçişiyle (uzunluk sınırı olmadan) yine de sağlanır.
+const MAX_BRIDGE_HEX_LENGTH = 30;
+// Izgara hücrelerinin 8 yönlü komşuluğu (çapraz dahil) -- pickClusteredCellIndices
+// (kümeleme) VE generateBridges (hangi ada çiftlerinin köprüyle bağlanacağı)
+// AYNI komşuluk tanımını kullanıyor, aksi halde kümelenmiş ama köprüsüz
+// (ya da tam tersi) ada çiftleri ortaya çıkabilir.
+const GRID_DIRS_8: [number, number][] = [
+  [1, 0], [-1, 0], [0, 1], [0, -1],
+  [1, 1], [1, -1], [-1, 1], [-1, -1],
+];
 // Tek büyük ada, eski küçük adalardan çok daha fazla büyüme adımı
 // gerektiriyor -- 300 durak sınırı bu boyutta erken tetiklenip adayı
 // hedeflenenden küçük bırakabilirdi, bu yüzden yükseltildi. (Artık sadece
@@ -102,11 +126,6 @@ function pickClusteredCellIndices(rows: number, cols: number, count: number): nu
   const total = rows * cols;
   const take = Math.min(count, total);
   const toIndex = (row: number, col: number) => row * cols + col;
-
-  const GRID_DIRS_8: [number, number][] = [
-    [1, 0], [-1, 0], [0, 1], [0, -1],
-    [1, 1], [1, -1], [-1, 1], [-1, -1],
-  ];
 
   const startRow = Math.floor(Math.random() * rows);
   const startCol = Math.floor(Math.random() * cols);
@@ -366,11 +385,16 @@ function generateIslandLayout(): LandTile[] {
     return true;
   }
 
+  // islandId -> ızgaradaki düz hücre indeksi (row*GRID_COLS+col) -- SADECE
+  // gerçekten üretilmiş (aşağıdaki "if (!seed) return" ile atlanmamış)
+  // adalar için dolduruluyor, generateBridges'in hangi ada çiftlerinin
+  // ızgarada komşu olduğunu bulması için kullanılıyor.
+  const islandCellIndex = new Map<number, number>();
+
   if (ISLAND_COUNT > 1) {
     const allCells = buildGridCells();
-    const cells: CellBounds[] = pickClusteredCellIndices(GRID_ROWS, GRID_COLS, ISLAND_COUNT).map(
-      (i) => allCells[i]
-    );
+    const cellIndices = pickClusteredCellIndices(GRID_ROWS, GRID_COLS, ISLAND_COUNT);
+    const cells: CellBounds[] = cellIndices.map((i) => allCells[i]);
 
     cells.forEach((cell, idx) => {
       const islandId = idx + 1;
@@ -421,6 +445,7 @@ function generateIslandLayout(): LandTile[] {
       for (const [x, y] of islandTiles) {
         allTiles.push({ x, y, islandId, isCoastal: false, isNpcSafe: false, isBridge: false });
       }
+      islandCellIndex.set(islandId, cellIndices[idx]);
     });
   }
 
@@ -466,7 +491,7 @@ function generateIslandLayout(): LandTile[] {
   // hiçbir ada karosunun isCoastal/isNpcSafe değerini bozmasınlar -- köprü
   // bitişiğindeki ada karoları zaten kıyı/tampon olarak işaretli kalır,
   // bu FAZLADAN güvenli (eksik değil), bilerek dokunulmuyor.
-  const bridgeTiles = generateBridges(allTiles, occupied);
+  const bridgeTiles = generateBridges(allTiles, occupied, islandCellIndex);
   for (const b of bridgeTiles) {
     occupied.set(key(b.x, b.y), b.islandId);
     allTiles.push(b);
@@ -478,15 +503,25 @@ function generateIslandLayout(): LandTile[] {
 // ---------------------------------------------------------------------
 // Köprüler -- adalar arası dar kara bağlantıları
 // ---------------------------------------------------------------------
-// Kullanıcı isteği: "adalar birbirine yakın olmalı ve aralarında köprü gibi
-// geçiş noktaları olmalı". Yaklaşım: adaları düğüm, en yakın iki kıyı
-// karosu arasındaki hex mesafesini kenar ağırlığı sayan bir GRAF üzerinde
-// minimum spanning tree (Prim algoritması) kuruyoruz -- bu hem TÜM adaların
-// (dolaylı da olsa) kara üzerinden birbirine bağlı olmasını garantiler hem
-// de gereksiz/fazladan köprü çizmez (her ada en az bir köprüyle ağa
-// bağlanır, N ada için tam N-1 köprü). Her MST kenarı için iki kıyı karosu
-// arasına standart hex-çizgi algoritmasıyla (redblobgames.com/grids/
-// hexagons, "Line Drawing") tek hex genişliğinde düz bir hat çiziliyor.
+// Kullanıcı isteği: "adalar birbirine yakın olmalı, aralarında köprü gibi
+// geçiş noktaları olmalı VE bu geçiş tek bir köprüyle sınırlı olmak zorunda
+// değil, birkaç geçiş de olabilir". Eski sürüm TÜM adalar üzerinde bir
+// minimum spanning tree (Prim) kuruyordu -- bu N ada için tam N-1 köprü
+// demekti, yani her ada tam olarak BİR komşusuna bağlıydı (ağaç yapısı).
+// Yeni yaklaşım: iki ada sadece MST'de eşleştiği için değil, IZGARADA
+// GERÇEKTEN KOMŞU (8 yönlü, bkz. GRID_DIRS_8) oldukları için köprüyle
+// bağlanıyor -- adalar artık ızgarayı baştan sona doldurduğundan (bkz.
+// ISLAND_COUNT/GRID_COLS/GRID_ROWS dosya başı yorumu) bu, çoğu ada için
+// BİRDEN FAZLA komşu/köprü demek. Tüm ada çiftlerini (V²) karşılaştırmak
+// yerine sadece ızgara-komşusu olan çiftlere bakmak hem çok daha ucuz hem
+// zaten tek mantıklı seçenek (uzak bir adaya köprü istemiyoruz). Bir
+// hücrenin ada üretimi başarısız olup (bkz. "if (!seed) return") ızgara
+// komşuluğunun tüm adaları bağlamadığı nadir durum için, ayrı kalan
+// bileşenleri union-find ile bulup en yakın kıyı-kıyı çiftiyle (uzunluk
+// sınırı olmadan) birbirine bağlayan bir onarım geçişi var -- bağlılık her
+// zaman garanti. Her köprü kenarı için iki kıyı karosu arasına standart
+// hex-çizgi algoritmasıyla (redblobgames.com/grids/hexagons, "Line
+// Drawing") tek hex genişliğinde düz bir hat çiziliyor.
 function axialToCube(q: number, r: number) {
   return { x: q, y: -q - r, z: r };
 }
@@ -529,7 +564,33 @@ function hexLine(x1: number, y1: number, x2: number, y2: number): [number, numbe
   return pts;
 }
 
-function generateBridges(allTiles: LandTile[], occupied: Map<string, number>): LandTile[] {
+type BridgeEdge = { from: number; to: number; a: [number, number]; b: [number, number]; dist: number };
+
+// İki adanın en yakın kıyı-kıyı karosu çiftini (ve aralarındaki hex
+// mesafeyi) brute-force bulur -- generateBridges hem ızgara-komşu çiftler
+// için hem de onarım geçişinde çağırıyor.
+function nearestCoastalPair(
+  coastalByIsland: Map<number, [number, number][]>,
+  aId: number,
+  bId: number
+): { a: [number, number]; b: [number, number]; dist: number } | null {
+  const aCoastal = coastalByIsland.get(aId) ?? [];
+  const bCoastal = coastalByIsland.get(bId) ?? [];
+  let best: { a: [number, number]; b: [number, number]; dist: number } | null = null;
+  for (const a of aCoastal) {
+    for (const b of bCoastal) {
+      const dist = hexDistance(a[0], a[1], b[0], b[1]);
+      if (!best || dist < best.dist) best = { a, b, dist };
+    }
+  }
+  return best;
+}
+
+function generateBridges(
+  allTiles: LandTile[],
+  occupied: Map<string, number>,
+  islandCellIndex: Map<number, number>
+): LandTile[] {
   const islandIds = Array.from(new Set(allTiles.map((t) => t.islandId)));
   if (islandIds.length <= 1) return [];
 
@@ -541,42 +602,98 @@ function generateBridges(allTiles: LandTile[], occupied: Map<string, number>): L
     coastalByIsland.set(t.islandId, list);
   }
 
-  // Prim: "connected" kümesi rastgele bir adayla başlar, her adımda
-  // connected<->unconnected arası en kısa (kıyı-kıyı) çifti bulup ekler.
-  const connected = new Set<number>([islandIds[0]]);
-  const remaining = new Set(islandIds.slice(1));
-  const bridges: { from: number; to: number; a: [number, number]; b: [number, number] }[] = [];
+  const edgeKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
+  const edges = new Map<string, BridgeEdge>();
 
-  while (remaining.size > 0) {
-    let best: { from: number; to: number; a: [number, number]; b: [number, number]; dist: number } | null = null;
-    for (const fromId of connected) {
-      const fromCoastal = coastalByIsland.get(fromId) ?? [];
-      for (const toId of remaining) {
-        const toCoastal = coastalByIsland.get(toId) ?? [];
-        for (const a of fromCoastal) {
-          for (const b of toCoastal) {
-            const dist = hexDistance(a[0], a[1], b[0], b[1]);
-            if (!best || dist < best.dist) best = { from: fromId, to: toId, a, b, dist };
+  // 1) Izgarada gerçekten komşu (8 yönlü) her ada çiftine bir köprü --
+  // adalar ızgarayı baştan sona doldurduğu için çoğu ada birden fazla
+  // komşuya/köprüye sahip oluyor (kullanıcı isteği: "birkaç geçiş olabilir").
+  const cellIndexToIslandId = new Map<number, number>();
+  for (const [islandId, cellIdx] of islandCellIndex) cellIndexToIslandId.set(cellIdx, islandId);
+
+  for (const [cellIdx, islandId] of cellIndexToIslandId) {
+    const row = Math.floor(cellIdx / GRID_COLS);
+    const col = cellIdx % GRID_COLS;
+    for (const [dr, dc] of GRID_DIRS_8) {
+      const nr = row + dr;
+      const nc = col + dc;
+      if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+      const neighborIslandId = cellIndexToIslandId.get(nr * GRID_COLS + nc);
+      if (neighborIslandId === undefined) continue;
+      const k = edgeKey(islandId, neighborIslandId);
+      if (edges.has(k)) continue;
+      const pair = nearestCoastalPair(coastalByIsland, islandId, neighborIslandId);
+      if (!pair || pair.dist > MAX_BRIDGE_HEX_LENGTH) continue;
+      edges.set(k, { from: islandId, to: neighborIslandId, a: pair.a, b: pair.b, dist: pair.dist });
+    }
+  }
+
+  // 2) Bağlılık onarımı: yukarıdaki ızgara-komşuluğu bazlı köprüler bazı
+  // adaları (bir hücrenin üretimi başarısız olduğu nadir durumda) bağlı
+  // bırakmayabilir. Union-Find ile bağlı bileşenleri bulup, birden fazla
+  // bileşen kaldığı sürece en yakın çifti (uzunluk sınırı OLMADAN) Prim
+  // mantığıyla birbirine bağlıyoruz -- bu SADECE eksik kalanlar için
+  // çalışır, ana köprü ağı zaten yukarıda kuruldu.
+  const parent = new Map<number, number>();
+  islandIds.forEach((id) => parent.set(id, id));
+  function find(id: number): number {
+    let r = id;
+    while (parent.get(r) !== r) r = parent.get(r)!;
+    parent.set(id, r);
+    return r;
+  }
+  function union(a: number, b: number) {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
+  for (const e of edges.values()) union(e.from, e.to);
+
+  function buildComponents(): Map<number, number[]> {
+    const components = new Map<number, number[]>();
+    for (const id of islandIds) {
+      const root = find(id);
+      const list = components.get(root) ?? [];
+      list.push(id);
+      components.set(root, list);
+    }
+    return components;
+  }
+
+  let components = buildComponents();
+  while (components.size > 1) {
+    const roots = Array.from(components.keys());
+    let best: (BridgeEdge & { ra: number; rb: number }) | null = null;
+    for (let i = 0; i < roots.length; i++) {
+      for (let j = i + 1; j < roots.length; j++) {
+        for (const fromId of components.get(roots[i])!) {
+          for (const toId of components.get(roots[j])!) {
+            const pair = nearestCoastalPair(coastalByIsland, fromId, toId);
+            if (!pair) continue;
+            if (!best || pair.dist < best.dist) {
+              best = { from: fromId, to: toId, a: pair.a, b: pair.b, dist: pair.dist, ra: roots[i], rb: roots[j] };
+            }
           }
         }
       }
     }
     if (!best) break; // olmamalı ama sonsuz döngüye girmeyelim
-    bridges.push(best);
-    connected.add(best.to);
-    remaining.delete(best.to);
+    const k = edgeKey(best.from, best.to);
+    if (!edges.has(k)) edges.set(k, best);
+    union(best.from, best.to);
+    components = buildComponents();
   }
 
   const bridgeTiles: LandTile[] = [];
   const bridgeKeys = new Set<string>();
-  for (const br of bridges) {
-    const line = hexLine(br.a[0], br.a[1], br.b[0], br.b[1]);
+  for (const e of edges.values()) {
+    const line = hexLine(e.a[0], e.a[1], e.b[0], e.b[1]);
     for (const [x, y] of line) {
       const k = key(x, y);
       if (occupied.has(k) || bridgeKeys.has(k)) continue; // zaten kara (ada ya da başka bir köprü)
       if (!inBounds(x, y)) continue;
       bridgeKeys.add(k);
-      bridgeTiles.push({ x, y, islandId: br.from, isCoastal: false, isNpcSafe: false, isBridge: true });
+      bridgeTiles.push({ x, y, islandId: e.from, isCoastal: false, isNpcSafe: false, isBridge: true });
     }
   }
   return bridgeTiles;
@@ -712,6 +829,29 @@ export async function applyClusteredIslandsMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita kümelenmiş adalarla yeniden üretilecek.`);
+}
+
+// Kullanıcı isteği: "adalar arasında tek geçiş değil, uçtan uca bitişik bir
+// takımada, kaydırdıkça hep yeni ada çıksın". Izgara 6×6'dan 7×7'ye (49
+// hücre) sıklaştırıldı, ISLAND_COUNT 10'dan 45'e çıkarıldı (hücrelerin
+// neredeyse tamamı dolu) ve köprü sistemi MST'den (her ada tam bir
+// komşuya bağlı) ızgara-komşuluğu bazlı çoklu köprüye geçti (bkz.
+// generateBridges dosya başı yorumu) -- artık bitişik adalar arasında
+// birden fazla geçiş noktası olabiliyor. Koordinat sistemi aynı ama önceki
+// haritayla uyuşmuyor, bir kez daha tam sıfırlama gerekiyor.
+export async function applyDenseArchipelagoMigration() {
+  const MIGRATION_NAME = "dense_archipelago_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: yoğun/bitişik takımadaya geçiliyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita yoğun takımada olarak yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {
