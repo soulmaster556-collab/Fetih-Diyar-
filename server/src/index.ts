@@ -15,6 +15,7 @@ import {
   applyNpcDensityReductionMigrationV5,
   applyLakeLockMigration,
   applyLakePolygonFixMigration,
+  applyMultiIslandBridgeMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -48,6 +49,9 @@ async function main() {
   // Dağ dekoru yeniden tasarımı (tek-hex + 1 tur boşluk kuralı, zoom, ışıltı)
   // sonrası doğrudan "sunucuyu sıfırla" isteği -- bkz. mapgen.ts yorumu.
   await applyDecorRebalanceResetMigration();
+  // Tek dev adadan çoklu adaya + köprülere geçiş -- yukarıdakiler gibi ÖNCE
+  // ve senkron (bkz. mapgen.ts applyMultiIslandBridgeMigration yorumu).
+  await applyMultiIslandBridgeMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);

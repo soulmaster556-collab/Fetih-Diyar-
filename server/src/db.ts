@@ -110,6 +110,15 @@ export async function initSchema() {
   // seferlik göç (applyLakeLockMigration) bu alanı kullanır.
   await pool.query(`ALTER TABLE tiles ADD COLUMN IF NOT EXISTS is_water BOOLEAN NOT NULL DEFAULT false;`);
 
+  // Kare, iki ada arasındaki dar kara köprüsünün bir parçası mı (bkz.
+  // mapgen.ts generateBridges)? Köprüler her zaman EMPTY kalır -- NPC/kale
+  // asla buraya yerleşmez (dar geçiş noktası tıkanmasın diye), ama
+  // is_coastal'dan FARKLI bir kavram: bir köprü karosu su ile çevrili
+  // olduğu için zaten kıyı sayılır, bu ayrı bayrak sadece "burası bilerek
+  // hep boş kalsın" niyetini NPC-yoğunluk migration'larından (ör. gelecekte
+  // boş kareleri NPC'ye çeviren bir geçiş) bile koruma altına almak için.
+  await pool.query(`ALTER TABLE tiles ADD COLUMN IF NOT EXISTS is_bridge BOOLEAN NOT NULL DEFAULT false;`);
+
   // Lonca (klan) sistemi -- basit: bir oyuncu en fazla bir loncaya üye olur.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS guilds (

@@ -19,16 +19,12 @@ const WORLD_SIZE = 200;
 // gibi görünmesini engelleyen doğal boşluklar.
 const GRID_COLS = 6;
 const GRID_ROWS = 6;
-// Test aşamasında birden çok küçük ada yerine TEK büyük bir ada üretiliyor
-// (birkaç kişi aynı anda test edecek, sıkışmasınlar diye geniş; varsayılan
-// yakınlıkta hiçbir yönde deniz görünmemeli).
-// ISLAND_COUNT === 1 olduğunda generateIslandLayout() yukarıdaki
+// Kullanıcı isteğiyle (çoklu ada + köprü) tek dev adadan çoklu adaya geri
+// dönüldü. ISLAND_COUNT === 1 olduğunda generateIslandLayout() yukarıdaki
 // GRID_COLS×GRID_ROWS hücre sistemini tamamen atlayıp doğrudan
-// generateRectangleIsland()'ı çağırıyor (düz kenarlı dikdörtgen, bkz. o
-// fonksiyonun üstündeki not). Adayı tekrar birden fazla parçaya bölmek
-// istersek burayı eski haline (10) döndürüp bir sonraki migration'ı
-// tetiklemek yeterli -- ada üretimi tamamen tersine çevrilebilir.
-const ISLAND_COUNT = 1;
+// generateRectangleIsland()'ı çağırıyordu (düz kenarlı dikdörtgen) -- o kod
+// yolu hâlâ duruyor, ISLAND_COUNT'u tekrar 1 yapmak yeterli geri dönüş için.
+const ISLAND_COUNT: number = 10;
 const ISLAND_MIN_SIZE = 400;
 const ISLAND_MAX_SIZE = 650;
 // Bir ada, organik/yuvarlak kenarlar oluşturabilsin diye kendi hücresinin
@@ -56,6 +52,17 @@ interface LandTile {
   y: number;
   islandId: number;
   isCoastal: boolean;
+  // isCoastal'ın (1 halka) ötesinde 2 halkalık bir güvenlik payı -- NPC
+  // yerleşimi SADECE bu true olan karolarda olabilir (bkz. generateIslandLayout
+  // sonundaki hesap ve ensureMapGenerated). Kullanıcının kesin isteği ("kumsalda
+  // asla kale") tek halkalık isCoastal'a güvenmek yerine burada bilerek daha
+  // geniş bir tampon bırakıyor -- ileride kıyıya görsel bir kumsal bandı
+  // eklenirse (göldeki gibi) o bandın olası taşmasını da kapsasın diye.
+  isNpcSafe: boolean;
+  // İki ada arasındaki köprünün parçası mı (bkz. generateBridges). Bridge
+  // karoları HER ZAMAN EMPTY -- NPC/kale asla buraya yerleşmez, dar geçiş
+  // noktası tıkanmasın diye.
+  isBridge: boolean;
 }
 
 interface CellBounds {
@@ -185,7 +192,7 @@ function generateRectangleIsland(): LandTile[] {
     }
   }
 
-  return coords.map(([x, y]) => ({ x, y, islandId, isCoastal: false }));
+  return coords.map(([x, y]) => ({ x, y, islandId, isCoastal: false, isNpcSafe: false, isBridge: false }));
 }
 
 /**
@@ -267,7 +274,7 @@ function generateIslandLayout(): LandTile[] {
       }
 
       for (const [x, y] of islandTiles) {
-        allTiles.push({ x, y, islandId, isCoastal: false });
+        allTiles.push({ x, y, islandId, isCoastal: false, isNpcSafe: false, isBridge: false });
       }
     });
   }
@@ -284,7 +291,143 @@ function generateIslandLayout(): LandTile[] {
     }
   }
 
+  // İkinci halka: isCoastal'ın komşusu olan (ama kendisi kıyı olmayan)
+  // karolar da NPC için güvenli SAYILMAZ -- bkz. LandTile.isNpcSafe yorumu.
+  // Bunun için önce hangi karoların kıyı olduğunu ayrı bir Set'te tutuyoruz
+  // (yukarıdaki döngü tile'ları zaten işaretledi, burada sadece okuyoruz).
+  const coastalSet = new Set(allTiles.filter((t) => t.isCoastal).map((t) => key(t.x, t.y)));
+  for (const tile of allTiles) {
+    if (tile.isCoastal) continue;
+    let touchesCoastal = false;
+    for (const [nx, ny] of neighbors6(tile.x, tile.y)) {
+      if (coastalSet.has(key(nx, ny))) {
+        touchesCoastal = true;
+        break;
+      }
+    }
+    tile.isNpcSafe = !touchesCoastal;
+  }
+
+  // Köprüler: adaları birbirine bağlayan dar kara şeritleri (bkz.
+  // generateBridges dosya başı yorumu). Bridge karoları allTiles'a EKLENIYOR
+  // (occupied haritasına da) ki isNpcSafe hesabından SONRA eklendikleri için
+  // hiçbir ada karosunun isCoastal/isNpcSafe değerini bozmasınlar -- köprü
+  // bitişiğindeki ada karoları zaten kıyı/tampon olarak işaretli kalır,
+  // bu FAZLADAN güvenli (eksik değil), bilerek dokunulmuyor.
+  const bridgeTiles = generateBridges(allTiles, occupied);
+  for (const b of bridgeTiles) {
+    occupied.set(key(b.x, b.y), b.islandId);
+    allTiles.push(b);
+  }
+
   return allTiles;
+}
+
+// ---------------------------------------------------------------------
+// Köprüler -- adalar arası dar kara bağlantıları
+// ---------------------------------------------------------------------
+// Kullanıcı isteği: "adalar birbirine yakın olmalı ve aralarında köprü gibi
+// geçiş noktaları olmalı". Yaklaşım: adaları düğüm, en yakın iki kıyı
+// karosu arasındaki hex mesafesini kenar ağırlığı sayan bir GRAF üzerinde
+// minimum spanning tree (Prim algoritması) kuruyoruz -- bu hem TÜM adaların
+// (dolaylı da olsa) kara üzerinden birbirine bağlı olmasını garantiler hem
+// de gereksiz/fazladan köprü çizmez (her ada en az bir köprüyle ağa
+// bağlanır, N ada için tam N-1 köprü). Her MST kenarı için iki kıyı karosu
+// arasına standart hex-çizgi algoritmasıyla (redblobgames.com/grids/
+// hexagons, "Line Drawing") tek hex genişliğinde düz bir hat çiziliyor.
+function axialToCube(q: number, r: number) {
+  return { x: q, y: -q - r, z: r };
+}
+
+function cubeRound(x: number, y: number, z: number): [number, number, number] {
+  let rx = Math.round(x);
+  let ry = Math.round(y);
+  let rz = Math.round(z);
+  const xDiff = Math.abs(rx - x);
+  const yDiff = Math.abs(ry - y);
+  const zDiff = Math.abs(rz - z);
+  if (xDiff > yDiff && xDiff > zDiff) rx = -ry - rz;
+  else if (yDiff > zDiff) ry = -rx - rz;
+  else rz = -rx - ry;
+  return [rx, ry, rz];
+}
+
+function hexDistance(x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return (Math.abs(dx) + Math.abs(dy) + Math.abs(dx + dy)) / 2;
+}
+
+// İki hex arasındaki (uçlar dahil) tüm hex'leri, aradaki mesafeye göre
+// eşit adımlarla küp-uzayda enterpole edip en yakın hex'e yuvarlayarak
+// döndürür -- standart, kesintisiz (çapraz atlama yapmayan) bir hex çizgisi.
+function hexLine(x1: number, y1: number, x2: number, y2: number): [number, number][] {
+  const a = axialToCube(x1, y1);
+  const b = axialToCube(x2, y2);
+  const n = Math.max(1, hexDistance(x1, y1, x2, y2));
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const lx = a.x + (b.x - a.x) * t;
+    const ly = a.y + (b.y - a.y) * t;
+    const lz = a.z + (b.z - a.z) * t;
+    const [rx, , rz] = cubeRound(lx, ly, lz);
+    pts.push([rx, rz]); // cube -> axial: q=x, r=z
+  }
+  return pts;
+}
+
+function generateBridges(allTiles: LandTile[], occupied: Map<string, number>): LandTile[] {
+  const islandIds = Array.from(new Set(allTiles.map((t) => t.islandId)));
+  if (islandIds.length <= 1) return [];
+
+  const coastalByIsland = new Map<number, [number, number][]>();
+  for (const t of allTiles) {
+    if (!t.isCoastal) continue;
+    const list = coastalByIsland.get(t.islandId) ?? [];
+    list.push([t.x, t.y]);
+    coastalByIsland.set(t.islandId, list);
+  }
+
+  // Prim: "connected" kümesi rastgele bir adayla başlar, her adımda
+  // connected<->unconnected arası en kısa (kıyı-kıyı) çifti bulup ekler.
+  const connected = new Set<number>([islandIds[0]]);
+  const remaining = new Set(islandIds.slice(1));
+  const bridges: { from: number; to: number; a: [number, number]; b: [number, number] }[] = [];
+
+  while (remaining.size > 0) {
+    let best: { from: number; to: number; a: [number, number]; b: [number, number]; dist: number } | null = null;
+    for (const fromId of connected) {
+      const fromCoastal = coastalByIsland.get(fromId) ?? [];
+      for (const toId of remaining) {
+        const toCoastal = coastalByIsland.get(toId) ?? [];
+        for (const a of fromCoastal) {
+          for (const b of toCoastal) {
+            const dist = hexDistance(a[0], a[1], b[0], b[1]);
+            if (!best || dist < best.dist) best = { from: fromId, to: toId, a, b, dist };
+          }
+        }
+      }
+    }
+    if (!best) break; // olmamalı ama sonsuz döngüye girmeyelim
+    bridges.push(best);
+    connected.add(best.to);
+    remaining.delete(best.to);
+  }
+
+  const bridgeTiles: LandTile[] = [];
+  const bridgeKeys = new Set<string>();
+  for (const br of bridges) {
+    const line = hexLine(br.a[0], br.a[1], br.b[0], br.b[1]);
+    for (const [x, y] of line) {
+      const k = key(x, y);
+      if (occupied.has(k) || bridgeKeys.has(k)) continue; // zaten kara (ada ya da başka bir köprü)
+      if (!inBounds(x, y)) continue;
+      bridgeKeys.add(k);
+      bridgeTiles.push({ x, y, islandId: br.from, isCoastal: false, isNpcSafe: false, isBridge: true });
+    }
+  }
+  return bridgeTiles;
 }
 
 // Kare gridden hex'e geçiş: x,y ile axial q,r aynı iki tamsayı kolonunda
@@ -377,6 +520,26 @@ export async function applyDecorRebalanceResetMigration() {
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita yeniden üretilecek.`);
 }
 
+// Çoklu ada + köprü geçişi: ISLAND_COUNT tekrar 1'den 10'a çıkarıldı,
+// NPC güvenlik tamponu isCoastal'dan isNpcSafe'e (2 halka) genişletildi ve
+// adalar arasına köprüler eklendi (bkz. generateBridges). Koordinat sistemi
+// aynı ama önceki tek-dev-ada haritasıyla uyuşmuyor, bir kez daha tam
+// sıfırlama gerekiyor -- aynı TRUNCATE deseni.
+export async function applyMultiIslandBridgeMigration() {
+  const MIGRATION_NAME = "multi_island_bridge_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: çoklu ada + köprü sistemine geçiliyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita çoklu ada olarak yeniden üretilecek.`);
+}
+
 export async function ensureMapGenerated(settings: Settings) {
   const { rows } = await pool.query<{ count: string }>("SELECT COUNT(*)::int as count FROM tiles");
   if (Number(rows[0].count) > 0) return;
@@ -403,10 +566,12 @@ export async function ensureMapGenerated(settings: Settings) {
 
       for (const tile of chunk) {
         const isWater = isWaterAtWorldPosition(tile.x, tile.y, lakes);
-        // Kıyı karolarında (adanın dış sınırından 1 kare) ve göl altındaki
-        // karolarda asla NPC kampı oluşmaz -- sadece adanın iç, kuru kısmı
-        // NPC'ye açık.
-        const isNpc = !tile.isCoastal && !isWater && Math.random() < settings.npc_spawn_chance;
+        // NPC yerleşimi SADECE isNpcSafe (kıyıdan 2 halka içeride, bkz.
+        // LandTile.isNpcSafe yorumu) VE köprü DEĞİL VE göl altında değilse
+        // olabilir -- kullanıcının kesin isteği ("kumsalda asla kale")
+        // burada üç ayrı garantiyle korunuyor.
+        const isNpc =
+          tile.isNpcSafe && !tile.isBridge && !isWater && Math.random() < settings.npc_spawn_chance;
         // Kullanıcı isteğiyle 1-3 -> 1-5 aralığına çıkarıldı (bkz.
         // client/src/game/tileImages.ts NPC_LEVEL_TIERS -- görsel eşikler
         // 10/20/30'a çekildiği için 1-5 arası hâlâ hep en düşük tier
@@ -415,7 +580,7 @@ export async function ensureMapGenerated(settings: Settings) {
         const production = productionForLevel(level, settings);
 
         values.push(
-          `($${p++}, $${p++}, NULL, $${p++}, $${p++}, $${p++}, $${p++}, 0, 0, $${p++}, $${p++}, $${p++}, $${p++})`
+          `($${p++}, $${p++}, NULL, $${p++}, $${p++}, $${p++}, $${p++}, 0, 0, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`
         );
         params.push(
           tile.x,
@@ -427,13 +592,14 @@ export async function ensureMapGenerated(settings: Settings) {
           isNpc ? level * 20 : 0, // NPC garrison, static
           now,
           tile.isCoastal,
-          isWater
+          isWater,
+          tile.isBridge
         );
       }
 
       await client.query(
         `INSERT INTO tiles (x, y, owner_id, island_id, tile_type, level, gold_per_hour,
-                            troops_per_hour, stored_gold, stored_troops, last_collected_at, is_coastal, is_water)
+                            troops_per_hour, stored_gold, stored_troops, last_collected_at, is_coastal, is_water, is_bridge)
          VALUES ${values.join(", ")}`,
         params
       );
@@ -456,7 +622,8 @@ export async function ensureMapGenerated(settings: Settings) {
 // çünkü bir kale asla suyun içinde başlamamalı (bkz. is_water yorumu).
 export async function pickRandomEmptyTile(): Promise<number | null> {
   const { rows } = await pool.query<{ id: number }>(
-    "SELECT id FROM tiles WHERE tile_type = 'EMPTY' AND is_water = false ORDER BY is_coastal ASC, RANDOM() LIMIT 1"
+    `SELECT id FROM tiles WHERE tile_type = 'EMPTY' AND is_water = false AND is_bridge = false
+     ORDER BY is_coastal ASC, RANDOM() LIMIT 1`
   );
   return rows[0]?.id ?? null;
 }
