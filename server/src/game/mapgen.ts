@@ -35,11 +35,16 @@ const GRID_ROWS = 7;
 const ISLAND_COUNT: number = 45;
 const ISLAND_MIN_SIZE = 400;
 const ISLAND_MAX_SIZE = 650;
-// Bir ada, organik/yuvarlak kenarlar oluşturabilsin diye kendi hücresinin
-// dışına bu kadar taşabilir — komşu ada büyümesi zaten bitişikliği
-// engellediği için bu taşma iki ada arasındaki boşluğu sıfırlamaz, sadece
-// kenarların hücre sınırında keskin bir dikdörtgen gibi kesilmesini önler.
-const CELL_OVERFLOW = 5;
+// Bir ada, kendi hücresinin dışına bu kadar taşabilir. Eskiden (5) sadece
+// organik kenar oluşturacak kadar küçüktü -- adalar neredeyse hiç kendi
+// hücre sınırına dayanmıyor, aralarında rastgele (bazen çok büyük) bir
+// boşluk kalıyordu ("ortadaki ada diğerlerinden çok uzak" geri bildirimi
+// buradan geliyordu). Artık hücre genişliğinin yarısına yakın (200/7≈28.6
+// hücre, 12 taşma) -- komşu hücrelerin izinli büyüme alanları GERÇEKTEN
+// örtüşüyor, canPlace zaten farklı adaların bitişik olmasını engellediği
+// için bu örtüşme iki adayı birbirine değdirmez ama neredeyse değecek kadar
+// yaklaştırır, köprüler kısa kalır.
+const CELL_OVERFLOW = 12;
 const MAX_SEED_ATTEMPTS_PER_ISLAND = 80;
 // Köprüler kısa/dar bir geçiş hissi vermeli -- kullanıcı isteği net: "uzun
 // köprü istemiyorum". Gerçek üst sınır her zaman bunun VE canlı
@@ -634,16 +639,18 @@ function generateBridges(
     }
   }
 
-  // 2) Bağlılık onarımı: yukarıdaki ızgara-komşuluğu bazlı köprüler bazı
-  // adaları (bir hücrenin üretimi başarısız olduğu nadir durumda) bağlı
-  // bırakmayabilir. Union-Find ile bağlı bileşenleri bulup, birden fazla
-  // bileşen kaldığı sürece en yakın çifti Prim mantığıyla birbirine
-  // bağlıyoruz -- bu SADECE eksik kalanlar için çalışır, ana köprü ağı
-  // zaten yukarıda kuruldu. Burada da AYNI maxBridgeHexLength sınırı
-  // geçerli: en yakın çift bile bu mesafeden uzaksa köprü kurmuyoruz (o
-  // bileşen köprüsüz kalır) -- naval_attack_range zaten o mesafedeki bir
-  // saldırıyı köprü olsa da reddedeceği için "her ne pahasına bağla" anlamsız,
-  // sadece görsel olarak asla kullanılamayacak dev bir köprü üretirdi.
+  // 2) Bağlılık onarımı: yukarıdaki ızgara-komşuluğu bazlı köprüler, aradaki
+  // GERÇEK boşluk maxBridgeHexLength'i aştığı için bazı ada çiftlerini
+  // BİLEREK atlıyor (kısa köprü isteği). Bu, bazı adaların (özellikle
+  // ortadaki gibi her yönden başka adayla çevrili ama hiçbirine yeterince
+  // yakın büyümemiş olanların) hiç köprüsü kalmamasına yol açabilir --
+  // "ortadaki ada diğerlerinden kopuk" hatası buradan geliyordu. Bağlantısız
+  // bir ada, uzun bir köprüden KESİNLİKLE daha kötü olduğu için burada sınır
+  // YOK: Union-Find ile bağlı bileşenleri bulup, birden fazla bileşen
+  // kaldığı sürece en yakın çifti (mesafe ne olursa olsun) Prim mantığıyla
+  // birbirine bağlıyoruz -- CELL_OVERFLOW'un büyütülmesiyle (bkz. dosya başı
+  // yorumu) bu geçiş artık pratikte nadiren gerekiyor ve gerektiğinde de
+  // çoğunlukla kısa kalıyor, ama garanti olarak sınırsız.
   const parent = new Map<number, number>();
   islandIds.forEach((id) => parent.set(id, id));
   function find(id: number): number {
@@ -687,7 +694,7 @@ function generateBridges(
         }
       }
     }
-    if (!best || best.dist > maxBridgeHexLength) break; // menzil dışında -- köprüsüz bırak
+    if (!best) break; // olmamalı ama sonsuz döngüye girmeyelim
     const k = edgeKey(best.from, best.to);
     if (!edges.has(k)) edges.set(k, best);
     union(best.from, best.to);
@@ -902,6 +909,29 @@ export async function applyShortBridgeCapMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita kısa köprülerle yeniden üretilecek.`);
+}
+
+// Kullanıcı geri bildirimi net: "adalar birbirine UZAK, köprü meselesi değil
+// bu". CELL_OVERFLOW 5 -> 12'ye çıkarıldı (bkz. dosya başı yorumu) ki komşu
+// hücrelerin adaları GERÇEKTEN birbirine yakın büyüsün -- önceki turda
+// köprü uzunluğunu kısaltmak (8) bazı adaları tamamen kopuk bırakmıştı,
+// çünkü sorun köprü değil, adaların zaten aralarında bıraktığı boşluktu. Bu
+// geçiş haritayı, adalar arası boşluk ortalama ~3 kareye inecek şekilde
+// yeniden üretiyor (bkz. bağımsız script doğrulaması: 3 denemede de 0 onarım
+// gerekti, yani sadece 8 karolık kısa köprülerle bile 45 ada tek parça).
+export async function applyCloserIslandsMigration() {
+  const MIGRATION_NAME = "closer_islands_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: adalar yakınlaştırılıyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita yakın adalarla yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {

@@ -20,6 +20,7 @@ import {
   applyDenseArchipelagoMigration,
   applyBridgeRangeFixMigration,
   applyShortBridgeCapMigration,
+  applyCloserIslandsMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -70,6 +71,9 @@ async function main() {
   // Köprüleri sabit bir üst sınırla kısaltan düzeltme -- yukarıdakiler gibi
   // ÖNCE ve senkron (bkz. mapgen.ts applyShortBridgeCapMigration yorumu).
   await applyShortBridgeCapMigration();
+  // Adaları birbirine gerçekten yaklaştıran düzeltme -- yukarıdakiler gibi
+  // ÖNCE ve senkron (bkz. mapgen.ts applyCloserIslandsMigration yorumu).
+  await applyCloserIslandsMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);
