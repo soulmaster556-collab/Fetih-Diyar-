@@ -8,12 +8,19 @@ import type { TileType } from "../types.js";
 // ikisi de izometrik/harita hesaplarında kullanıyor.
 const WORLD_SIZE = 200;
 
-// Adalar artık dünyaya tamamen rastgele saçılmıyor: WORLD_SIZE bir
-// GRID_COLS × GRID_ROWS ızgarasına bölünüyor ve her ada kendi hücresinde
-// büyüyor. Bu, adaların birbirine olan uzaklığını öngörülebilir ve küçük
-// tutar (komşu adalar sadece bitişik olamadıkları için aralarında ince bir
-// su şeridi kalır), ayrıca her ada kendi hücresini büyük ölçüde
-// doldurduğu için "her ada ekrana sığan bir harita gibi" hissi verir.
+// Adalar dünyaya rastgele saçılmıyor: WORLD_SIZE bir GRID_COLS × GRID_ROWS
+// ızgarasına bölünüyor, her hücreye bir tohum konuyor ve TÜM dünya bu
+// tohumlara göre bir VORONOI diyagramına ayrılıyor (bkz. generateIslandLayout
+// içindeki voronoiOwner hesabı) -- her karo, hangi tohuma hex-mesafe olarak
+// en yakınsa o adanın bölgesi sayılır. Adalar kendi bölgelerini (BORDER_MARGIN
+// payı hariç) doldurana kadar büyüdüğü için (hedef boyut sınırı yok) iki
+// komşu ada HER YERDE aynı, tutarlı genişlikte bir su şeridiyle ayrılır --
+// rastgele/değişken boşluk MATEMATİKSEL OLARAK imkansız (eski "hücre + taşma
+// dikdörtgeni" yöntemi bunu garanti edemiyordu, "adalar arasında saçma
+// boşluklar var" geri bildirimi buradan geliyordu). BORDER_MARGIN=0 (tam
+// sınıra kadar doldur) da denendi ama %90+ kara kapsamıyla neredeyse tek düz
+// blok oldu, ayrı ada hissi vermedi -- bkz. generateIslandLayout içindeki
+// BORDER_MARGIN yorumu.
 // Hücre sayısından daha az ada üretilerek (ISLAND_COUNT < GRID_COLS×GRID_ROWS)
 // birkaç hücre boş deniz olarak kalır — uzaktan bakınca aşırı düzenli/ızgara
 // gibi görünmesini engelleyen doğal boşluklar.
@@ -33,19 +40,6 @@ const GRID_ROWS = 7;
 // generateRectangleIsland()'ı çağırıyordu (düz kenarlı dikdörtgen) -- o kod
 // yolu hâlâ duruyor, ISLAND_COUNT'u tekrar 1 yapmak yeterli geri dönüş için.
 const ISLAND_COUNT: number = 45;
-const ISLAND_MIN_SIZE = 400;
-const ISLAND_MAX_SIZE = 650;
-// Bir ada, kendi hücresinin dışına bu kadar taşabilir. Eskiden (5) sadece
-// organik kenar oluşturacak kadar küçüktü -- adalar neredeyse hiç kendi
-// hücre sınırına dayanmıyor, aralarında rastgele (bazen çok büyük) bir
-// boşluk kalıyordu ("ortadaki ada diğerlerinden çok uzak" geri bildirimi
-// buradan geliyordu). Artık hücre genişliğinin yarısına yakın (200/7≈28.6
-// hücre, 12 taşma) -- komşu hücrelerin izinli büyüme alanları GERÇEKTEN
-// örtüşüyor, canPlace zaten farklı adaların bitişik olmasını engellediği
-// için bu örtüşme iki adayı birbirine değdirmez ama neredeyse değecek kadar
-// yaklaştırır, köprüler kısa kalır.
-const CELL_OVERFLOW = 12;
-const MAX_SEED_ATTEMPTS_PER_ISLAND = 80;
 // Köprüler kısa/dar bir geçiş hissi vermeli -- kullanıcı isteği net: "uzun
 // köprü istemiyorum". Gerçek üst sınır her zaman bunun VE canlı
 // naval_attack_range ayarının (bkz. generateIslandLayout yorumu) küçüğü,
@@ -60,11 +54,13 @@ const GRID_DIRS_8: [number, number][] = [
   [1, 0], [-1, 0], [0, 1], [0, -1],
   [1, 1], [1, -1], [-1, 1], [-1, -1],
 ];
-// Tek büyük ada, eski küçük adalardan çok daha fazla büyüme adımı
-// gerektiriyor -- 300 durak sınırı bu boyutta erken tetiklenip adayı
-// hedeflenenden küçük bırakabilirdi, bu yüzden yükseltildi. (Artık sadece
-// ISLAND_COUNT > 1 organik moduna aitse kullanılıyor.)
-const MAX_GROWTH_STALLS = 1200;
+// Voronoi bölgesini TAMAMEN doldurana kadar büyüyen bir ada, eski sabit
+// hedefli (400-650 karo) büyümeden çok daha fazla adım gerektirebiliyor
+// (bölge boyutu ~800+ karo olabilir) -- bölge gerçekten dolduğunda art arda
+// çok sayıda "yer yok" denemesi normal, bu yüzden durak sınırı yüksek tutulu
+// (erken kesilirse ada bölgesini tam doldurmadan durur, sınırda küçük
+// boşluklar kalabilir).
+const MAX_GROWTH_STALLS = 4000;
 
 // Ada düz kenarlı, geniş bir DİKDÖRTGEN kara kütlesi (bkz.
 // generateRectangleIsland) -- yatay monitöre benzesin diye. 80×52 oranı, hex
@@ -168,18 +164,13 @@ function pickClusteredCellIndices(rows: number, cols: number, count: number): nu
   return selected;
 }
 
-// Adalar arasında, hiçbir tarafa tam "kapalı" sayılmayan ama yine de
-// anlamsız derecede büyük su boşlukları kalabiliyordu ("ada aralarındaki
-// saçmalıklar" geri bildirimi) -- bunlar teknik olarak ince bir şeritle asıl
-// açık denize bağlı olduğu için eski "sadece dünya kenarından ULAŞILAMAYAN
-// cepleri doldur" mantığı bunları atlıyordu (sadece gerçekten kapalı, çok
-// küçük göletleri yakalıyordu). Yeni yaklaşım: ULAŞILABİLİRLİK yerine
-// BOYUTA bakıyoruz -- TÜM su karolarını bağlı bileşenlerine ayırıp, gerçek
-// açık denizden (binlerce karo) çok daha küçük olan HER bileşeni (ister tam
-// kapalı olsun ister ince bir kanaldan besin) karayla dolduruyoruz. Böylece
-// hem eski küçük göletler hem de bu turdaki büyük ama "teknik olarak açık"
-// körfez/boşluklar aynı geçişte temizleniyor.
-const WATER_POCKET_MAX_SIZE = 1200;
+// Voronoi tabanlı büyüme (bkz. generateIslandLayout) adalar arasında artık
+// yapısal olarak büyük boşluk bırakmıyor -- bu fonksiyon sadece hex-ızgara
+// köşelerinde (3+ Voronoi bölgesinin tam kesiştiği noktalarda) nadiren
+// oluşabilecek gerçekten küçük artefaktlar için bir güvenlik ağı. TÜM su
+// karolarını bağlı bileşenlerine ayırıp, WATER_POCKET_MAX_SIZE'dan (gerçek
+// açık denizden çok daha küçük) olan HER bileşeni karayla dolduruyoruz.
+const WATER_POCKET_MAX_SIZE = 300;
 
 function fillSmallWaterPockets(occupied: Map<string, number>): LandTile[] {
   const filled: LandTile[] = [];
@@ -237,130 +228,6 @@ function fillSmallWaterPockets(occupied: Map<string, number>): LandTile[] {
         occupied.set(k, bestId);
         filled.push({ x: px, y: py, islandId: bestId, isCoastal: false, isNpcSafe: false, isBridge: false });
       }
-    }
-  }
-
-  return filled;
-}
-
-// fillSmallWaterPockets SADECE tümüyle kapalı (asıl açık denize hiç
-// bağlı olmayan) su bölgelerini yakalıyor. Ama iki ada arasındaki bir
-// körfez/boğaz, ince bir şeritle asıl açık denize bağlıysa (neredeyse
-// hep öyle), flood-fill bileşeni koca okyanusla birleşip WATER_POCKET_
-// MAX_SIZE'ı fena halde aşıyor -- bu yüzden "adalar arasında hâlâ büyük,
-// çirkin boşluklar var" geri bildirimi devam ediyordu (bkz. kullanıcının
-// sarı/kırmızı işaretli ekran görüntüsü: sarıdaki adalar puzzle parçası
-// gibi oturuyor, kırmızıdaki geniş körfezler oturmuyor).
-//
-// Çözüm klasik görüntü işleme tekniği: MORFOLOJİK KAPAMA (dilate + erode).
-// Karayı CLOSING_RADIUS kadar suya doğru şişirip sonra aynı miktarda geri
-// küçültüyoruz -- bu yarıçaptan DAHA DAR olan her su şeridi (nereye bağlı
-// olursa olsun, ulaşılabilirlik hiç önemli değil) tamamen kapanıyor, sadece
-// bu yarıçaptan GENİŞ gerçek açık deniz büyük ölçüde etkilenmeden kalıyor.
-// (bkz. https://en.wikipedia.org/wiki/Closing_(morphology))
-// Not: bu değeri denerken gördüm ki HATTA küçük yarıçaplarda bile (1-2) kara
-// kapsamı %75-80'e fırlıyor -- çünkü "iyi" görünen ince kanallar (iki ada
-// arasındaki tutarlı dar şerit) ile "kötü" görünen dar boğazlar (bir körfezin
-// ağzı) GEOMETRİK OLARAK AYNI genişlikte, saf genişlik testiyle ayırt
-// edilemiyor. 3 civarı, çirkin boşlukların çoğunu kapatırken haritayı
-// tamamen tek düz kara yapmayan bir orta nokta (bkz. script doğrulaması:
-// kapsam ~%82-88).
-const CLOSING_RADIUS = 3;
-
-// Verilen tohum karo kümesinden başlayıp hex-komşuluğunda en fazla maxDist
-// adım uzaklıktaki TÜM karoları (tohumlar dahil) döndürür -- multi-source
-// BFS, "wavefront" halinde ilerliyor (dilate işleminin temel yapı taşı).
-function multiSourceDilate(seeds: Set<string>, maxDist: number): Set<string> {
-  const within = new Set(seeds);
-  let frontier: [number, number][] = [];
-  for (const k of seeds) {
-    const [xs, ys] = k.split(",");
-    frontier.push([Number(xs), Number(ys)]);
-  }
-  for (let step = 0; step < maxDist && frontier.length > 0; step++) {
-    const next: [number, number][] = [];
-    for (const [x, y] of frontier) {
-      for (const [nx, ny] of neighbors6(x, y)) {
-        if (!inBounds(nx, ny)) continue;
-        const k = key(nx, ny);
-        if (within.has(k)) continue;
-        within.add(k);
-        next.push([nx, ny]);
-      }
-    }
-    frontier = next;
-  }
-  return within;
-}
-
-function closeSmallWaterGaps(occupied: Map<string, number>): LandTile[] {
-  const landKeys = new Set<string>(occupied.keys());
-  // 1) Karayı CLOSING_RADIUS kadar şişir (dilate).
-  const dilatedLand = multiSourceDilate(landKeys, CLOSING_RADIUS);
-
-  // 2) Şişirilmiş karanın dışında kalan (yani hâlâ gerçekten su olan) karolar.
-  const trueWater = new Set<string>();
-  for (let x = 0; x < WORLD_SIZE; x++) {
-    for (let y = 0; y < WORLD_SIZE; y++) {
-      const k = key(x, y);
-      if (!dilatedLand.has(k)) trueWater.add(k);
-    }
-  }
-
-  // 3) Gerçek suyu da CLOSING_RADIUS kadar şişir -- bunun DIŞINDA kalan her
-  // (kara olmayan) karo, kapatma sonrası kara demektir (erosion'un tümleyeni).
-  const dilatedTrueWater = multiSourceDilate(trueWater, CLOSING_RADIUS);
-
-  // 4) Kapatılacak karoları (toClose) bul, sonra bunları -- fillSmallWaterPockets
-  // ile AYNI bağlı-bileşen + çoğunluk-komşu deseniyle -- en yakın adaya ata.
-  // Tek bir karonun komşuları da toClose ise (geniş bir boşluğun ortası),
-  // bileşenin TÜM sınırındaki gerçek kara komşuları sayılıyor.
-  const toClose = new Set<string>();
-  for (let x = 0; x < WORLD_SIZE; x++) {
-    for (let y = 0; y < WORLD_SIZE; y++) {
-      const k = key(x, y);
-      if (occupied.has(k) || dilatedTrueWater.has(k)) continue;
-      toClose.add(k);
-    }
-  }
-
-  const filled: LandTile[] = [];
-  const visited = new Set<string>();
-  for (const startKey of toClose) {
-    if (visited.has(startKey)) continue;
-    const [sx, sy] = startKey.split(",").map(Number);
-    const component: [number, number][] = [[sx, sy]];
-    visited.add(startKey);
-    const neighborCounts = new Map<number, number>();
-    let head = 0;
-    while (head < component.length) {
-      const [px, py] = component[head++];
-      for (const [nx, ny] of neighbors6(px, py)) {
-        if (!inBounds(nx, ny)) continue;
-        const nk = key(nx, ny);
-        const owner = occupied.get(nk);
-        if (owner !== undefined) {
-          neighborCounts.set(owner, (neighborCounts.get(owner) ?? 0) + 1);
-          continue;
-        }
-        if (!toClose.has(nk) || visited.has(nk)) continue;
-        visited.add(nk);
-        component.push([nx, ny]);
-      }
-    }
-    if (neighborCounts.size === 0) continue; // karaya hiç komşu değil -- olmamalı ama güvenlik payı
-
-    let bestId = -1;
-    let bestCount = -1;
-    for (const [id, count] of neighborCounts) {
-      if (count > bestCount) {
-        bestId = id;
-        bestCount = count;
-      }
-    }
-    for (const [px, py] of component) {
-      occupied.set(key(px, py), bestId);
-      filled.push({ x: px, y: py, islandId: bestId, isCoastal: false, isNpcSafe: false, isBridge: false });
     }
   }
 
@@ -491,21 +358,9 @@ function generateIslandLayout(maxBridgeHexLength: number): LandTile[] {
   const occupied = new Map<string, number>(); // "x,y" -> islandId
   for (const t of allTiles) occupied.set(key(t.x, t.y), t.islandId);
 
-  function canPlace(x: number, y: number, islandId: number, allowed: CellBounds) {
-    if (!inBounds(x, y)) return false;
-    if (x < allowed.minX || x > allowed.maxX || y < allowed.minY || y > allowed.maxY) return false;
-    if (occupied.has(key(x, y))) return false;
-    for (const [nx, ny] of neighbors6(x, y)) {
-      const owner = occupied.get(key(nx, ny));
-      if (owner !== undefined && owner !== islandId) return false;
-    }
-    return true;
-  }
-
-  // islandId -> ızgaradaki düz hücre indeksi (row*GRID_COLS+col) -- SADECE
-  // gerçekten üretilmiş (aşağıdaki "if (!seed) return" ile atlanmamış)
-  // adalar için dolduruluyor, generateBridges'in hangi ada çiftlerinin
-  // ızgarada komşu olduğunu bulması için kullanılıyor.
+  // islandId -> ızgaradaki düz hücre indeksi (row*GRID_COLS+col) --
+  // generateBridges'in hangi ada çiftlerinin ızgarada komşu olduğunu
+  // bulması için kullanılıyor.
   const islandCellIndex = new Map<number, number>();
 
   if (ISLAND_COUNT > 1) {
@@ -513,42 +368,117 @@ function generateIslandLayout(maxBridgeHexLength: number): LandTile[] {
     const cellIndices = pickClusteredCellIndices(GRID_ROWS, GRID_COLS, ISLAND_COUNT);
     const cells: CellBounds[] = cellIndices.map((i) => allCells[i]);
 
+    // Her ada için TEK bir tohum noktası -- kendi hücresinin içinde rastgele
+    // bir yer (artık "uygun mu" diye deneme-yanılma gerekmiyor, bkz. aşağı).
+    const seeds = new Map<number, [number, number]>(); // islandId -> [x,y]
     cells.forEach((cell, idx) => {
       const islandId = idx + 1;
-      const allowed: CellBounds = {
-        minX: Math.max(0, cell.minX - CELL_OVERFLOW),
-        maxX: Math.min(WORLD_SIZE - 1, cell.maxX + CELL_OVERFLOW),
-        minY: Math.max(0, cell.minY - CELL_OVERFLOW),
-        maxY: Math.min(WORLD_SIZE - 1, cell.maxY + CELL_OVERFLOW),
-      };
+      const sx = cell.minX + Math.floor(Math.random() * (cell.maxX - cell.minX + 1));
+      const sy = cell.minY + Math.floor(Math.random() * (cell.maxY - cell.minY + 1));
+      seeds.set(islandId, [sx, sy]);
+      islandCellIndex.set(islandId, cellIndices[idx]);
+    });
 
-      // Tohum, hücrenin iç %50'lik bölgesinden seçilir — kenara çok yakın
-      // başlarsa komşu hücrenin adasıyla erken çarpışıp büyümesi
-      // kısıtlanabilir.
-      const innerW = Math.max(1, Math.floor((cell.maxX - cell.minX) * 0.5));
-      const innerH = Math.max(1, Math.floor((cell.maxY - cell.minY) * 0.5));
-      const innerMinX = cell.minX + Math.floor(((cell.maxX - cell.minX) - innerW) / 2);
-      const innerMinY = cell.minY + Math.floor(((cell.maxY - cell.minY) - innerH) / 2);
+    // VORONOI BÖLGELERİ: dünyadaki HER karo, hangi tohuma (hex mesafe
+    // olarak) en yakınsa o adanın "bölgesi" sayılır -- çok kaynaklı BFS
+    // ("wavefront" hepsi aynı anda ilerler) ile tek geçişte hesaplanıyor,
+    // her karo tam olarak bir bölgeye ait olduğu için MATEMATİKSEL OLARAK
+    // hiçbir "sahipsiz" boşluk kalamaz (eski hücre+taşma dikdörtgenleri
+    // birbiriyle örtüşmediğinde/uyuşmadığında rastgele, bazen kocaman
+    // boşluklar bırakıyordu -- "adalar arasında saçma boşluklar var" geri
+    // bildirimi buradan geliyordu). Adalar kendi bölgelerini (BORDER_MARGIN
+    // payı hariç, bkz. aşağısı) doldurana kadar büyüdüğü için her sınırda
+    // AYNI, tutarlı genişlikte bir su şeridi oluşuyor -- rastgele büyük/küçük
+    // boşluk yok, gerçek puzzle parçası gibi öngörülebilir oturma.
+    const voronoiOwner = new Map<string, number>();
+    const voronoiQueue: [number, number, number][] = [];
+    for (const [islandId, [sx, sy]] of seeds) {
+      voronoiOwner.set(key(sx, sy), islandId);
+      voronoiQueue.push([sx, sy, islandId]);
+    }
+    let vHead = 0;
+    while (vHead < voronoiQueue.length) {
+      const [x, y, islandId] = voronoiQueue[vHead++];
+      for (const [nx, ny] of neighbors6(x, y)) {
+        if (!inBounds(nx, ny)) continue;
+        const nk = key(nx, ny);
+        if (voronoiOwner.has(nk)) continue;
+        voronoiOwner.set(nk, islandId);
+        voronoiQueue.push([nx, ny, islandId]);
+      }
+    }
 
-      let seed: [number, number] | null = null;
-      for (let t = 0; t < MAX_SEED_ATTEMPTS_PER_ISLAND; t++) {
-        const sx = innerMinX + Math.floor(Math.random() * (innerW + 1));
-        const sy = innerMinY + Math.floor(Math.random() * (innerH + 1));
-        if (canPlace(sx, sy, islandId, allowed)) {
-          seed = [sx, sy];
-          break;
+    // boundaryDist: her karonun, FARKLI sahipli bir Voronoi karosuna hex
+    // mesafesi -- çok kaynaklı BFS (önce sınır karoları, sonra dalga dalga
+    // yayılım). Adalar bu mesafe BORDER_MARGIN'i aşana kadar büyüyebiliyor,
+    // yani tam Voronoi sınırına kadar DEĞİL, ondan sabit bir miktar geride
+    // duruyor -- iki komşu adanın kendi payına düşen geri çekilme toplanınca
+    // HER sınırda aynı, tutarlı genişlikte (~2×BORDER_MARGIN+1) bir su şeridi
+    // oluşuyor. BORDER_MARGIN=0 (tam sınıra kadar doldur) da denendi ama
+    // sonuç %90+ kara kapsamıyla neredeyse tek düz blok oldu -- ayrı adalar
+    // hissi vermedi (bkz. script doğrulaması). BORDER_MARGIN=1, görünür ama
+    // abartısız bir ayrım bırakıyor (~%81-83 kapsam, köprüler kısa kalıyor).
+    const BORDER_MARGIN = 1;
+    const boundaryDist = new Map<string, number>();
+    const boundaryQueue: [number, number][] = [];
+    for (let x = 0; x < WORLD_SIZE; x++) {
+      for (let y = 0; y < WORLD_SIZE; y++) {
+        const k = key(x, y);
+        const owner = voronoiOwner.get(k);
+        let isBoundary = false;
+        for (const [nx, ny] of neighbors6(x, y)) {
+          if (!inBounds(nx, ny)) continue;
+          if (voronoiOwner.get(key(nx, ny)) !== owner) {
+            isBoundary = true;
+            break;
+          }
+        }
+        if (isBoundary) {
+          boundaryDist.set(k, 0);
+          boundaryQueue.push([x, y]);
         }
       }
-      if (!seed) return; // bu hücrede yer bulunamadı; ada atlanır
+    }
+    let bHead = 0;
+    while (bHead < boundaryQueue.length) {
+      const [x, y] = boundaryQueue[bHead++];
+      const d = boundaryDist.get(key(x, y))!;
+      for (const [nx, ny] of neighbors6(x, y)) {
+        if (!inBounds(nx, ny)) continue;
+        const nk = key(nx, ny);
+        if (boundaryDist.has(nk)) continue;
+        boundaryDist.set(nk, d + 1);
+        boundaryQueue.push([nx, ny]);
+      }
+    }
 
-      const targetSize = ISLAND_MIN_SIZE + Math.floor(Math.random() * (ISLAND_MAX_SIZE - ISLAND_MIN_SIZE + 1));
+    function canPlace(x: number, y: number, islandId: number) {
+      if (!inBounds(x, y)) return false;
+      const k = key(x, y);
+      if (voronoiOwner.get(k) !== islandId) return false; // kendi Voronoi bölgesi dışı
+      if ((boundaryDist.get(k) ?? Infinity) <= BORDER_MARGIN) return false; // sınıra çok yakın -- geri çekil
+      if (occupied.has(k)) return false;
+      for (const [nx, ny] of neighbors6(x, y)) {
+        const owner = occupied.get(key(nx, ny));
+        if (owner !== undefined && owner !== islandId) return false; // başka adaya bitişik olamaz
+      }
+      return true;
+    }
+
+    cells.forEach((cell, idx) => {
+      const islandId = idx + 1;
+      const seed = seeds.get(islandId)!;
       const islandTiles: [number, number][] = [seed];
       occupied.set(key(seed[0], seed[1]), islandId);
 
+      // Hedef boyut YOK -- ada, kendi Voronoi bölgesini (BORDER_MARGIN payı
+      // hariç) TAMAMEN dolduruncaya kadar (artık büyüyecek karo kalmayana
+      // dek) büyüyor. Sonuç, her sınırda tutarlı genişlikte bir su şeridi
+      // (bkz. dosya başı yorumu ve BORDER_MARGIN tanımı).
       let stalls = 0;
-      while (islandTiles.length < targetSize && stalls < MAX_GROWTH_STALLS) {
+      while (stalls < MAX_GROWTH_STALLS) {
         const [bx, by] = pickGrowthOrigin(islandTiles, occupied, islandId);
-        const candidates = neighbors6(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId, allowed));
+        const candidates = neighbors6(bx, by).filter(([nx, ny]) => canPlace(nx, ny, islandId));
         if (candidates.length === 0) {
           stalls++;
           continue;
@@ -562,20 +492,14 @@ function generateIslandLayout(maxBridgeHexLength: number): LandTile[] {
       for (const [x, y] of islandTiles) {
         allTiles.push({ x, y, islandId, isCoastal: false, isNpcSafe: false, isBridge: false });
       }
-      islandCellIndex.set(islandId, cellIndices[idx]);
     });
   }
 
-  // 1) Önce dar körfez/boğazları morfolojik kapama ile tamamen kapat (bkz.
-  // closeSmallWaterGaps dosya başı yorumu) -- asıl açık denize ince bir
-  // şeritle bağlı olan büyük ama çirkin boşlukları temizliyor.
-  for (const t of closeSmallWaterGaps(occupied)) {
-    allTiles.push(t);
-  }
-  // 2) Kalan, tümüyle kapalı küçük/orta boy cepleri de doldur (bkz.
-  // fillSmallWaterPockets dosya başı yorumu) -- kapama sonrası ortaya
-  // çıkabilecek küçük göletleri yakalıyor. İkisi de kıyı/isNpcSafe
-  // hesabından ÖNCE çalışmalı ki bu yeni kara karoları da doğru işaretlensin.
+  // Voronoi tabanlı büyüme neredeyse hiç boşluk bırakmıyor, ama hex-ızgara
+  // köşelerinde (3+ bölgenin tam kesiştiği noktalarda) nadiren tek karolık
+  // artefaktlar kalabiliyor -- bunları da doldur (bkz. fillSmallWaterPockets
+  // dosya başı yorumu). Eşik bilerek küçük (300): artık büyük boşluk
+  // BEKLENMİYOR, bu sadece gerçek küçük artefaktlar için bir güvenlik ağı.
   for (const t of fillSmallWaterPockets(occupied)) {
     allTiles.push(t);
   }
@@ -1092,6 +1016,30 @@ export async function applyMorphologicalClosingMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita kapatılmış boğazlarla yeniden üretilecek.`);
+}
+
+// Morfolojik kapama, "iyi" ince kanalla "kötü" geniş boşluğu ayırt edemediği
+// için haritayı neredeyse tek düz blok yapmıştı ("bu sonuç bu mu" geri
+// bildirimi). Kökten değişim: ada büyütme artık rastgele hücre+taşma
+// dikdörtgeni yerine VORONOI bölgeleriyle sınırlı (bkz. generateIslandLayout
+// dosya başı yorumu) -- her ada kendi bölgesini (BORDER_MARGIN=1 payı hariç)
+// tam dolduruyor, bu da HER sınırda aynı, tutarlı (~4 karo) genişlikte bir
+// su şeridi garantiliyor -- ne rastgele büyük boşluk (eski yöntem) ne de
+// neredeyse hiç su (kapama) riski. Bu geçiş haritayı bu yeni algoritmayla
+// yeniden üretiyor.
+export async function applyVoronoiIslandsMigration() {
+  const MIGRATION_NAME = "voronoi_islands_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: adalar Voronoi bölgeleriyle yeniden üretiliyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita Voronoi tabanlı adalarla yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {
