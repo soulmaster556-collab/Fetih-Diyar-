@@ -205,6 +205,15 @@ export function MapView({
     [tiles, placedMountains, placedForests, placedRocks, waterFeatures]
   );
 
+  // "Havada duruyor" düzeltmesi: kutuyu (mountains/forests/rocks gibi) cy
+  // etrafında ortalamak yerine, kalenin (castleTop hesabı, aşağısı) oturduğu
+  // AYNI zemin çizgisine (cy + 0.35*tileHeight) ALT kenardan sabitliyoruz.
+  // Eskiden top = cy - boxH/2 idi -- boxH scale'e göre değiştiği için
+  // (0.34-0.68 arası) düşük scale'li varyantlar (blue-2/3, gold-2, purple-2)
+  // zeminin çok yukarısında kalıyordu, kullanıcı geri bildirimi ("kristaller
+  // havada duruyor") buradan geliyordu. Artık scale ne olursa olsun ALT
+  // kenar hep aynı noktada, sadece kutunun boyu değişiyor.
+  const CRYSTAL_GROUND_OFFSET = 0.35;
   const crystalScreens = useMemo(() => {
     return placedCrystals.map((c) => {
       const { cx, cy } = isoCenter(c.rootX, c.rootY, tileWidth);
@@ -212,7 +221,8 @@ export function MapView({
       const boxW = tileWidth * scale;
       const boxH = tileHeight * scale;
       const left = cx + c.jitterX * tileWidth - boxW / 2;
-      const top = cy + c.jitterY * tileWidth - boxH / 2;
+      const groundY = cy + c.jitterY * tileWidth + CRYSTAL_GROUND_OFFSET * tileHeight;
+      const top = groundY - boxH;
       return { crystal: c, left, top, width: boxW, height: boxH };
     });
   }, [placedCrystals, tileWidth, tileHeight]);

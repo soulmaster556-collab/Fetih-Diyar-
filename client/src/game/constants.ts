@@ -13,9 +13,10 @@ export const VIEWPORT_MARGIN = 6;
 // isteğiyle en yakın 2 kademe (248/320) tekrar kaldırıldı -- en yakın zoom
 // artık 189px.
 export const TILE_WIDTHS = [48, 63, 83, 109, 144, 189];
-// Varsayılan değer (144) DEĞİŞMEDİ -- sadece dizideki index'i kaydı (eski
-// dizide 144 index 2'ydi, yeni dizide index 4).
-export const DEFAULT_TILE_WIDTH_INDEX = 4;
+// Varsayılan başlangıç zoom'u kullanıcı isteğiyle bir kademe geri çekildi
+// (144 -> 109, index 4 -> 3) -- standart oyun mesafesi artık biraz daha
+// uzaktan, haritadan daha fazlası tek ekranda görünüyor.
+export const DEFAULT_TILE_WIDTH_INDEX = 3;
 
 // Kale görsellerinin en-boy oranı (~1.37) -- kutunun dışına taşmasın diye
 // NPC kale boyutu bu orana göre hesaplanıyor (bkz. components/MapView.tsx npcBoxWidth).

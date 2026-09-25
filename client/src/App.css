@@ -698,40 +698,50 @@ button:disabled {
    dekorlardan (dağ: sabit turkuaz) bilerek ayrışıyor, kristalin KENDİ
    rengiyle "değerli/özel" hissi versin diye. iso-castle-glow/iso-mountain-glow
    ile aynı prensip: box-shadow değil drop-shadow (görsel şeffaf webp,
-   gerçek siluete göre yayılsın diye). */
+   gerçek siluete göre yayılsın diye). Kullanıcı isteğiyle ("yüksek parıltı")
+   eski tek-katmanlı, ince (5-10px) parıltı iki katmana çıkarıldı: dar/parlak
+   bir iç çekirdek + geniş/yumuşak bir dış hale (bloom) -- tek katman
+   büyütülseydi sadece bulanık bir leke gibi dururdu, iki farklı blur yarıçapı
+   hem parlak bir öz hem de çevreye yayılan bir ışıma hissi veriyor. */
 .crystal-glow-purple {
-  animation: crystal-glow-purple-pulse 3.2s ease-in-out infinite;
+  animation: crystal-glow-purple-pulse 2.6s ease-in-out infinite;
 }
 @keyframes crystal-glow-purple-pulse {
   0%, 100% {
-    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 5px rgba(168, 85, 247, 0.45));
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 8px rgba(168, 85, 247, 0.75))
+      drop-shadow(0 0 20px rgba(168, 85, 247, 0.45));
   }
   50% {
-    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 10px rgba(168, 85, 247, 0.75));
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 15px rgba(168, 85, 247, 1))
+      drop-shadow(0 0 34px rgba(168, 85, 247, 0.65));
   }
 }
 
 .crystal-glow-gold {
-  animation: crystal-glow-gold-pulse 3.2s ease-in-out infinite;
+  animation: crystal-glow-gold-pulse 2.6s ease-in-out infinite;
 }
 @keyframes crystal-glow-gold-pulse {
   0%, 100% {
-    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 5px rgba(255, 213, 79, 0.45));
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 8px rgba(255, 213, 79, 0.75))
+      drop-shadow(0 0 20px rgba(255, 213, 79, 0.45));
   }
   50% {
-    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 10px rgba(255, 213, 79, 0.75));
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 15px rgba(255, 213, 79, 1))
+      drop-shadow(0 0 34px rgba(255, 213, 79, 0.65));
   }
 }
 
 .crystal-glow-blue {
-  animation: crystal-glow-blue-pulse 3.2s ease-in-out infinite;
+  animation: crystal-glow-blue-pulse 2.6s ease-in-out infinite;
 }
 @keyframes crystal-glow-blue-pulse {
   0%, 100% {
-    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 5px rgba(56, 189, 248, 0.45));
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 8px rgba(56, 189, 248, 0.75))
+      drop-shadow(0 0 20px rgba(56, 189, 248, 0.45));
   }
   50% {
-    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 10px rgba(56, 189, 248, 0.75));
+    filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.35)) drop-shadow(0 0 15px rgba(56, 189, 248, 1))
+      drop-shadow(0 0 34px rgba(56, 189, 248, 0.65));
   }
 }
 
