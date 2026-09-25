@@ -1,6 +1,5 @@
 import type { Tile } from "../api";
 import { HEX_DIRECTIONS, hashXY } from "./mountains";
-import { isWaterAtWorldPosition, type WaterFeatures } from "./riversLakes";
 import { sampleBiomeIntensity, type BiomeAnchor } from "./worldRegions";
 
 // ---------------------------------------------------------------------
@@ -149,17 +148,13 @@ export type ReservedRoot = { rootX: number; rootY: number };
 // gameplay'e bağlı değil. Orman kümeleri KENDİ ARALARINDA komşu dışlaması
 // YAPMIYOR (bilerek): sık, kesintisiz bir orman kütlesi hissi için bitişik
 // köklerin de cluster alabilmesi gerekiyor.
-// FAZ 4A -- `water`: aynı hex'te nehir/göl varsa (bkz.
-// riversLakes.ts isWaterAtWorldPosition) o hex tamamen aday listesinden
-// çıkarılıyor -- "ağaçlar suyun içine rastgele spawn olmamalı" (dosya başı
-// FAZ 4A madde 6). Su, `tiles`'tan bağımsız dünya-koordinat geometrisi
-// olduğu için bu kontrol windowing'i bozmuyor (her aday hex için tek bir
-// ucuz mesafe hesabı).
+// FAZ 4A -- göller kaldırıldı (bkz. MapView.tsx yorumu, sohbet geçmişi);
+// `seaDistance` (bkz. islandShore.ts) artık ağaçların denize/ada dışına
+// taşmasını önleyen TEK kontrol.
 export function computePlacedForests(
   tiles: Tile[],
   biomeAnchors: BiomeAnchor[],
   reserved: ReservedRoot[],
-  water: WaterFeatures,
   seaDistance: Map<string, number>
 ): PlacedForest[] {
   const occupied = new Set<string>();
@@ -182,12 +177,9 @@ export function computePlacedForests(
     const key = `${t.x},${t.y}`;
     if (occupied.has(key)) continue;
     // Orman sprite'ı kök hex'in DIŞINA (scale ~1.1-1.5 + jitter) taşabildiği
-    // için 1 hex birimi ekstra pay -- "ağaçlar göle taşıyor" düzeltmesi
-    // (bkz. riversLakes.ts isWaterAtWorldPosition yorumu).
-    if (isWaterAtWorldPosition(t.x, t.y, water, 1)) continue;
-    // AYNI taşma mantığı ada kıyısı için -- kök hex kara olsa bile sprite
-    // denize taşabiliyordu ("adaların dışına taşan dekorlar var" geri
-    // bildirimi, bkz. islandShore.ts computeSeaDistanceMap).
+    // için 1 hex birimi ekstra pay -- kök hex kara olsa bile sprite denize
+    // taşabiliyordu ("adaların dışına taşan dekorlar var" geri bildirimi,
+    // bkz. islandShore.ts computeSeaDistanceMap).
     if ((seaDistance.get(`${t.x},${t.y}`) ?? Infinity) <= 1) continue;
 
     const intensity = sampleBiomeIntensity(t.x, t.y, biomeAnchors, "forestFloor");

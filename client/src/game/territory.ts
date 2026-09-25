@@ -10,7 +10,7 @@ import { HEX_DIRECTIONS } from "./mountains";
 // ownership mantığı burada YOK, mevcut `Tile.tileType`/`ownerId` verisini
 // okuyup (bkz. api.ts) komşu AYNI sahipli hex'leri tek bir SVG path'inde
 // birleştiriyor. Backend'e, `tiles` veri modeline ya da diğer sistemlere
-// (mountains/forests/rockyAreas/riversLakes/worldRegions) HİÇ dokunmuyor.
+// (mountains/forests/rockyAreas/islandShore/worldRegions) HİÇ dokunmuyor.
 //
 // Yaklaşım (bkz. computeTerritoryRegions / traceBoundaryLoops):
 //   1. Her karo (EMPTY hariç) bir "groupKey"e atanır. NPC kampları HER ZAMAN
@@ -36,9 +36,10 @@ import { HEX_DIRECTIONS } from "./mountains";
 //      delikli birden fazla loop) dizisi.
 //   4. Bu poligon Chaikin corner-cutting ile yumuşatılır (bkz. chaikinSmooth)
 //      -- hex sınırının doğal "kale duvarı" zigzag'ını organik, akıcı bir
-//      hatta çevirir (riversLakes.ts'teki göl kıyısı yumuşatmasıyla AYNI
-//      felsefe, farklı teknik: burada gerçek hex geometrisinden türetildiği
-//      için önce zigzag'ı azaltmak, SONRA yumuşak çizgi çekmek gerekiyor).
+//      hatta çevirir (islandShore.ts'teki ada kıyısı da AYNI chaikinSmooth'u
+//      kullanıyor, bkz. o dosya -- burada gerçek hex geometrisinden
+//      türetildiği için önce zigzag'ı azaltmak, SONRA yumuşak çizgi çekmek
+//      gerekiyor).
 //
 // Performans (madde 18): pahalı olan flood-fill + sınır çıkarma SADECE
 // `tiles`/ownership değiştiğinde çalışır (bkz. MapView.tsx useMemo bağımlılığı)

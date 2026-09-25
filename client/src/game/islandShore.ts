@@ -43,8 +43,7 @@ export function buildIslandShorePathD(loops: TerritoryPoint[][], tileWidth: numb
 // "Bu karo denize kaç hex uzaklıkta" -- orman/dağ/kayalık/kristal
 // kümelerinin kök hex'i kara olsa bile kendi sprite'ı (jitter+scale ile)
 // komşu bir denize taşabiliyordu (kullanıcı geri bildirimi: "adaların
-// dışına taşan dekorlar var") -- göllerdeki isWaterAtWorldPosition'ın AYNI
-// prensibi, ama göllerin aksine ada şekli deterministik bir formülle değil
+// dışına taşan dekorlar var") -- ada şekli deterministik bir formülle değil
 // gerçek yüklü `tiles` verisinden biliniyor, o yüzden mesafe BFS ile
 // hesaplanıyor. maxRings'in ötesindeki karolar "güvenli" (Infinity) sayılır
 // -- performans için sınırsız BFS yerine küçük bir üst sınır yeterli, hiçbir

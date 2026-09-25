@@ -546,59 +546,14 @@ button:disabled {
   mix-blend-mode: overlay;
 }
 
-/* Göl katmanı (bkz. game/riversLakes.ts). .world-terrain'in HEMEN üstünde,
-   TEK bir SVG -- path'lerin `d` değerleri JS'te tileWidth'e göre
-   hesaplanıyor (bkz. MapView.tsx lakePathsD), viewBox YOK -- SVG'nin
-   kendisi zaten .iso-map ile birebir aynı piksel uzayında (inset:0), path
-   koordinatları doğrudan o uzayda. z-index sabit 1 -- .iso-tile-group'ların
-   (10+) HER ZAMAN altında, painter's algorithm'a katılmıyor (terrain gibi
-   zemine yapışık bir katman, "boylu" değil). Nehir sistemi kullanıcı
-   isteğiyle kaldırıldı -- .river-shape yok. */
-/* Kıyı şeridi (bkz. game/riversLakes.ts buildCoastRingPathD, MapView.tsx).
-   .world-water'ın HEMEN ALTINDA -- AYNI z-index (1) ama DOM'da ÖNCE geldiği
-   için altta boyanıyor, gerçek göl dolgusu (.world-water) bunun büyük
-   kısmını örtüyor, sadece dışarıdaki halka görünür kalıyor. */
-.world-coastline {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  overflow: visible;
-}
-
-.world-water {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  overflow: visible;
-}
-
-/* Kenar konturu (stroke) BİLEREK yok -- kıyı şeridi eklenmeden önce göl ile
-   çim arasındaki sert kesimi belli etsin diye konmuştu, artık kum geçişi
-   zaten yumuşak bir sınır çiziyor; kontur üstüne binince suyla kum arasında
-   gereksiz sert bir beyaz çizgi gibi duruyordu (kullanıcı geri bildirimi). */
-.lake-shape {
-  fill: #3f8fbf;
-  fill-opacity: 0.88;
-}
-
-/* Kum dokusu overlay'i (bkz. MapView.tsx world-coastline-grain path'i) --
-   .world-terrain-grain ile AYNI prensip: mix-blend-mode:overlay ile
-   alttaki (gradyan) rengi karartıp/aydınlatıp tane hissi veriyor, kendi
-   rengi yok. Opacity grain'den (0.35) biraz yüksek -- kum daha "pürüzlü"
-   görünsün diye. */
-.world-coastline-grain {
-  mix-blend-mode: overlay;
-  opacity: 0.5;
-}
-
 /* FAZ 5 -- Territory (bkz. game/territory.ts, MapView.tsx .world-territory
-   yorumu). .world-water'ın HEMEN üstünde, TÜM .iso-tile-group'ların (z 10+)
+   yorumu). .world-terrain'in HEMEN üstünde, TÜM .iso-tile-group'ların (z 10+)
    HER ZAMAN altında -- sabit z-index 2, painter's algorithm'a katılmıyor
-   (terrain/su gibi zemine yapışık bir katman, "boylu" bir obje değil). Su
-   üzerinden geçebilsin diye (madde 10) world-water'ın (z1) ÜSTÜNDE ama kendi
-   fill-opacity'si düşük tutulduğu için altındaki göl/nehir rengi solmuyor. */
+   (terrain gibi zemine yapışık bir katman, "boylu" bir obje değil). Gölller
+   kaldırıldı (bkz. MapView.tsx waterFeatures yorumu) -- eskiden burada
+   .world-water'ın üstünde olduğu için z2 kullanılıyordu, o katman gidince de
+   numara değiştirmeye gerek yok, sıra hâlâ .world-terrain(0) -> ... ->
+   .world-territory(2) -> .iso-tile-group(10+). */
 .world-territory {
   position: absolute;
   inset: 0;

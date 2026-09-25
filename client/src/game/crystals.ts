@@ -1,6 +1,5 @@
 import type { Tile } from "../api";
 import { HEX_DIRECTIONS, hashXY } from "./mountains";
-import { isWaterAtWorldPosition, type WaterFeatures } from "./riversLakes";
 import type { ReservedRoot } from "./forests";
 
 // ---------------------------------------------------------------------
@@ -93,7 +92,6 @@ export function computePlacedCrystals(
   tiles: Tile[],
   bigReservedRoots: ReservedRoot[],
   smallReservedRoots: ReservedRoot[],
-  water: WaterFeatures,
   seaDistance: Map<string, number>
 ): PlacedCrystal[] {
   const occupied = new Set<string>();
@@ -119,10 +117,8 @@ export function computePlacedCrystals(
     if (occupied.has(key)) continue;
     // Kristal sprite'ı kök hex'in biraz dışına taşabildiği için (scale
     // ~0.42-0.68 + jitter) küçük bir pay -- forests.ts/rockyAreas.ts'teki
-    // "ağaçlar göle taşıyor" düzeltmesiyle aynı prensip, ama kristal küçük
-    // olduğu için pay da daha düşük.
-    if (isWaterAtWorldPosition(t.x, t.y, water, 0.4)) continue;
-    // Ada kıyısı için aynı taşma düzeltmesi (bkz. forests.ts, islandShore.ts).
+    // taşma düzeltmesiyle aynı prensip (bkz. islandShore.ts), ama kristal
+    // küçük olduğu için pay da daha düşük.
     if ((seaDistance.get(`${t.x},${t.y}`) ?? Infinity) <= 0) continue;
 
     const defIdx = hashXY(t.x, t.y, CRYSTAL_SEED + 1) % CRYSTAL_DEFS.length;

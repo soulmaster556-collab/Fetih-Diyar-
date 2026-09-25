@@ -1,6 +1,5 @@
 import type { Tile } from "../api";
 import { HEX_DIRECTIONS, hashXY } from "./mountains";
-import { isWaterAtWorldPosition, type WaterFeatures } from "./riversLakes";
 import { sampleBiomeIntensity, type BiomeAnchor } from "./worldRegions";
 import type { ReservedRoot } from "./forests";
 
@@ -101,13 +100,13 @@ export type PlacedRock = {
 // bir kaya kümesi bir ağaç kümesiyle aynı karoyu paylaşamaz ama hemen
 // yanında durabilir (doğal orman kenarı/kayalık geçişi, bkz. dosya başı
 // yorumu).
-// FAZ 4A -- `water`: forests.ts ile aynı prensip, bkz. o dosyadaki not.
+// FAZ 4A -- göller kaldırıldı, forests.ts ile aynı prensip (bkz. o dosyadaki
+// not): `seaDistance` artık denize/ada dışına taşmayı önleyen TEK kontrol.
 export function computePlacedRocks(
   tiles: Tile[],
   biomeAnchors: BiomeAnchor[],
   reservedRoots: ReservedRoot[],
   forestRoots: ReservedRoot[],
-  water: WaterFeatures,
   seaDistance: Map<string, number>
 ): PlacedRock[] {
   const occupied = new Set<string>();
@@ -132,10 +131,8 @@ export function computePlacedRocks(
   for (const t of candidates) {
     const key = `${t.x},${t.y}`;
     if (occupied.has(key)) continue;
-    // forests.ts ile aynı düzeltme, kayalık sprite'ları biraz daha küçük
-    // (scale ~0.85-1.2) olduğu için pay biraz daha düşük.
-    if (isWaterAtWorldPosition(t.x, t.y, water, 0.75)) continue;
-    // Ada kıyısı için aynı taşma düzeltmesi (bkz. forests.ts, islandShore.ts).
+    // forests.ts ile aynı taşma düzeltmesi (bkz. islandShore.ts), kayalık
+    // sprite'ları biraz daha küçük (scale ~0.85-1.2) olduğu için pay daha dar.
     if ((seaDistance.get(`${t.x},${t.y}`) ?? Infinity) <= 0) continue;
 
     const intensity = Math.max(

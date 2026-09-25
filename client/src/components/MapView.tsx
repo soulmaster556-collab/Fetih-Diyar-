@@ -13,13 +13,6 @@ import { isoCenter } from "../game/hexMath";
 import { buildIslandShorePathD, computeIslandShoreLoops, computeSeaDistanceMap } from "../game/islandShore";
 import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
 import { computePlacedRocks } from "../game/rockyAreas";
-import {
-  buildCoastRingPathD,
-  buildLakePathD,
-  coastGradientGeometry,
-  generateLakes,
-  isWaterAtWorldPosition,
-} from "../game/riversLakes";
 import { castleImageForLevel, npcCastleImageForLevel } from "../game/tileImages";
 import { buildTerritoryPathD, computeTerritoryRegions } from "../game/territory";
 import { buildBiomeBackground, generateBiomeAnchors, TERRAIN_GRAIN_BACKGROUND } from "../game/worldRegions";
@@ -94,38 +87,6 @@ export function MapView({
   // için (bkz. islandShore.ts computeSeaDistanceMap dosya başı yorumu).
   const seaDistance = useMemo(() => computeSeaDistanceMap(tiles), [tiles]);
 
-  // Göller BİLEREK KAPALI (lakes: []) -- generateLakes WORLD_SIZE'a göre
-  // SABİT bir dünya-koordinat formülüyle üretiliyor (bkz. riversLakes.ts),
-  // adaların artık RASTGELE 6x6 ızgaraya dağıldığı çoklu-ada sisteminden
-  // TAMAMEN habersiz. Sonuç: göller sık sık hiçbir adanın üstüne değil,
-  // açık denizin ortasına düşüyordu -- kendi kumsal halkasıyla birlikte
-  // anlamsız, "havada" bir daire gibi duruyordu (kullanıcı geri bildirimi:
-  // "gereksiz yuvarlak su şekilleri var adanın içinde"). generateLakes/
-  // buildLakePathD/buildCoastRingPathD hiçbiri SİLİNMEDİ -- ileride göl
-  // konumlarını gerçek ada verisine göre (ör. sadece bir adanın iç
-  // karolarından seçerek) üretecek bir revizyon gelirse burası (lakes: [])
-  // tek satırla geri açılabilir.
-  const waterFeatures = useMemo(() => ({ lakes: [] as ReturnType<typeof generateLakes> }), []);
-  const lakePathsD = useMemo(
-    () => waterFeatures.lakes.map((l) => ({ key: `lake-${l.seed}`, d: buildLakePathD(l, tileWidth) })),
-    [waterFeatures, tileWidth]
-  );
-  // Kıyı şeridi -- TEK bir path + TEK bir radyal gradyan, parça/dikiş YOK
-  // (bkz. riversLakes.ts buildCoastRingPathD dosya başı yorumu -- ilk
-  // deneme döndürülmüş dikdörtgen parçalardı, eğride dikiş oluşturuyordu,
-  // geri alındı).
-  const coastRings = useMemo(
-    () =>
-      waterFeatures.lakes.map((l) => ({
-        key: `coast-${l.seed}`,
-        gradientId: `coast-gradient-${l.seed}`,
-        maskId: `coast-mask-${l.seed}`,
-        d: buildCoastRingPathD(l, tileWidth),
-        geo: coastGradientGeometry(l, tileWidth),
-      })),
-    [waterFeatures, tileWidth]
-  );
-
   // FAZ 5 -- Territory (bkz. game/territory.ts dosya başı yorumu). Pahalı
   // kısım (flood-fill + sınır çıkarma) SADECE `tiles`/sahiplik değiştiğinde
   // yeniden çalışır -- zoom (tileWidth) değişince ayrı bir useMemo (aşağıda)
@@ -166,17 +127,15 @@ export function MapView({
   // filtrelenmiş listeyi kullanıyor ki görünmeyen bir dağın etrafında
   // saldırı hattı bükülmesin.
   // Dağ sprite'ı (scale 2.2) diğer dekorlardan daha büyük taştığı için pay
-  // da daha geniş -- "ağaçlar/dekorlar göle taşıyor" düzeltmesi (bkz.
-  // riversLakes.ts isWaterAtWorldPosition yorumu, forests.ts/rockyAreas.ts
+  // da daha geniş -- "adaların dışına taşan dekorlar var" düzeltmesi (bkz.
+  // islandShore.ts computeSeaDistanceMap yorumu, forests.ts/rockyAreas.ts
   // ile aynı prensip).
   const visibleMountainScreens = useMemo(
     () =>
       mountainScreens.filter(
-        (m) =>
-          !isWaterAtWorldPosition(m.mountain.rootX, m.mountain.rootY, waterFeatures, 1.25) &&
-          (seaDistance.get(`${m.mountain.rootX},${m.mountain.rootY}`) ?? Infinity) > 1
+        (m) => (seaDistance.get(`${m.mountain.rootX},${m.mountain.rootY}`) ?? Infinity) > 1
       ),
-    [mountainScreens, waterFeatures, seaDistance]
+    [mountainScreens, seaDistance]
   );
 
   // FAZ 3 -- Forest + Rocky Areas. `mountains.ts` HİÇ değişmedi; bu iki
@@ -189,12 +148,12 @@ export function MapView({
   // yorumları. world-terrain'e (biomeAnchors'ın KENDİSİ değişmiyor, sadece
   // okunuyor) hiç dokunulmuyor.
   const placedForests = useMemo(
-    () => computePlacedForests(tiles, biomeAnchors, placedMountains, waterFeatures, seaDistance),
-    [tiles, biomeAnchors, placedMountains, waterFeatures, seaDistance]
+    () => computePlacedForests(tiles, biomeAnchors, placedMountains, seaDistance),
+    [tiles, biomeAnchors, placedMountains, seaDistance]
   );
   const placedRocks = useMemo(
-    () => computePlacedRocks(tiles, biomeAnchors, placedMountains, placedForests, waterFeatures, seaDistance),
-    [tiles, biomeAnchors, placedMountains, placedForests, waterFeatures, seaDistance]
+    () => computePlacedRocks(tiles, biomeAnchors, placedMountains, placedForests, seaDistance),
+    [tiles, biomeAnchors, placedMountains, placedForests, seaDistance]
   );
 
   const forestScreens = useMemo(() => {
@@ -226,15 +185,8 @@ export function MapView({
   // dışlanarak yerleşiyor, aynı forests/rockyAreas'ın birbirini dışlama
   // mantığı. Su kontrolü kendi içinde (computePlacedCrystals).
   const placedCrystals = useMemo(
-    () =>
-      computePlacedCrystals(
-        tiles,
-        placedMountains,
-        [...placedForests, ...placedRocks],
-        waterFeatures,
-        seaDistance
-      ),
-    [tiles, placedMountains, placedForests, placedRocks, waterFeatures, seaDistance]
+    () => computePlacedCrystals(tiles, placedMountains, [...placedForests, ...placedRocks], seaDistance),
+    [tiles, placedMountains, placedForests, placedRocks, seaDistance]
   );
 
   // "Havada duruyor" düzeltmesi: kutuyu (mountains/forests/rocks gibi) cy
@@ -260,10 +212,13 @@ export function MapView({
   }, [placedCrystals, tileWidth, tileHeight]);
 
   // Render sırası (yukarıdan aşağıya = arkadan öne, FAZ 5 madde 2/17):
-  // world-terrain(z0) -> world-water(z1) -> world-territory(z2) ->
-  // iso-tile-group'lar + mountains/forests/rocky/castle-scenes (z 10+,
-  // painter's algorithm havuzu) -> iso-labels-layer(z500) ->
-  // attack-lines-layer(en üst). Bu sırayı değiştirmeden koru.
+  // world-sea(-2) -> world-island-shore(-1) -> world-terrain(0) ->
+  // world-territory(2) -> iso-tile-group'lar + mountains/forests/rocky/
+  // castle-scenes (z 10+, painter's algorithm havuzu) -> iso-labels-layer
+  // (z500) -> attack-lines-layer(en üst). Göller (kullanıcı isteğiyle)
+  // tamamen kaldırıldı -- eskiden adaların rastgele konumundan habersiz
+  // sabit bir formülle üretiliyor, sık sık açık denizin ortasında anlamsız
+  // bir daire olarak beliriyordu. Bu sırayı değiştirmeden koru.
   return (
   <div
     className="map-viewport"
@@ -286,10 +241,9 @@ export function MapView({
           App.css z-index -2). Çoklu ada + gerçek deniz isteğiyle eklendi --
           ada olmayan HER yer artık düz çim değil, deniz gösteriyor. */}
       <div className="world-sea" />
-      {/* Ada kıyı bandı -- gölün radyal-gradyan halkasıyla AYNI prensip
-          (bkz. .world-coastline yorumu), ama tek merkez+yarıçap yerine
-          gerçek ada sınırı (islandShorePathD) üstünde bir STROKE olarak.
-          Stroke, path'in üstüne (yarısı kara yarısı deniz tarafına) biniyor
+      {/* Ada kıyı bandı -- gerçek ada sınırı (islandShorePathD) üstünde bir
+          STROKE olarak su->kum geçişi çiziyor. Stroke, path'in üstüne
+          (yarısı kara yarısı deniz tarafına) biniyor
           -- .world-terrain (aşağısı, ada şekline clip-path'li) üstüne
           bindiğinde karadaki yarısını örtüyor, sadece deniz tarafına bakan
           kum/sığ-su hilali görünür kalıyor (bkz. App.css). */}
@@ -335,92 +289,7 @@ export function MapView({
           }}
         />
       </div>
-      {/* Göl katmanı. .world-terrain'in HEMEN üstünde, tüm
-          .iso-tile-group'ların (z-index 10+) altında -- sabit z-index 1,
-          painter's algorithm'a hiç katılmıyor (tıpkı terrain gibi düz/
-          zemine-yapışık bir katman, "boylu" bir obje değil). Tek bir SVG,
-          içinde birkaç <path> -- dünya boyutundan bağımsız, düşük DOM
-          maliyetli (bkz. riversLakes.ts dosya başı yorumu). Nehir sistemi
-          kullanıcı isteğiyle kaldırıldı. */}
-      {/* Kıyı şeridi -- .world-terrain'in üstünde ama .world-water'ın (aşağısı,
-          gerçek göl dolgusu) ALTINDA, sabit z-index 1 (bu DOM sırası yeterli --
-          eşit z'de sonraki kardeş üstte boyanır, bkz. App.css notu). Su->kum->
-          şeffaf radyal gradyanla dolu TEK path -- göl dolgusu bunun büyük
-          kısmını örtüyor, sadece MARGIN kadarlık halka dışarıda kalıyor (bkz.
-          riversLakes.ts buildCoastRingPathD dosya başı yorumu). */}
-      <svg className="world-coastline">
-        <defs>
-          {coastRings.map((r) => (
-            <radialGradient
-              key={r.gradientId}
-              id={r.gradientId}
-              gradientUnits="userSpaceOnUse"
-              cx={r.geo.cx}
-              cy={r.geo.cy}
-              r={r.geo.r}
-            >
-              {/* Su -> ıslak kum (koyu, dalganın hemen üstü) -> kuru kum ->
-                  şeffaf (çime karışsın diye) -- kullanıcı isteğiyle eski
-                  4-durak/düz-plato geçiş daha kademeli/doğal hale getirildi. */}
-              <stop offset="0%" stopColor="#3f8fbf" stopOpacity="0.9" />
-              <stop offset="30%" stopColor="#3f8fbf" stopOpacity="0.85" />
-              <stop offset="42%" stopColor="#b9a276" stopOpacity="0.85" />
-              <stop offset="58%" stopColor="#e8d6ab" stopOpacity="0.85" />
-              <stop offset="85%" stopColor="#e8d6ab" stopOpacity="0.5" />
-              <stop offset="100%" stopColor="#e8d6ab" stopOpacity="0" />
-            </radialGradient>
-          ))}
-          {/* Kum dokusu -- .world-terrain-grain ile AYNI teknik (feTurbulence,
-              gerçek asset yok), ama kum daha ince taneli hissetsin diye
-              yüksek baseFrequency. patternUnits userSpaceOnUse + tileWidth'e
-              bağlı boyut ki zoom değişince tane boyutu da orantılı kalsın. */}
-          <pattern
-            id="sand-grain-pattern"
-            patternUnits="userSpaceOnUse"
-            width={tileWidth * 0.35}
-            height={tileWidth * 0.35}
-          >
-            <filter id="sand-grain-filter">
-              <feTurbulence type="fractalNoise" baseFrequency="1.4" numOctaves="2" stitchTiles="stitch" />
-              <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.55 0" />
-            </filter>
-            <rect width="100%" height="100%" filter="url(#sand-grain-filter)" />
-          </pattern>
-          {/* Kum dokusunun (aşağısı) sadece gradyanın GÖRÜNÜR olduğu yerde
-              (su/çim'e karıştığı kenarlarda değil) belirmesi için -- mask
-              içindeki path AYNI gradyanla dolduruluyor, o yüzden tane de
-              rengin soluma eğrisini birebir takip ediyor. */}
-          {/* style={{colorInterpolation:'sRGB'}} ÖNEMLİ -- SVG mask'lar
-              varsayılan olarak linearRGB uzayında luminance hesaplıyor, bu da
-              orta tonları (buradaki gradyan renkleri gibi) olması gerekenden
-              çok daha karanlık/görünmez gösteriyor (bkz. dosya başı yorumu --
-              maskesiz test edilince tane net görünüyordu, mask eklenince
-              neredeyse kayboluyordu, sebebi buydu). */}
-          {coastRings.map((r) => (
-            <mask key={r.maskId} id={r.maskId} style={{ colorInterpolation: "sRGB" }}>
-              <path d={r.d} fill={`url(#${r.gradientId})`} />
-            </mask>
-          ))}
-        </defs>
-        {coastRings.map((r) => (
-          <path key={r.key} d={r.d} fill={`url(#${r.gradientId})`} />
-        ))}
-        {coastRings.map((r) => (
-          <path
-            key={`${r.key}-grain`}
-            d={r.d}
-            fill="url(#sand-grain-pattern)"
-            mask={`url(#${r.maskId})`}
-            className="world-coastline-grain"
-          />
-        ))}
-      </svg>
-      <svg className="world-water">
-        {lakePathsD.map((l) => (
-          <path key={l.key} d={l.d} className="lake-shape" />
-        ))}
-      </svg>
-      {/* FAZ 5 -- Territory katmanı. .world-water'ın HEMEN üstünde, TÜM
+      {/* FAZ 5 -- Territory katmanı. .world-terrain'in HEMEN üstünde, TÜM
           .iso-tile-group'ların (z 10+) altında -- sabit z-index 2, terrain/su
           gibi zemine yapışık bir katman, painter's algorithm'a katılmıyor.
           Her <path> tek bir bağlı bölgeyi (region) temsil ediyor -- hex
