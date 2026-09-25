@@ -12,7 +12,13 @@ import { computePlacedForests } from "../game/forests";
 import { isoCenter } from "../game/hexMath";
 import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
 import { computePlacedRocks } from "../game/rockyAreas";
-import { buildLakePathD, generateLakes, isWaterAtWorldPosition } from "../game/riversLakes";
+import {
+  buildCoastRingPathD,
+  buildLakePathD,
+  coastGradientGeometry,
+  generateLakes,
+  isWaterAtWorldPosition,
+} from "../game/riversLakes";
 import { castleImageForLevel, npcCastleImageForLevel } from "../game/tileImages";
 import { buildTerritoryPathD, computeTerritoryRegions } from "../game/territory";
 import { buildBiomeBackground, generateBiomeAnchors, TERRAIN_GRAIN_BACKGROUND } from "../game/worldRegions";
@@ -79,6 +85,20 @@ export function MapView({
   const waterFeatures = useMemo(() => ({ lakes: generateLakes(WORLD_SIZE) }), []);
   const lakePathsD = useMemo(
     () => waterFeatures.lakes.map((l) => ({ key: `lake-${l.seed}`, d: buildLakePathD(l, tileWidth) })),
+    [waterFeatures, tileWidth]
+  );
+  // Kıyı şeridi -- TEK bir path + TEK bir radyal gradyan, parça/dikiş YOK
+  // (bkz. riversLakes.ts buildCoastRingPathD dosya başı yorumu -- ilk
+  // deneme döndürülmüş dikdörtgen parçalardı, eğride dikiş oluşturuyordu,
+  // geri alındı).
+  const coastRings = useMemo(
+    () =>
+      waterFeatures.lakes.map((l) => ({
+        key: `coast-${l.seed}`,
+        gradientId: `coast-gradient-${l.seed}`,
+        d: buildCoastRingPathD(l, tileWidth),
+        geo: coastGradientGeometry(l, tileWidth),
+      })),
     [waterFeatures, tileWidth]
   );
 
@@ -249,6 +269,35 @@ export function MapView({
           içinde birkaç <path> -- dünya boyutundan bağımsız, düşük DOM
           maliyetli (bkz. riversLakes.ts dosya başı yorumu). Nehir sistemi
           kullanıcı isteğiyle kaldırıldı. */}
+      {/* Kıyı şeridi -- .world-terrain'in üstünde ama .world-water'ın (aşağısı,
+          gerçek göl dolgusu) ALTINDA, sabit z-index 1 (bu DOM sırası yeterli --
+          eşit z'de sonraki kardeş üstte boyanır, bkz. App.css notu). Su->kum->
+          şeffaf radyal gradyanla dolu TEK path -- göl dolgusu bunun büyük
+          kısmını örtüyor, sadece MARGIN kadarlık halka dışarıda kalıyor (bkz.
+          riversLakes.ts buildCoastRingPathD dosya başı yorumu). */}
+      <svg className="world-coastline">
+        <defs>
+          {coastRings.map((r) => (
+            <radialGradient
+              key={r.gradientId}
+              id={r.gradientId}
+              gradientUnits="userSpaceOnUse"
+              cx={r.geo.cx}
+              cy={r.geo.cy}
+              r={r.geo.r}
+            >
+              <stop offset="0%" stopColor="#3f8fbf" stopOpacity="0.9" />
+              <stop offset="15%" stopColor="#3f8fbf" stopOpacity="0.9" />
+              <stop offset="55%" stopColor="#e6d2a5" stopOpacity="0.85" />
+              <stop offset="75%" stopColor="#e6d2a5" stopOpacity="0.85" />
+              <stop offset="100%" stopColor="#e6d2a5" stopOpacity="0" />
+            </radialGradient>
+          ))}
+        </defs>
+        {coastRings.map((r) => (
+          <path key={r.key} d={r.d} fill={`url(#${r.gradientId})`} />
+        ))}
+      </svg>
       <svg className="world-water">
         {lakePathsD.map((l) => (
           <path key={l.key} d={l.d} className="lake-shape" />

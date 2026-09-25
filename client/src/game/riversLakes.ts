@@ -119,6 +119,45 @@ export function buildLakePathD(lake: LakeAnchor, tileWidth: number): string {
   return closedSmoothPath(lakePolygonPoints(lake, tileWidth));
 }
 
+// ---------------------------------------------------------------------
+// Kıyı şeridi -- İKİNCİ deneme (bkz. sohbet geçmişi: ilk deneme dönen
+// dikdörtgen segmentlerdi, eğri üzerinde farklı açılarda döndükleri için
+// aralarında üçgen boşluklar/dikişler oluşuyordu -- "fasetleme" değil,
+// gözle bariz bir testere-dişi hatasıydı, geri alındı).
+//
+// Bu sefer TEK bir SVG path + TEK bir radyal gradyan -- hiçbir parça/dikiş
+// YOK, matematiksel olarak sürekli. Teknik: gölün kendi noktalarını
+// (lakePolygonPoints) MARGIN kadar dışarı itilmiş haliyle ikinci, daha
+// BÜYÜK bir kapalı eğri çiziyoruz (buildLakePathD ile birebir aynı çizim
+// fonksiyonu, closedSmoothPath). Bu büyük şekil merkezden dışa doğru su->
+// kum->şeffaf (çim'e karışsın diye) giden bir radialGradient ile dolduruluyor.
+// Render sırasında (bkz. MapView.tsx) bu şekil .world-water'ın (gerçek göl
+// dolgusu, KÜÇÜK polygon) ALTINA konuyor -- küçük olan üstte kaldığı için
+// onu tamamen örtüyor, sadece aradaki halka (MARGIN kadar) görünür kalıyor.
+//
+// Tek dezavantaj: gradyan TEK bir merkez+yarıçapa göre (dairesel) tanımlı,
+// ama göl köşeli/asimetrik (jitter 0.55-1.5x) -- yani geçiş bandının gerçek
+// kenarla hizası açıya göre biraz kayar (bazı yönlerde kum biraz erken/geç
+// başlar gibi görünebilir). Bu KABUL EDİLEBİLİR bir kusur -- doğal bir
+// kumsalın genişliği zaten sabit değildir, ve en önemlisi HİÇBİR YERDE sert
+// bir dikiş/boşluk YOK (gradyan matematiksel olarak sürekli), ki asıl
+// reddedilen kusur buydu.
+export const COAST_BAND_MARGIN_HEX = 2.2;
+
+export function buildCoastRingPathD(lake: LakeAnchor, tileWidth: number): string {
+  return closedSmoothPath(lakePolygonPoints(lake, tileWidth, COAST_BAND_MARGIN_HEX));
+}
+
+// MapView.tsx'teki <radialGradient>'i userSpaceOnUse ile kuracak konum/
+// yarıçap bilgisi -- gradyanın kapsaması gereken EN UZAK nokta jitter'ın
+// üst sınırı (1.5x) + margin'e göre (bkz. lakePolygonPoints), aksi halde
+// gradyanın kendisi köşelerde şekli tam kaplamayabilir.
+export function coastGradientGeometry(lake: LakeAnchor, tileWidth: number) {
+  const center = isoCenter(lake.cx, lake.cy, tileWidth);
+  const r = (lake.radius * 1.5 + COAST_BAND_MARGIN_HEX) * tileWidth;
+  return { cx: center.cx, cy: center.cy, r };
+}
+
 function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }

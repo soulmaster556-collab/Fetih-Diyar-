@@ -514,6 +514,18 @@ button:disabled {
    (10+) HER ZAMAN altında, painter's algorithm'a katılmıyor (terrain gibi
    zemine yapışık bir katman, "boylu" değil). Nehir sistemi kullanıcı
    isteğiyle kaldırıldı -- .river-shape yok. */
+/* Kıyı şeridi (bkz. game/riversLakes.ts buildCoastRingPathD, MapView.tsx).
+   .world-water'ın HEMEN ALTINDA -- AYNI z-index (1) ama DOM'da ÖNCE geldiği
+   için altta boyanıyor, gerçek göl dolgusu (.world-water) bunun büyük
+   kısmını örtüyor, sadece dışarıdaki halka görünür kalıyor. */
+.world-coastline {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
+}
+
 .world-water {
   position: absolute;
   inset: 0;
