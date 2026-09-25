@@ -21,6 +21,7 @@ import {
   applyBridgeRangeFixMigration,
   applyShortBridgeCapMigration,
   applyCloserIslandsMigration,
+  applyLargeWaterGapFixMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -74,6 +75,10 @@ async function main() {
   // Adaları birbirine gerçekten yaklaştıran düzeltme -- yukarıdakiler gibi
   // ÖNCE ve senkron (bkz. mapgen.ts applyCloserIslandsMigration yorumu).
   await applyCloserIslandsMigration();
+  // Büyük ama teknik olarak "açık" su boşluklarını dolduran düzeltme --
+  // yukarıdakiler gibi ÖNCE ve senkron (bkz. mapgen.ts
+  // applyLargeWaterGapFixMigration yorumu).
+  await applyLargeWaterGapFixMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);

@@ -168,62 +168,40 @@ function pickClusteredCellIndices(rows: number, cols: number, count: number): nu
   return selected;
 }
 
-// Büyüme algoritması (bkz. pickGrowthOrigin) ince koy/körfezleri teşvik
-// ettiği için bazen böyle bir koyun ağzı kazayla tamamen kapanıp adanın
-// ortasında erişilemez, yuvarlak/blob görünümlü küçük bir deniz cebi
-// bırakabiliyor ("haritada gereksiz yuvarlak göletler var" geri bildirimi --
-// göl sistemi client'tan tamamen kaldırılmış olsa bile bu cepler düz
-// .world-sea mavisiyle görünmeye devam ediyordu). Dünyanın dört kenarından
-// başlayan bir flood-fill ile GERÇEKTEN açık denize ulaşan boş karoları
-// buluyoruz; ulaşamayan her bağlı boş karo kümesi tanım gereği kapalı bir
-// cep demektir -- cebi çevreleyen komşu karoların en çok ait olduğu adaya
-// (birden fazla adayla sınırsa çoğunluk kazanır) kara olarak katıyoruz.
-function fillEnclosedSeaPockets(occupied: Map<string, number>): LandTile[] {
-  const reachable = new Set<string>();
-  const queue: [number, number][] = [];
+// Adalar arasında, hiçbir tarafa tam "kapalı" sayılmayan ama yine de
+// anlamsız derecede büyük su boşlukları kalabiliyordu ("ada aralarındaki
+// saçmalıklar" geri bildirimi) -- bunlar teknik olarak ince bir şeritle asıl
+// açık denize bağlı olduğu için eski "sadece dünya kenarından ULAŞILAMAYAN
+// cepleri doldur" mantığı bunları atlıyordu (sadece gerçekten kapalı, çok
+// küçük göletleri yakalıyordu). Yeni yaklaşım: ULAŞILABİLİRLİK yerine
+// BOYUTA bakıyoruz -- TÜM su karolarını bağlı bileşenlerine ayırıp, gerçek
+// açık denizden (binlerce karo) çok daha küçük olan HER bileşeni (ister tam
+// kapalı olsun ister ince bir kanaldan besin) karayla dolduruyoruz. Böylece
+// hem eski küçük göletler hem de bu turdaki büyük ama "teknik olarak açık"
+// körfez/boşluklar aynı geçişte temizleniyor.
+const WATER_POCKET_MAX_SIZE = 1200;
 
-  function markReachable(x: number, y: number) {
-    if (occupied.has(key(x, y))) return;
-    const k = key(x, y);
-    if (reachable.has(k)) return;
-    reachable.add(k);
-    queue.push([x, y]);
-  }
-
-  for (let x = 0; x < WORLD_SIZE; x++) {
-    markReachable(x, 0);
-    markReachable(x, WORLD_SIZE - 1);
-  }
-  for (let y = 0; y < WORLD_SIZE; y++) {
-    markReachable(0, y);
-    markReachable(WORLD_SIZE - 1, y);
-  }
-  while (queue.length > 0) {
-    const [x, y] = queue.pop()!;
-    for (const [nx, ny] of neighbors6(x, y)) {
-      if (!inBounds(nx, ny)) continue;
-      if (occupied.has(key(nx, ny))) continue;
-      markReachable(nx, ny);
-    }
-  }
-
+function fillSmallWaterPockets(occupied: Map<string, number>): LandTile[] {
   const filled: LandTile[] = [];
-  const visitedPocket = new Set<string>();
+  const visited = new Set<string>();
 
   for (let x = 0; x < WORLD_SIZE; x++) {
     for (let y = 0; y < WORLD_SIZE; y++) {
       const startKey = key(x, y);
-      if (occupied.has(startKey) || reachable.has(startKey) || visitedPocket.has(startKey)) continue;
+      if (occupied.has(startKey) || visited.has(startKey)) continue;
 
-      // Bu kapalı cebin tüm hücrelerini BFS ile topla, aynı anda sınırdaki
-      // kara komşularını da say (cep birden fazla adaya komşuysa çoğunluk
-      // kazanır).
-      const pocket: [number, number][] = [[x, y]];
-      visitedPocket.add(startKey);
+      // Bu su bileşeninin TÜM karolarını BFS ile topla, aynı anda kara
+      // komşularını da say (bileşen birden fazla adaya komşuysa çoğunluk
+      // kazanır) -- WATER_POCKET_MAX_SIZE'ı aşarsa gerçek açık deniz
+      // sayılıp erken durduruluyor, boşuna binlerce karoluk okyanusu
+      // taramıyoruz.
+      const component: [number, number][] = [[x, y]];
+      visited.add(startKey);
       const neighborCounts = new Map<number, number>();
       let head = 0;
-      while (head < pocket.length) {
-        const [px, py] = pocket[head++];
+      let tooBig = false;
+      while (head < component.length) {
+        const [px, py] = component[head++];
         for (const [nx, ny] of neighbors6(px, py)) {
           if (!inBounds(nx, ny)) continue;
           const nk = key(nx, ny);
@@ -232,13 +210,18 @@ function fillEnclosedSeaPockets(occupied: Map<string, number>): LandTile[] {
             neighborCounts.set(owner, (neighborCounts.get(owner) ?? 0) + 1);
             continue;
           }
-          if (reachable.has(nk) || visitedPocket.has(nk)) continue;
-          visitedPocket.add(nk);
-          pocket.push([nx, ny]);
+          if (visited.has(nk)) continue;
+          visited.add(nk);
+          component.push([nx, ny]);
+        }
+        if (component.length > WATER_POCKET_MAX_SIZE) {
+          tooBig = true;
+          break;
         }
       }
+      if (tooBig) continue; // gerçek açık deniz -- dokunma
 
-      if (neighborCounts.size === 0) continue; // kuşatılmamış -- olmamalı ama güvenlik payı
+      if (neighborCounts.size === 0) continue; // hiçbir karaya komşu değil (dünyanın boş bir köşesi) -- dokunma
 
       let bestId = -1;
       let bestCount = -1;
@@ -249,7 +232,7 @@ function fillEnclosedSeaPockets(occupied: Map<string, number>): LandTile[] {
         }
       }
 
-      for (const [px, py] of pocket) {
+      for (const [px, py] of component) {
         const k = key(px, py);
         occupied.set(k, bestId);
         filled.push({ x: px, y: py, islandId: bestId, isCoastal: false, isNpcSafe: false, isBridge: false });
@@ -459,10 +442,10 @@ function generateIslandLayout(maxBridgeHexLength: number): LandTile[] {
     });
   }
 
-  // Büyüme sırasında kazayla kapanmış deniz ceplerini kara ile doldur (bkz.
-  // fillEnclosedSeaPockets dosya başı yorumu) -- kıyı/isNpcSafe hesabından
-  // ÖNCE çalışmalı ki bu yeni kara karoları da doğru şekilde işaretlensin.
-  for (const t of fillEnclosedSeaPockets(occupied)) {
+  // Küçük/orta boy su boşluklarını kara ile doldur (bkz. fillSmallWaterPockets
+  // dosya başı yorumu) -- kıyı/isNpcSafe hesabından ÖNCE çalışmalı ki bu yeni
+  // kara karoları da doğru şekilde işaretlensin.
+  for (const t of fillSmallWaterPockets(occupied)) {
     allTiles.push(t);
   }
 
@@ -932,6 +915,29 @@ export async function applyCloserIslandsMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita yakın adalarla yeniden üretilecek.`);
+}
+
+// Kullanıcı ekran görüntüsüyle gösterdi: adalar arasında hâlâ büyük, çirkin
+// su boşlukları vardı -- bunlar tam "kapalı" olmadığı (ince bir kanaldan
+// asıl denize bağlı olduğu) için eski fillEnclosedSeaPockets'ın
+// "ulaşılabilirlik" testini geçip dolmadan kalıyordu. fillSmallWaterPockets
+// artık ULAŞILABİLİRLİK değil BOYUT'a bakıyor (bkz. dosya başı yorumu,
+// WATER_POCKET_MAX_SIZE=1200) -- gerçek açık denizden çok daha küçük her su
+// bileşenini (ister kapalı ister ince bağlantılı) karaya çeviriyor. Bu geçiş
+// haritayı bu yeni, çok daha agresif dolgu ile yeniden üretiyor.
+export async function applyLargeWaterGapFixMigration() {
+  const MIGRATION_NAME = "large_water_gap_fix_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: büyük su boşlukları dolduruluyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita dolgulu haritayla yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {
