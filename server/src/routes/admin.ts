@@ -100,8 +100,6 @@ async function removeFromGuild(client: { query: (typeof pool)["query"] }, player
   }
   return true;
 }
-    await client.query("DELETE FROM chat_messages WHERE player_id = $1", [id]);
-    await client.query("DELETE FROM reinforcement_orders WHERE from_player_id = $1", [id]);
 
 // GET /admin/players?q=&limit=&offset= -- aranabilir, sayfalanabilir liste.
 // Canlı altın/asker leaderboard'daki (players.ts) aynı yaklaşımla, tüm
@@ -407,6 +405,13 @@ adminRouter.delete("/players/:id", requireAdmin, async (req, res) => {
     await removeFromGuild(client, id);
     await client.query("DELETE FROM scout_reports WHERE scout_player_id = $1", [id]);
     await client.query("DELETE FROM player_reports WHERE player_id = $1", [id]);
+    // chat_messages.player_id ve reinforcement_orders.from_player_id da
+    // players(id)'e REFERENCES ile bağlı (bkz. db.ts) -- bunlar temizlenmeden
+    // aşağıdaki DELETE FROM players, bir oyuncu hiç mesaj/takviye göndermişse
+    // FK ihlaliyle başarısız olurdu (attack_orders için yukarıdaki aynı
+    // gerekçe).
+    await client.query("DELETE FROM chat_messages WHERE player_id = $1", [id]);
+    await client.query("DELETE FROM reinforcement_orders WHERE from_player_id = $1", [id]);
     await client.query("DELETE FROM players WHERE id = $1", [id]);
 
     await client.query("COMMIT");
