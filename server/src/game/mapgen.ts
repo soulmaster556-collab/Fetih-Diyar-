@@ -788,6 +788,89 @@ export async function applyLakeLockMigration(settings: Settings) {
   );
 }
 
+// applyLakeLockMigration (yukarısı) göllerin is_water'ını doğru işaretlemişti
+// ama decor.ts'teki isWaterAtWorldPosition o zaman hâlâ düz bir DAİRE
+// kullanıyordu (radius*1.35), oysa client'ın ÇİZDİĞİ göl asimetrik/köşeli
+// bir çokgen, bazı yönlerde 1.5x'e kadar taşıyor. Daire bu çıkıntıları
+// kapsamadığı için o aralıktaki karolar yanlışlıkla "kuru" sayılıp üstlerine
+// NPC yerleşmişti -- "kaleler gölün görsel sınırının içinde duruyor" geri
+// bildirimi buradan geliyordu. decor.ts artık (bu turda) hem çizimle hem bu
+// kontrolle AYNI köşe noktalarını kullanıyor; bu geçiş TEK SEFERLİK olarak
+// is_water'ı canlı haritada baştan (artık doğru) formüle göre yeniden
+// hesaplıyor ve yeni yakalanan göl-üstü NPC kamplarını applyLakeLockMigration
+// ile AYNI kurallarla boşaltıyor (fethedilmemiş NPC -> EMPTY, oyuncu kalesi
+// -> dokunulmuyor, sadece loglanıyor).
+export async function applyLakePolygonFixMigration(settings: Settings) {
+  const MIGRATION_NAME = "lake_polygon_fix_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  const { rows } = await pool.query<{
+    id: number;
+    x: number;
+    y: number;
+    tile_type: TileType;
+    owner_id: string | null;
+    is_water: boolean;
+  }>("SELECT id, x, y, tile_type, owner_id, is_water FROM tiles");
+
+  if (rows.length === 0) {
+    await markMigration(MIGRATION_NAME);
+    return;
+  }
+
+  const lakes = generateLakes(WORLD_SIZE);
+  const nowWaterIds: number[] = [];
+  const nowLandIds: number[] = [];
+  const clearIds: number[] = [];
+  let ownedOnWater = 0;
+  for (const t of rows) {
+    const nowWater = isWaterAtWorldPosition(t.x, t.y, lakes);
+    if (nowWater === t.is_water) continue;
+    if (nowWater) {
+      nowWaterIds.push(t.id);
+      if (t.tile_type === "NPC" && !t.owner_id) clearIds.push(t.id);
+      else if (t.tile_type === "PLAYER") ownedOnWater++;
+    } else {
+      nowLandIds.push(t.id);
+    }
+  }
+
+  const production = productionForLevel(1, settings);
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    if (nowWaterIds.length > 0) {
+      await client.query("UPDATE tiles SET is_water = true WHERE id = ANY($1)", [nowWaterIds]);
+    }
+    if (nowLandIds.length > 0) {
+      await client.query("UPDATE tiles SET is_water = false WHERE id = ANY($1)", [nowLandIds]);
+    }
+    if (clearIds.length > 0) {
+      await client.query(
+        `UPDATE tiles
+         SET tile_type = 'EMPTY', level = 1, gold_per_hour = $1, troops_per_hour = 0, stored_troops = 0
+         WHERE id = ANY($2)`,
+        [production.gold_per_hour, clearIds]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  await markMigration(MIGRATION_NAME);
+  console.log(
+    `[migration] ${MIGRATION_NAME}: tamamlandı (${nowWaterIds.length} karo yeniden göl olarak işaretlendi, ` +
+      `${nowLandIds.length} karo yeniden kara olarak işaretlendi, ${clearIds.length} fethedilmemiş NPC kampı ` +
+      `boşaltıldı${
+        ownedOnWater > 0 ? `, DİKKAT: ${ownedOnWater} oyuncu kalesi göl altında kaldı (elle taşınmalı)` : ""
+      }).`
+  );
+}
+
 // home_tile_id eklenmeden önce kayıt olmuş oyuncuların home_tile_id'si
 // NULL'dır. Bu geçiş, elden geldiğince (en erken sahip olunan PLAYER
 // karosu) geriye dönük olarak doldurur; yeni kayıtlar zaten /register

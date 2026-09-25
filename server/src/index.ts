@@ -14,6 +14,7 @@ import {
   applyNpcDensityIncreaseMigrationV4,
   applyNpcDensityReductionMigrationV5,
   applyLakeLockMigration,
+  applyLakePolygonFixMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -103,6 +104,7 @@ async function main() {
     .then(() => applyNpcDensityIncreaseMigrationV4(settings))
     .then(() => applyNpcDensityReductionMigrationV5(settings))
     .then(() => applyLakeLockMigration(settings))
+    .then(() => applyLakePolygonFixMigration(settings))
     .then(() => applyHomeTileBackfillMigration())
     .catch((err) => {
       console.error("[migration] npc/home-tile geçişleri başarısız oldu:", err);

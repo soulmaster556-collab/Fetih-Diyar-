@@ -67,30 +67,56 @@ export function generateLakes(worldSize: number): LakeAnchor[] {
   return lakes;
 }
 
-// Bir gölün kapalı, organik ("tek hex'e sıkışmayan, düzensiz kıyılı",
-// ASİMETRİK) şeklini SVG path'ine çeviriyor. Teknik: merkez etrafında N
-// nokta (her biri hash'e göre yarıçapı BELİRGİN ölçüde sapan -- simetrik
-// bir daire değil), sonra ardışık noktaların ORTA noktalarından geçen
-// quadratic Bézier'lerle (klasik "Catmull-Rom benzeri" yumuşatma) kapalı,
-// köşesiz bir kıyı çizgisi -- düz bir çokgen DEĞİL. Jitter'lar BİLEREK
-// ekran-piksel uzayında (isoCenter'dan SONRA), hex-koordinat uzayında
-// değil -- aksi halde hex ızgarasının eğikliği (isoCenter'daki x+y/2
-// çarpanı) göl şeklini paralelkenar gibi çarpıtırdı (bkz. worldRegions.ts'
-// teki biyom lekelerinin AYNI sebeple piksel uzayında dairesel
-// radial-gradient kullanması).
-export function buildLakePathD(lake: LakeAnchor, tileWidth: number): string {
+// Gölün asimetrik/düzensiz kıyı noktalarını üretir -- hem SVG çizimi
+// (buildLakePathD) hem de "burada su var mı" testi (isWaterAtWorldPosition)
+// AYNI bu noktaları kullanıyor, böylece görünen şekil ile oyun mantığının
+// su saydığı alan ASLA birbirinden sapamaz (eskiden ikisi ayrı ayrı --
+// çizim bu noktalarla, kontrol ise düz bir daireyle -- hesaplanıyordu; bu
+// da gölün köşeli/asimetrik çıkıntılarının bazı yönlerde daire sınırının
+// dışına taşmasına, dolayısıyla "kaleler gölün içinde duruyor" hatasına yol
+// açıyordu, bkz. sohbet geçmişi). `marginHexUnits`: forests/rockyAreas/
+// crystals'ın kendi sprite taşma payı için her köşe noktasını merkezden
+// dışarı doğru bu kadar hex-birimi ittiriyor (eski `extraMarginHexUnits`
+// ile aynı amaç, artık daireye değil bu poligona uygulanıyor).
+function lakePolygonPoints(
+  lake: LakeAnchor,
+  tileWidth: number,
+  marginHexUnits = 0
+): { x: number; y: number }[] {
   const center = isoCenter(lake.cx, lake.cy, tileWidth);
   const r = lake.radius * tileWidth;
+  const margin = marginHexUnits * tileWidth;
   const pts: { x: number; y: number }[] = [];
   for (let i = 0; i < lake.pointCount; i++) {
     const angle = (i / lake.pointCount) * Math.PI * 2;
     // 0.55-1.5 arası -- eski (0.7-1.25) dardan belirgin şekilde genişletildi
     // ki göl daireye değil, gerçekten asimetrik/düzensiz bir yamaya benzesin.
     const jitter = 0.55 + (hashXY(lake.seed, i, 4001) % 100) / 100 * 0.95;
-    const rr = r * jitter;
+    const rr = r * jitter + margin;
     pts.push({ x: center.cx + Math.cos(angle) * rr, y: center.cy + Math.sin(angle) * rr });
   }
-  return closedSmoothPath(pts);
+  return pts;
+}
+
+// Ray-casting point-in-polygon -- standart, kapalı çokgen için (bkz.
+// https://en.wikipedia.org/wiki/Point_in_polygon). closedSmoothPath'in
+// çizdiği yumuşatılmış eğri, bu ham noktaların birleştirdiği düz çokgene
+// çok yakın seyrediyor (Bézier eğrileri ardışık nokta ORTALARINDAN geçiyor,
+// dışına taşmıyor), o yüzden ham noktalarla test etmek hem yeterince
+// doğru hem de kapalı-form bir eğri kesişim hesabından çok daha basit/hızlı.
+function pointInPolygon(x: number, y: number, pts: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i].x, yi = pts[i].y;
+    const xj = pts[j].x, yj = pts[j].y;
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+export function buildLakePathD(lake: LakeAnchor, tileWidth: number): string {
+  return closedSmoothPath(lakePolygonPoints(lake, tileWidth));
 }
 
 function midpoint(a: { x: number; y: number }, b: { x: number; y: number }) {
@@ -112,25 +138,26 @@ function closedSmoothPath(pts: { x: number; y: number }[]): string {
 
 export type WaterFeatures = { lakes: LakeAnchor[] };
 
-// forests.ts/rockyAreas.ts (ve MapView.tsx'teki dağ render-filtresi) bu TEK
-// fonksiyonla "burada su var mı" soruyor. Kontrol SADECE kök hex noktasına
-// bakıyor (forest/rock/mountain cluster'ların kendi sprite'ı jitter+scale ile
-// kök hex'in biraz dışına taşabiliyor) -- bu yüzden pay bilerek cömert
-// tutuldu (yarıçapın %35 fazlası) ki kıyıya yakın kök hex'ler zaten elensin,
-// sprite kıyıyı nadiren kesişsin. worldRegions.ts'teki sampleBiomeIntensity
-// ile aynı prensip: isoCenter(_,_,1) referans birimiyle, tileWidth'ten
-// (zoom) TAMAMEN bağımsız, saf koordinat karşılaştırması.
+// forests.ts/rockyAreas.ts/crystals.ts (ve MapView.tsx'teki dağ
+// render-filtresi) bu TEK fonksiyonla "burada su var mı" soruyor, mapgen.ts
+// (sunucu) da NPC/kale yerleşimini aynı mantıkla dışlıyor (bkz. decor.ts --
+// elle senkron tutulan port). Kontrol SADECE kök hex noktasına bakıyor
+// (sprite'lar jitter+scale ile kök hex'in biraz dışına taşabiliyor), gerçek
+// gölün noktalarına göre (artık düz bir daireye göre DEĞİL, yukarıdaki
+// lakePolygonPoints/pointInPolygon) test ediliyor. worldRegions.ts'teki
+// sampleBiomeIntensity ile aynı prensip: isoCenter(_,_,1) referans
+// birimiyle, tileWidth'ten (zoom) TAMAMEN bağımsız, saf koordinat
+// karşılaştırması.
 //
-// `extraMarginHexUnits` -- "ağaçlar hâlâ göle taşıyor" düzeltmesi: %35'lik
-// pay tek başına yetmiyordu çünkü orman/kayalık/dağ sprite'ları KÖK hex'in
-// ÇOK ötesine taşabiliyor (bkz. forests.ts FOREST_CLUSTER_DEFS scale ~1.1-1.5
+// `extraMarginHexUnits` -- orman/kayalık/dağ sprite'ları KÖK hex'in ÇOK
+// ötesine taşabiliyor (bkz. forests.ts FOREST_CLUSTER_DEFS scale ~1.1-1.5
 // + jitter, mountains.ts scale 2.2). Kök hex "kuru" olsa bile sprite'ın
 // kendisi komşu bir göle bindirebiliyordu. Çağıran taraf (forests/rockyAreas/
-// MapView dağ filtresi) kendi sprite'ının en kötü taşma payına göre ekstra
-// bir hex-birimi payı geçiyor -- bu, göllerin sık kümelendiği ("spam")
-// bölgelerde de doğal olarak işliyor: örtüşen göllerin payları da örtüşüp
-// tek, daha geniş bir dışlama alanı oluşturuyor, ayrı bir "yoğun bölge"
-// tespiti gerekmiyor.
+// crystals/MapView dağ filtresi) kendi sprite'ının en kötü taşma payına göre
+// ekstra bir hex-birimi payı geçiyor -- lakePolygonPoints bu payı her köşe
+// noktasını merkezden dışarı iterek uyguluyor, bu yüzden göllerin sık
+// kümelendiği ("spam") bölgelerde de doğal olarak işliyor: örtüşen göllerin
+// payları da örtüşüp tek, daha geniş bir dışlama alanı oluşturuyor.
 export function isWaterAtWorldPosition(
   x: number,
   y: number,
@@ -139,9 +166,8 @@ export function isWaterAtWorldPosition(
 ): boolean {
   const p = isoCenter(x, y, 1);
   for (const lake of water.lakes) {
-    const c = isoCenter(lake.cx, lake.cy, 1);
-    const dist = Math.hypot(p.cx - c.cx, p.cy - c.cy);
-    if (dist < lake.radius * 1.35 + extraMarginHexUnits) return true;
+    const pts = lakePolygonPoints(lake, 1, extraMarginHexUnits);
+    if (pointInPolygon(p.cx, p.cy, pts)) return true;
   }
   return false;
 }

@@ -27,14 +27,15 @@ function isoCenter(x: number, y: number) {
   return { cx: x + y / 2, cy: tileHeight * 0.75 * y };
 }
 
-type LakeAnchor = { cx: number; cy: number; radius: number };
+type LakeAnchor = { cx: number; cy: number; radius: number; pointCount: number; seed: number };
 
 const LAKE_SEED = 811;
 const LAKE_GRID_STEP = 16;
 
-// riversLakes.ts'teki generateLakes ile birebir aynı (pointCount/seed hariç
-// -- bunlar sadece SVG kıyı şeklini çizmek için kullanılıyor, "burada göl
-// var mı" testine dahil değiller, bkz. isWaterAtWorldPosition).
+// riversLakes.ts'teki generateLakes ile birebir aynı -- pointCount/seed de
+// dahil, çünkü artık isWaterAtWorldPosition de (aşağısı) tıpkı client gibi
+// gölün gerçek köşe noktalarına göre test ediyor (eskiden sadece SVG çizimi
+// için gerekiyordu, kontrol düz bir daireydi -- bkz. aşağıdaki not).
 export function generateLakes(worldSize: number): LakeAnchor[] {
   const center = worldSize / 2;
   const lakes: LakeAnchor[] = [];
@@ -52,20 +53,48 @@ export function generateLakes(worldSize: number): LakeAnchor[] {
       const cy = Math.min(worldSize - 1, Math.max(0, gy + jitterY * LAKE_GRID_STEP));
       const sizeRoll = (hashXY(gx, gy, LAKE_SEED + 3) % 1000) / 1000;
       const radius = 2 + sizeRoll * sizeRoll * 5.5;
-      lakes.push({ cx, cy, radius });
+      const pointCount = 7 + (hashXY(gx, gy, LAKE_SEED + 5) % 6);
+      lakes.push({ cx, cy, radius, pointCount, seed: gx * 1000 + gy });
     }
   }
   return lakes;
 }
 
-// riversLakes.ts'teki isWaterAtWorldPosition ile birebir aynı eşik (%35
-// pay) -- kıyıya yakın kök hex'lerin de elenmesi için bilerek cömert.
+// riversLakes.ts'teki lakePolygonPoints/pointInPolygon ile birebir aynı --
+// eskiden burada düz bir daire (radius*1.35) kullanılıyordu, ama client'taki
+// GÖRSEL göl şekli (buildLakePathD) asimetrik/köşeli bir çokgen, bazı
+// yönlerde 1.5x'e kadar taşıyor. Daire çemberi bu çıkıntıları kapsamadığı
+// için o aralıkta kalan karolar "kuru" sayılıp üstlerine NPC/kale
+// yerleşiyordu -- görselde kalenin gölün içinde durduğu hata buradan
+// geliyordu (bkz. sohbet geçmişi). Artık İKİSİ DE (çizim ve bu kontrol)
+// AYNI köşe noktalarını kullanıyor, sapma yapısal olarak imkansız.
+function lakePolygonPoints(lake: LakeAnchor): { x: number; y: number }[] {
+  const center = isoCenter(lake.cx, lake.cy);
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i < lake.pointCount; i++) {
+    const angle = (i / lake.pointCount) * Math.PI * 2;
+    const jitter = 0.55 + (hashXY(lake.seed, i, 4001) % 100) / 100 * 0.95;
+    const rr = lake.radius * jitter;
+    pts.push({ x: center.cx + Math.cos(angle) * rr, y: center.cy + Math.sin(angle) * rr });
+  }
+  return pts;
+}
+
+function pointInPolygon(x: number, y: number, pts: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i].x, yi = pts[i].y;
+    const xj = pts[j].x, yj = pts[j].y;
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 export function isWaterAtWorldPosition(x: number, y: number, lakes: LakeAnchor[]): boolean {
   const p = isoCenter(x, y);
   for (const lake of lakes) {
-    const c = isoCenter(lake.cx, lake.cy);
-    const dist = Math.hypot(p.cx - c.cx, p.cy - c.cy);
-    if (dist < lake.radius * 1.35) return true;
+    if (pointInPolygon(p.cx, p.cy, lakePolygonPoints(lake))) return true;
   }
   return false;
 }
