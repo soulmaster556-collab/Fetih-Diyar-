@@ -1,5 +1,5 @@
 import type { Tile } from "../api";
-import { HEX_DIRECTIONS, hashXY } from "./mountains";
+import { HEX_DIRECTIONS, hashXY, islandDecorFactor } from "./mountains";
 import type { ReservedRoot } from "./forests";
 
 // ---------------------------------------------------------------------
@@ -106,9 +106,13 @@ export function computePlacedCrystals(
     occupied.add(`${r.rootX},${r.rootY}`);
   }
 
-  const candidates = tiles.filter(
-    (t) => t.tileType === "EMPTY" && hashXY(t.x, t.y, CRYSTAL_SEED) % CRYSTAL_DENSITY === 0
-  );
+  const candidates = tiles.filter((t) => {
+    if (t.tileType !== "EMPTY") return false;
+    // Ada bazlı yoğunluk (bkz. mountains.ts islandDecorFactor) -- bazı
+    // adalar diğerlerinden belirgin şekilde daha kristal-zengin.
+    const density = Math.max(30, Math.round(CRYSTAL_DENSITY / islandDecorFactor(t.islandId, 301)));
+    return hashXY(t.x, t.y, CRYSTAL_SEED) % density === 0;
+  });
   candidates.sort((a, b) => a.x - b.x || a.y - b.y);
 
   const placed: PlacedCrystal[] = [];

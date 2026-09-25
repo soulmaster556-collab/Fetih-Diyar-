@@ -24,6 +24,7 @@ import {
   applyLargeWaterGapFixMigration,
   applyMorphologicalClosingMigration,
   applyVoronoiIslandsMigration,
+  applyBigIslandsMigration,
   applyHomeTileBackfillMigration,
 } from "./game/mapgen.js";
 import { seedDefaultSettings, loadSettings } from "./game/settings.js";
@@ -88,6 +89,9 @@ async function main() {
   // Ada büyütmeyi Voronoi bölgelerine bağlayan kökten değişim -- yukarıdakiler
   // gibi ÖNCE ve senkron (bkz. mapgen.ts applyVoronoiIslandsMigration yorumu).
   await applyVoronoiIslandsMigration();
+  // Adaları büyüten (13 dev ada) düzeltme -- yukarıdakiler gibi ÖNCE ve
+  // senkron (bkz. mapgen.ts applyBigIslandsMigration yorumu).
+  await applyBigIslandsMigration();
   await seedDefaultSettings();
   const settings = await loadSettings();
   await ensureMapGenerated(settings);

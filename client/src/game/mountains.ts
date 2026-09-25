@@ -40,6 +40,28 @@ export const HEX_DIRECTIONS: [number, number][] = [
   [1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1],
 ];
 
+// ---------------------------------------------------------------------
+// Ada bazlı dekor profili
+// ---------------------------------------------------------------------
+// Kullanıcı isteği: "dekorları haritaya değil ada ada dağıt" -- eskiden
+// forests/rockyAreas/crystals/mountains'taki TÜM yoğunluk/varyasyon
+// hesapları sadece (x,y) dünya koordinatına bakıyordu, hangi adaya ait
+// olduğu HİÇ önemli değildi -- bu yüzden bitişik iki ada, fiziksel olarak
+// ayrı olsalar bile istatistiksel olarak AYNI dekor karakterine sahipti
+// (aynı yoğunluk, aynı "kaç tanesi orman/kaya" oranı). Bu fonksiyon, HER
+// dekor türü (forest/rock/crystal/mountain, `decorKind` ile ayrılıyor) için
+// HER adaya (islandId) kendi tohumundan türeyen FARKLI bir yoğunluk çarpanı
+// (0.5-1.6 arası) veriyor -- sonuç: bazı adalar diğerlerinden belirgin
+// şekilde daha ormanlık/kayalık/dağlık oluyor, aynı ada tüm dekor
+// türlerinde aynı "zengin/fakir" olmak zorunda değil (her decorKind kendi
+// bağımsız rulosunu alıyor). Tamamen deterministik (Math.random() değil).
+const ISLAND_DECOR_PROFILE_SEED = 5501;
+
+export function islandDecorFactor(islandId: number, decorKind: number): number {
+  const roll = hashXY(islandId, decorKind, ISLAND_DECOR_PROFILE_SEED) % 1000;
+  return 0.5 + (roll / 1000) * 1.1; // 0.5 .. 1.6
+}
+
 // Dekor yoğunluğu (büyüdükçe seyrekleşir) -- dağlar harita genelinde
 // seyrek/nadir kalsın diye yüksek tutuluyor. Kullanıcı isteğiyle ("dekorları
 // azalt") eski 240'tan daha da seyrekleştirildi.
@@ -73,9 +95,13 @@ export function computePlacedMountains(tiles: Tile[]): PlacedMountain[] {
     if (t.tileType !== "EMPTY") occupied.add(`${t.x},${t.y}`);
   }
 
-  const candidates = tiles.filter(
-    (t) => t.tileType === "EMPTY" && hashXY(t.x, t.y, 1) % MOUNTAIN_DENSITY === 0
-  );
+  const candidates = tiles.filter((t) => {
+    if (t.tileType !== "EMPTY") return false;
+    // Ada bazlı yoğunluk (bkz. islandDecorFactor dosya başı yorumu) --
+    // çarpan yükseldikçe etkin yoğunluk sayısı düşüyor (daha sık dağ).
+    const density = Math.max(40, Math.round(MOUNTAIN_DENSITY / islandDecorFactor(t.islandId, 1)));
+    return hashXY(t.x, t.y, 1) % density === 0;
+  });
   // Çakışan adaylar arasındaki önceliğin her zaman aynı (deterministik)
   // sırada çözülmesi için koordinataya göre sırala.
   candidates.sort((a, b) => a.x - b.x || a.y - b.y);

@@ -25,21 +25,21 @@ const WORLD_SIZE = 200;
 // birkaç hücre boş deniz olarak kalır — uzaktan bakınca aşırı düzenli/ızgara
 // gibi görünmesini engelleyen doğal boşluklar.
 //
-// Kullanıcı isteği ("dünyada baştan sona bitişik bir takımada olsun, adalar
-// arası tek değil birkaç geçiş/köprü olabilsin"): ızgara 6×6'dan 7×7'ye (49
-// hücre) sıklaştırıldı, ISLAND_COUNT da 10'dan 45'e çıkarıldı -- hücrelerin
-// neredeyse tamamı (49'da 45'i) dolu, sadece birkaçı doğal boşluk için boş
-// kalıyor. Köprüler de artık her adanın SADECE bir komşusuna değil, ızgarada
-// gerçekten bitişik olduğu HER komşusuna kuruluyor (bkz. generateBridges) --
-// bu yüzden iki ada kümesi arasında birden fazla geçiş noktası olabiliyor.
-const GRID_COLS = 7;
-const GRID_ROWS = 7;
+// Kullanıcı isteği ("Million Lords'taki gibi adalar büyük olsun, sayı önemli
+// değil"): ızgara 7×7'den (49 küçük hücre) 4×4'e (16 büyük hücre) seyrekleştirildi,
+// ISLAND_COUNT 45'ten 13'e indirildi -- her ada artık ~2500-3000 karo (eskiden
+// ~700-800), Million Lords'un kendi adalarına çok daha yakın (bkz. sohbet
+// geçmişindeki Play Store/wiki araştırması: adalar birkaç düzine şehri
+// barındıracak kadar büyük). Köprüler her adanın SADECE bir komşusuna değil,
+// ızgarada gerçekten bitişik olduğu HER komşusuna kuruluyor (bkz. generateBridges).
+const GRID_COLS = 4;
+const GRID_ROWS = 4;
 // Kullanıcı isteğiyle (çoklu ada + köprü) tek dev adadan çoklu adaya geri
 // dönüldü. ISLAND_COUNT === 1 olduğunda generateIslandLayout() yukarıdaki
 // GRID_COLS×GRID_ROWS hücre sistemini tamamen atlayıp doğrudan
 // generateRectangleIsland()'ı çağırıyordu (düz kenarlı dikdörtgen) -- o kod
 // yolu hâlâ duruyor, ISLAND_COUNT'u tekrar 1 yapmak yeterli geri dönüş için.
-const ISLAND_COUNT: number = 45;
+const ISLAND_COUNT: number = 13;
 // Köprüler kısa/dar bir geçiş hissi vermeli -- kullanıcı isteği net: "uzun
 // köprü istemiyorum". Gerçek üst sınır her zaman bunun VE canlı
 // naval_attack_range ayarının (bkz. generateIslandLayout yorumu) küçüğü,
@@ -414,11 +414,12 @@ function generateIslandLayout(maxBridgeHexLength: number): LandTile[] {
     // yani tam Voronoi sınırına kadar DEĞİL, ondan sabit bir miktar geride
     // duruyor -- iki komşu adanın kendi payına düşen geri çekilme toplanınca
     // HER sınırda aynı, tutarlı genişlikte (~2×BORDER_MARGIN+1) bir su şeridi
-    // oluşuyor. BORDER_MARGIN=0 (tam sınıra kadar doldur) da denendi ama
-    // sonuç %90+ kara kapsamıyla neredeyse tek düz blok oldu -- ayrı adalar
-    // hissi vermedi (bkz. script doğrulaması). BORDER_MARGIN=1, görünür ama
-    // abartısız bir ayrım bırakıyor (~%81-83 kapsam, köprüler kısa kalıyor).
-    const BORDER_MARGIN = 1;
+    // oluşuyor. Hücreler büyüyünce (GRID_COLS/ROWS 7 -> 4) aynı payın hücre
+    // boyutuna oranı küçüldüğü için BORDER_MARGIN de 1'den 2'ye çıkarıldı --
+    // yoksa büyük hücrelerde su şeridi orantısız ince kalıp yine neredeyse
+    // tek blok görünümü verirdi (bkz. script doğrulaması: 4×4 ızgarada
+    // margin=1 -> %91+ kapsam, margin=2 -> %86-88, tercih edilen).
+    const BORDER_MARGIN = 2;
     const boundaryDist = new Map<string, number>();
     const boundaryQueue: [number, number][] = [];
     for (let x = 0; x < WORLD_SIZE; x++) {
@@ -1040,6 +1041,26 @@ export async function applyVoronoiIslandsMigration() {
   );
   await markMigration(MIGRATION_NAME);
   console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita Voronoi tabanlı adalarla yeniden üretilecek.`);
+}
+
+// Kullanıcı isteği: "Million Lords'taki gibi adalar büyük olsun, sayı önemli
+// değil" -- ızgara 7×7'den 4×4'e seyrekleştirildi (13 büyük ada, ~2500-3000
+// karo/ada -- eskiden 45 küçük ada, ~700 karo/ada). BORDER_MARGIN de 1'den
+// 2'ye çıkarıldı ki büyük hücrelerde su şeridi orantısız incelmesin (bkz.
+// mapgen.ts dosya başı yorumu).
+export async function applyBigIslandsMigration() {
+  const MIGRATION_NAME = "big_islands_v1";
+  if (await hasMigration(MIGRATION_NAME)) return;
+
+  console.log(`[migration] ${MIGRATION_NAME}: adalar büyütülüyor, test verisi sıfırlanıyor...`);
+  await pool.query(
+    `TRUNCATE TABLE
+       tile_reinforcements, scout_reports, player_reports, battle_log,
+       guild_members, guilds, tiles, players
+     RESTART IDENTITY CASCADE`
+  );
+  await markMigration(MIGRATION_NAME);
+  console.log(`[migration] ${MIGRATION_NAME}: tamamlandı, harita büyük adalarla yeniden üretilecek.`);
 }
 
 export async function ensureMapGenerated(settings: Settings) {

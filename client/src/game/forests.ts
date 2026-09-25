@@ -1,5 +1,5 @@
 import type { Tile } from "../api";
-import { HEX_DIRECTIONS, hashXY } from "./mountains";
+import { HEX_DIRECTIONS, hashXY, islandDecorFactor } from "./mountains";
 import { sampleBiomeIntensity, type BiomeAnchor } from "./worldRegions";
 
 // ---------------------------------------------------------------------
@@ -185,7 +185,10 @@ export function computePlacedForests(
     const intensity = sampleBiomeIntensity(t.x, t.y, biomeAnchors, "forestFloor");
     if (intensity <= 0) continue;
     const roll = (hashXY(t.x, t.y, FOREST_SEED) % 10000) / 10000;
-    if (roll >= intensity * FOREST_MAX_COVERAGE) continue;
+    // Ada bazlı yoğunluk (bkz. islandDecorFactor) -- bazı adalar diğerlerinden
+    // belirgin şekilde daha ormanlık.
+    const islandFactor = islandDecorFactor(t.islandId, 101);
+    if (roll >= intensity * FOREST_MAX_COVERAGE * islandFactor) continue;
 
     const defIdx = hashXY(t.x, t.y, FOREST_SEED + 1) % FOREST_CLUSTER_DEFS.length;
     const jitterX = ((hashXY(t.x, t.y, FOREST_SEED + 2) % 100) / 100 - 0.5) * 0.5;
