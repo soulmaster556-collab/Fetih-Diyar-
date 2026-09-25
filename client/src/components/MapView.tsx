@@ -10,7 +10,7 @@ import {
 import { computePlacedCrystals } from "../game/crystals";
 import { computePlacedForests } from "../game/forests";
 import { isoCenter } from "../game/hexMath";
-import { buildIslandShorePathD, computeIslandShoreLoops } from "../game/islandShore";
+import { buildIslandShorePathD, computeIslandShoreLoops, computeSeaDistanceMap } from "../game/islandShore";
 import { bendAttackPath, computePlacedMountains, type MountainScreenBox } from "../game/mountains";
 import { computePlacedRocks } from "../game/rockyAreas";
 import {
@@ -90,13 +90,22 @@ export function MapView({
     () => buildIslandShorePathD(islandShoreLoops, tileWidth),
     [islandShoreLoops, tileWidth]
   );
+  // Dekor kümelerinin (dağ/orman/kayalık/kristal) kıyıdan taşmasını önlemek
+  // için (bkz. islandShore.ts computeSeaDistanceMap dosya başı yorumu).
+  const seaDistance = useMemo(() => computeSeaDistanceMap(tiles), [tiles]);
 
-  // Göller. AYNI prensip: WORLD_SIZE'a göre bir kez üretilir, `tiles`'tan
-  // bağımsız (bkz. riversLakes.ts dosya başı yorumu). z-index sırası:
-  // .world-sea (-2) -> .world-island-shore (-1) -> .world-terrain (0,
-  // ada şekline clip-path'li) -> .world-water (1) -> .iso-tile-group'lar
-  // (10+). Nehir sistemi kullanıcı isteğiyle kaldırıldı -- sadece göl var.
-  const waterFeatures = useMemo(() => ({ lakes: generateLakes(WORLD_SIZE) }), []);
+  // Göller BİLEREK KAPALI (lakes: []) -- generateLakes WORLD_SIZE'a göre
+  // SABİT bir dünya-koordinat formülüyle üretiliyor (bkz. riversLakes.ts),
+  // adaların artık RASTGELE 6x6 ızgaraya dağıldığı çoklu-ada sisteminden
+  // TAMAMEN habersiz. Sonuç: göller sık sık hiçbir adanın üstüne değil,
+  // açık denizin ortasına düşüyordu -- kendi kumsal halkasıyla birlikte
+  // anlamsız, "havada" bir daire gibi duruyordu (kullanıcı geri bildirimi:
+  // "gereksiz yuvarlak su şekilleri var adanın içinde"). generateLakes/
+  // buildLakePathD/buildCoastRingPathD hiçbiri SİLİNMEDİ -- ileride göl
+  // konumlarını gerçek ada verisine göre (ör. sadece bir adanın iç
+  // karolarından seçerek) üretecek bir revizyon gelirse burası (lakes: [])
+  // tek satırla geri açılabilir.
+  const waterFeatures = useMemo(() => ({ lakes: [] as ReturnType<typeof generateLakes> }), []);
   const lakePathsD = useMemo(
     () => waterFeatures.lakes.map((l) => ({ key: `lake-${l.seed}`, d: buildLakePathD(l, tileWidth) })),
     [waterFeatures, tileWidth]
@@ -163,9 +172,11 @@ export function MapView({
   const visibleMountainScreens = useMemo(
     () =>
       mountainScreens.filter(
-        (m) => !isWaterAtWorldPosition(m.mountain.rootX, m.mountain.rootY, waterFeatures, 1.25)
+        (m) =>
+          !isWaterAtWorldPosition(m.mountain.rootX, m.mountain.rootY, waterFeatures, 1.25) &&
+          (seaDistance.get(`${m.mountain.rootX},${m.mountain.rootY}`) ?? Infinity) > 1
       ),
-    [mountainScreens, waterFeatures]
+    [mountainScreens, waterFeatures, seaDistance]
   );
 
   // FAZ 3 -- Forest + Rocky Areas. `mountains.ts` HİÇ değişmedi; bu iki
@@ -178,12 +189,12 @@ export function MapView({
   // yorumları. world-terrain'e (biomeAnchors'ın KENDİSİ değişmiyor, sadece
   // okunuyor) hiç dokunulmuyor.
   const placedForests = useMemo(
-    () => computePlacedForests(tiles, biomeAnchors, placedMountains, waterFeatures),
-    [tiles, biomeAnchors, placedMountains, waterFeatures]
+    () => computePlacedForests(tiles, biomeAnchors, placedMountains, waterFeatures, seaDistance),
+    [tiles, biomeAnchors, placedMountains, waterFeatures, seaDistance]
   );
   const placedRocks = useMemo(
-    () => computePlacedRocks(tiles, biomeAnchors, placedMountains, placedForests, waterFeatures),
-    [tiles, biomeAnchors, placedMountains, placedForests, waterFeatures]
+    () => computePlacedRocks(tiles, biomeAnchors, placedMountains, placedForests, waterFeatures, seaDistance),
+    [tiles, biomeAnchors, placedMountains, placedForests, waterFeatures, seaDistance]
   );
 
   const forestScreens = useMemo(() => {
@@ -215,8 +226,15 @@ export function MapView({
   // dışlanarak yerleşiyor, aynı forests/rockyAreas'ın birbirini dışlama
   // mantığı. Su kontrolü kendi içinde (computePlacedCrystals).
   const placedCrystals = useMemo(
-    () => computePlacedCrystals(tiles, placedMountains, [...placedForests, ...placedRocks], waterFeatures),
-    [tiles, placedMountains, placedForests, placedRocks, waterFeatures]
+    () =>
+      computePlacedCrystals(
+        tiles,
+        placedMountains,
+        [...placedForests, ...placedRocks],
+        waterFeatures,
+        seaDistance
+      ),
+    [tiles, placedMountains, placedForests, placedRocks, waterFeatures, seaDistance]
   );
 
   // "Havada duruyor" düzeltmesi: kutuyu (mountains/forests/rocks gibi) cy
@@ -408,8 +426,11 @@ export function MapView({
           Her <path> tek bir bağlı bölgeyi (region) temsil ediyor -- hex
           başına DEĞİL (bkz. game/territory.ts dosya başı yorumu). fillRule
           evenodd, region içinde delik (ör. fethedilmemiş bir NPC karosu)
-          varsa doğru boşluğu bırakması için. */}
-      <svg className="world-territory">
+          varsa doğru boşluğu bırakması için. clipPath: kıyıdaki bir kalenin
+          etki alanı diski (bkz. PLAYER_INFLUENCE_RADIUS) denize taşabiliyordu
+          -- .world-terrain ile AYNI ada sınırı path'i kullanılarak taralı
+          alan da çimin bittiği yerde kesiliyor (kullanıcı geri bildirimi). */}
+      <svg className="world-territory" style={{ clipPath: `path("${islandShorePathD || "M0 0 Z"}")` }}>
         {territoryPathsD.map((r) => (
           <path
             key={r.key}

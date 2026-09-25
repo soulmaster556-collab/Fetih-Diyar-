@@ -1,4 +1,5 @@
 import type { Tile } from "../api";
+import { HEX_DIRECTIONS } from "./mountains";
 import { chaikinSmooth, closedPathD, traceBoundaryLoops, type TerritoryPoint } from "./territory";
 
 // ---------------------------------------------------------------------
@@ -36,4 +37,53 @@ export function buildIslandShorePathD(loops: TerritoryPoint[][], tileWidth: numb
     })
     .filter((d) => d.length > 0)
     .join(" ");
+}
+
+// ---------------------------------------------------------------------
+// "Bu karo denize kaç hex uzaklıkta" -- orman/dağ/kayalık/kristal
+// kümelerinin kök hex'i kara olsa bile kendi sprite'ı (jitter+scale ile)
+// komşu bir denize taşabiliyordu (kullanıcı geri bildirimi: "adaların
+// dışına taşan dekorlar var") -- göllerdeki isWaterAtWorldPosition'ın AYNI
+// prensibi, ama göllerin aksine ada şekli deterministik bir formülle değil
+// gerçek yüklü `tiles` verisinden biliniyor, o yüzden mesafe BFS ile
+// hesaplanıyor. maxRings'in ötesindeki karolar "güvenli" (Infinity) sayılır
+// -- performans için sınırsız BFS yerine küçük bir üst sınır yeterli, hiçbir
+// dekor kümesi birkaç hex'ten fazla taşmıyor zaten.
+export function computeSeaDistanceMap(tiles: Tile[], maxRings = 3): Map<string, number> {
+  const landSet = new Set(tiles.map((t) => `${t.x},${t.y}`));
+  const dist = new Map<string, number>();
+  let frontier: [number, number][] = [];
+
+  // 0. halka: denize doğrudan komşu (kıyı) karolar.
+  for (const t of tiles) {
+    const key = `${t.x},${t.y}`;
+    let isCoastal = false;
+    for (const [dx, dy] of HEX_DIRECTIONS) {
+      if (!landSet.has(`${t.x + dx},${t.y + dy}`)) {
+        isCoastal = true;
+        break;
+      }
+    }
+    if (isCoastal) {
+      dist.set(key, 0);
+      frontier.push([t.x, t.y]);
+    }
+  }
+
+  for (let ring = 1; ring <= maxRings && frontier.length > 0; ring++) {
+    const next: [number, number][] = [];
+    for (const [x, y] of frontier) {
+      for (const [dx, dy] of HEX_DIRECTIONS) {
+        const nx = x + dx;
+        const ny = y + dy;
+        const nKey = `${nx},${ny}`;
+        if (!landSet.has(nKey) || dist.has(nKey)) continue;
+        dist.set(nKey, ring);
+        next.push([nx, ny]);
+      }
+    }
+    frontier = next;
+  }
+
+  return dist;
 }

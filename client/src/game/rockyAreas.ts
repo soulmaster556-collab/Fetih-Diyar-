@@ -107,7 +107,8 @@ export function computePlacedRocks(
   biomeAnchors: BiomeAnchor[],
   reservedRoots: ReservedRoot[],
   forestRoots: ReservedRoot[],
-  water: WaterFeatures
+  water: WaterFeatures,
+  seaDistance: Map<string, number>
 ): PlacedRock[] {
   const occupied = new Set<string>();
   for (const t of tiles) {
@@ -134,6 +135,8 @@ export function computePlacedRocks(
     // forests.ts ile aynı düzeltme, kayalık sprite'ları biraz daha küçük
     // (scale ~0.85-1.2) olduğu için pay biraz daha düşük.
     if (isWaterAtWorldPosition(t.x, t.y, water, 0.75)) continue;
+    // Ada kıyısı için aynı taşma düzeltmesi (bkz. forests.ts, islandShore.ts).
+    if ((seaDistance.get(`${t.x},${t.y}`) ?? Infinity) <= 0) continue;
 
     const intensity = Math.max(
       sampleBiomeIntensity(t.x, t.y, biomeAnchors, "rocky"),

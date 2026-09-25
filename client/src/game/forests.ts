@@ -159,7 +159,8 @@ export function computePlacedForests(
   tiles: Tile[],
   biomeAnchors: BiomeAnchor[],
   reserved: ReservedRoot[],
-  water: WaterFeatures
+  water: WaterFeatures,
+  seaDistance: Map<string, number>
 ): PlacedForest[] {
   const occupied = new Set<string>();
   for (const t of tiles) {
@@ -184,6 +185,10 @@ export function computePlacedForests(
     // için 1 hex birimi ekstra pay -- "ağaçlar göle taşıyor" düzeltmesi
     // (bkz. riversLakes.ts isWaterAtWorldPosition yorumu).
     if (isWaterAtWorldPosition(t.x, t.y, water, 1)) continue;
+    // AYNI taşma mantığı ada kıyısı için -- kök hex kara olsa bile sprite
+    // denize taşabiliyordu ("adaların dışına taşan dekorlar var" geri
+    // bildirimi, bkz. islandShore.ts computeSeaDistanceMap).
+    if ((seaDistance.get(`${t.x},${t.y}`) ?? Infinity) <= 1) continue;
 
     const intensity = sampleBiomeIntensity(t.x, t.y, biomeAnchors, "forestFloor");
     if (intensity <= 0) continue;

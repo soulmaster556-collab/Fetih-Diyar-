@@ -122,6 +122,18 @@ export default function App() {
   // zoom tuşuna basılır basılmaz "ekranın ortasındaki dünya noktasını"
   // saklar, yeni tileWidth uygulandıktan sonra oraya yeniden kaydırırız.
   const recenterOnZoomRef = useRef<{ x: number; y: number } | null>(null);
+  // Hızlı art arda tekerlek olaylarını TEK bir kareye (requestAnimationFrame)
+  // toplamak için -- kullanıcı geri bildirimi: "hızlıca ileri geri yapınca
+  // konum şaşıyor". Sebep: her wheel event kendi ANINDAKİ tileWidthIndex'i
+  // (React state, henüz commit edilmemiş olabilir) okuyup yeni bir hedef
+  // hesaplıyordu -- olaylar React'in render/commit döngüsünden daha hızlı
+  // ardışık geldiğinde birden fazla event AYNI bayat index'i okuyup
+  // birbiriyle yarışan recenter hedefleri yazabiliyordu. Artık: bir rAF
+  // zaten bekliyorsa yeni event sadece BİRİKTİRİLEN hedefi günceller (state'e
+  // hemen dokunmuyor), rAF ateşlediğinde TEK bir zoom adımı + TEK bir
+  // recenter uygulanıyor -- yığılma/yarış imkansız.
+  const wheelRafRef = useRef<number | null>(null);
+  const wheelAccumRef = useRef<{ sx: number; sy: number; targetIndex: number } | null>(null);
 
   // Fare tekerleği artık haritayı kaydırmak yerine yakınlaştırıp
   // uzaklaştırıyor -- imlecin altındaki dünya noktası zoom sonrasında da
@@ -133,13 +145,26 @@ export default function App() {
     const el = viewportRef.current;
     if (!el) return;
     const direction = e.deltaY < 0 ? 1 : -1;
-    const nextIndex = Math.min(TILE_WIDTHS.length - 1, Math.max(0, tileWidthIndex + direction));
-    if (nextIndex === tileWidthIndex) return;
+    const baseIndex = wheelAccumRef.current?.targetIndex ?? tileWidthIndex;
+    const nextIndex = Math.min(TILE_WIDTHS.length - 1, Math.max(0, baseIndex + direction));
+    if (nextIndex === baseIndex) return;
     const rect = el.getBoundingClientRect();
     const sx = e.clientX - rect.left + el.scrollLeft;
     const sy = e.clientY - rect.top + el.scrollTop;
-    recenterOnZoomRef.current = screenToWorld(sx, sy, tileWidth);
-    setTileWidthIndex(nextIndex);
+    wheelAccumRef.current = { sx, sy, targetIndex: nextIndex };
+    if (wheelRafRef.current !== null) return;
+    wheelRafRef.current = requestAnimationFrame(() => {
+      wheelRafRef.current = null;
+      const acc = wheelAccumRef.current;
+      wheelAccumRef.current = null;
+      if (!acc) return;
+      // sx/sy, o anda EKRANDA GERÇEKTEN GÖSTERİLEN (henüz değişmemiş) tileWidth
+      // ölçeğinde ölçüldü -- bu yüzden dünya noktasını da AYNI (kapanış anındaki
+      // güncel) tileWidth ile çözmek doğru, kapanıştaki `tileWidth` değişkeni
+      // zaten bu render'ın güncel değeri.
+      recenterOnZoomRef.current = screenToWorld(acc.sx, acc.sy, tileWidth);
+      setTileWidthIndex(acc.targetIndex);
+    });
   }
 
   // Sol tıkla basılı tutup sürükleyerek haritayı kaydırma (artık native
@@ -710,19 +735,17 @@ export default function App() {
     }
   }
 
+  // "Krallığıma Git" -- SADECE haritayı kaleye kaydırır, bir karoya
+  // TIKLAMAK gibi davranıp aksiyon menüsünü/bilgi kartını AÇMAZ (kullanıcı
+  // geri bildirimi: "Krallığıma git'e basınca saldırı menüsü açılmasın").
+  // handleTileClick'ten farklı olarak selectedTile'a hiç dokunmuyor.
   function goToTile(tile: Tile) {
     closeFloatingPanels();
-    setSelectedTile(tile);
     setActionMode(null);
     setPendingTarget(null);
     setMessage(null);
     setError(null);
     scrollToWorld(tile.x, tile.y, true);
-    const el = viewportRef.current;
-    if (el) {
-      const rect = el.getBoundingClientRect();
-      setSelectedScreenPos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-    }
   }
 
   // Haritada (ölü alan olmayan) bir karoya tıklanınca: hedef seçme

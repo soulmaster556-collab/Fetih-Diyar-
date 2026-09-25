@@ -93,7 +93,8 @@ export function computePlacedCrystals(
   tiles: Tile[],
   bigReservedRoots: ReservedRoot[],
   smallReservedRoots: ReservedRoot[],
-  water: WaterFeatures
+  water: WaterFeatures,
+  seaDistance: Map<string, number>
 ): PlacedCrystal[] {
   const occupied = new Set<string>();
   for (const t of tiles) {
@@ -121,6 +122,8 @@ export function computePlacedCrystals(
     // "ağaçlar göle taşıyor" düzeltmesiyle aynı prensip, ama kristal küçük
     // olduğu için pay da daha düşük.
     if (isWaterAtWorldPosition(t.x, t.y, water, 0.4)) continue;
+    // Ada kıyısı için aynı taşma düzeltmesi (bkz. forests.ts, islandShore.ts).
+    if ((seaDistance.get(`${t.x},${t.y}`) ?? Infinity) <= 0) continue;
 
     const defIdx = hashXY(t.x, t.y, CRYSTAL_SEED + 1) % CRYSTAL_DEFS.length;
     const jitterX = ((hashXY(t.x, t.y, CRYSTAL_SEED + 2) % 100) / 100 - 0.5) * 0.4;
