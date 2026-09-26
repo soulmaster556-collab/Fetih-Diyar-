@@ -146,3 +146,15 @@ There is no test suite in this repo currently.
 
 Backend: Render Web Service (Node), connected to Neon Postgres. Frontend: Render Static Site.
 Both deploy from `main`.
+
+## Deploy (güncel)
+
+- Oyun Eka VDS sunucusunda (Ubuntu 22.04) çalışıyor: Nginx + PM2 + yerel PostgreSQL 18.
+  Render, Vercel ve Neon artık KULLANILMIYOR.
+- Canlı adres: https://88-209-248-192.sslip.io (web + /api aynı domain; admin: /#admin).
+- `main` dalına her push, .github/workflows/deploy.yml ile otomatik olarak sunucuya deploy
+  edilir (git pull → server build → pm2 restart → client build). Bu dosyayı değiştirme.
+- client/src/api.ts içindeki BASE boş kalmalı (relative "/api"); VITE_API_URL ayarlama.
+- mobile/ klasörü Expo WebView kabuğu; mobile/config.ts WEB_URL canlı adresi gösterir.
+- Veri sıfırlayan migration'lar canlı oyuncu hesaplarını siler — ekip onayı olmadan ekleme.
+- Sunucu .env dosyası sadece sunucuda durur; asla commit etme.
