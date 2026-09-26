@@ -3755,3 +3755,58 @@ button:not(:disabled):active {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ---------------------------------------------------------------------------
+   MOBİL / APK (Expo WebView) DÜZENİ
+   Dar ekranda (telefon) üst sağdaki ikon menüsü ekrana sığmıyor ve Çıkış
+   butonu görünmüyordu. Telefonda menü ekranın altına sabit bir çubuk olarak
+   taşınıyor, ikonlar küçülüyor, avatar sütunu küçültülüyor ve sohbet paneli
+   alt menünün üstünde tam genişlikte duruyor. Masaüstü görünümü değişmez.
+   --------------------------------------------------------------------------- */
+@media (max-width: 620px) {
+  .topbar {
+    padding: 8px 10px 16px;
+    align-items: flex-start;
+  }
+
+  .profile-column {
+    transform: scale(0.72);
+    transform-origin: top left;
+  }
+
+  .player-info {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    margin: 0;
+    justify-content: space-around;
+    gap: 4px;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(180deg, rgba(22, 34, 47, 0.94) 0%, rgba(16, 27, 38, 0.98) 100%);
+    border-top: 1px solid rgba(240, 180, 41, 0.35);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+  }
+
+  .hud-icon-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  .hud-icon-glyph {
+    font-size: 21px;
+  }
+
+  .hud-icon-badge {
+    top: -5px;
+    right: -5px;
+  }
+
+  .chat-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+  }
+}
